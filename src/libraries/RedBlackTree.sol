@@ -11,14 +11,17 @@ library RedBlackTree {
     }
 
     struct RBNode {
+        // --- Slot 1 (216 bits) ---
         uint32 parent;
         uint32 left;
         uint32 right;
-        Color color;
+        Color color; // 8 bits
         uint96 price;
+        uint16 orderCount;
+        // --- Slot 2 (192 bits) ---
         uint32 orderHead;
         uint32 orderTail;
-        uint16 orderCount;
+        uint128 totalAmount; // aggregate remaining amount at this price level
     }
 
     // ──────────────── Public functions (delegatecall) ────────────────

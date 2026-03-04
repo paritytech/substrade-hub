@@ -193,6 +193,13 @@ contract DLOB {
         _locked = 0;
     }
 
+    // ──────────────────────── Constructor (lock implementation) ──
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _initialized = true;
+    }
+
     // ──────────────────────── Initializer ────────────────────────
 
     function initialize(
@@ -438,6 +445,11 @@ contract DLOB {
 
         o.status = OrderStatus.Cancelled;
         uint128 refundAmount = o.remainingAmount;
+
+        // Decrement depth before zeroing remainingAmount
+        uint32 nodeId = orderLinks[orderId].priceNodeId;
+        if (nodeId != 0) nodes[nodeId].totalAmount -= refundAmount;
+
         o.remainingAmount = 0;
 
         // Remove from tree + queue
@@ -466,6 +478,10 @@ contract DLOB {
 
             o.status = OrderStatus.Cancelled;
             uint128 refundAmount = o.remainingAmount;
+
+            uint32 nid = orderLinks[oid].priceNodeId;
+            if (nid != 0) nodes[nid].totalAmount -= refundAmount;
+
             o.remainingAmount = 0;
 
             _removeOrder(oid, o.side, o.price);
@@ -499,6 +515,10 @@ contract DLOB {
         uint128 oldAmount = o.remainingAmount;
         uint128 freedAmount = oldAmount - newAmount;
         o.remainingAmount = newAmount;
+
+        // Update depth tracking
+        uint32 nodeId = orderLinks[orderId].priceNodeId;
+        if (nodeId != 0) nodes[nodeId].totalAmount -= freedAmount;
 
         // Refund freed escrow
         _refundEscrow(orderId, freedAmount, o.side, o.price, o.owner);
@@ -672,20 +692,7 @@ contract DLOB {
             nodeId = askPriceToNode[price];
         }
         if (nodeId == 0) return 0;
-
-        uint128 depth = 0;
-        uint32 current = nodes[nodeId].orderHead;
-        while (current != 0) {
-            Order storage o = orders[current];
-            // Filter expired
-            if (o.expireTimestamp != 0 && uint64(block.timestamp) >= o.expireTimestamp) {
-                current = orderLinks[current].next;
-                continue;
-            }
-            depth += o.remainingAmount;
-            current = orderLinks[current].next;
-        }
-        return depth;
+        return nodes[nodeId].totalAmount;
     }
 
     function getOrderBook(Side side, uint8 levels)
@@ -706,18 +713,9 @@ contract DLOB {
         uint8 count = 0;
         while (nodeId != 0 && count < levels) {
             RedBlackTree.RBNode storage n = nodes[nodeId];
-            uint128 vol = 0;
-            uint32 current = n.orderHead;
-            while (current != 0) {
-                Order storage o = orders[current];
-                if (o.expireTimestamp == 0 || uint64(block.timestamp) < o.expireTimestamp) {
-                    vol += o.remainingAmount;
-                }
-                current = orderLinks[current].next;
-            }
-            if (vol > 0) {
+            if (n.totalAmount > 0) {
                 prices[count] = n.price;
-                volumes[count] = vol;
+                volumes[count] = n.totalAmount;
                 count++;
             }
             // Navigate to next price level
@@ -769,6 +767,7 @@ contract DLOB {
                 maker.remainingAmount -= fillAmount;
                 remaining -= fillAmount;
                 fillCount++;
+                askNode.totalAmount -= fillAmount;
 
                 emit Trade(takerOrderId, makerOrderId, askNode.price, fillAmount);
                 emit OrderFilled(makerOrderId, fillAmount, maker.remainingAmount);
@@ -831,6 +830,7 @@ contract DLOB {
                 maker.remainingAmount -= fillAmount;
                 remaining -= fillAmount;
                 fillCount++;
+                bidNode.totalAmount -= fillAmount;
 
                 emit Trade(makerOrderId, takerOrderId, bidNode.price, fillAmount);
                 emit OrderFilled(makerOrderId, fillAmount, maker.remainingAmount);
@@ -1007,6 +1007,10 @@ contract DLOB {
         Order storage o = orders[orderId];
         o.status = OrderStatus.Cancelled;
         uint128 refundAmount = o.remainingAmount;
+
+        uint32 nodeId = orderLinks[orderId].priceNodeId;
+        if (nodeId != 0) nodes[nodeId].totalAmount -= refundAmount;
+
         o.remainingAmount = 0;
 
         _removeOrder(orderId, o.side, o.price);
@@ -1021,13 +1025,16 @@ contract DLOB {
         Order storage o = orders[orderId];
         o.status = OrderStatus.Cancelled;
         uint128 refundAmount = o.remainingAmount;
+
+        uint32 nodeId = orderLinks[orderId].priceNodeId;
+        if (nodeId != 0) {
+            nodes[nodeId].totalAmount -= refundAmount;
+            nodes[nodeId].orderCount--;
+        }
+
         o.remainingAmount = 0;
 
         _dequeueOrder(orderId, orderLinks[orderId].priceNodeId);
-        uint32 nodeId = orderLinks[orderId].priceNodeId;
-        if (nodeId != 0) {
-            nodes[nodeId].orderCount--;
-        }
 
         _refundEscrow(orderId, refundAmount, o.side, o.price, o.owner);
 
@@ -1054,9 +1061,10 @@ contract DLOB {
                     right: 0,
                     color: RedBlackTree.Color.Red,
                     price: price,
+                    orderCount: 0,
                     orderHead: 0,
                     orderTail: 0,
-                    orderCount: 0
+                    totalAmount: 0
                 });
                 bidPriceToNode[price] = nodeId;
                 bidTreeRoot = RedBlackTree.insert(nodes, bidTreeRoot, nodeId);
@@ -1074,9 +1082,10 @@ contract DLOB {
                     right: 0,
                     color: RedBlackTree.Color.Red,
                     price: price,
+                    orderCount: 0,
                     orderHead: 0,
                     orderTail: 0,
-                    orderCount: 0
+                    totalAmount: 0
                 });
                 askPriceToNode[price] = nodeId;
                 askTreeRoot = RedBlackTree.insert(nodes, askTreeRoot, nodeId);
@@ -1089,6 +1098,7 @@ contract DLOB {
         _enqueueOrder(orderId, nodeId);
         orderLinks[orderId].priceNodeId = nodeId;
         nodes[nodeId].orderCount++;
+        nodes[nodeId].totalAmount += orders[orderId].remainingAmount;
     }
 
     function _removeOrder(uint32 orderId, Side side, uint96 price) internal {

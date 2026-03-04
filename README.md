@@ -32,22 +32,20 @@ This gives traders precise control over execution price, supports true price dis
 All tokens in the order book are **Asset Hub native assets** (pallet-assets). Traders on **any Polkadot parachain** can place and settle orders without leaving their home chain — XCM handles the token movement:
 
 ```
-Parachain A                    Asset Hub                     Parachain B
-(Buyer)                     (Order Book)                     (Seller)
-    │                            │                               │
-    │── XCM: quote tokens ─────>│                               │
-    │   + placeLimitOrder(buy)   │                               │
-    │                            │<── XCM: base tokens ─────────│
-    │                            │    + placeLimitOrder(sell)    │
-    │                            │                               │
-    │                       [matching]                           │
-    │                            │                               │
-    │<── XCM: base tokens ──────│                               │
-    │   (settlement delivery)    │── XCM: quote tokens ────────>│
-    │                            │   (settlement delivery)      │
+  Parachain A                  Asset Hub                  Parachain B
+    (Buyer)                  (Order Book)                   (Seller)
+       |                          |                            |
+       |-- quote tokens + order ->|                            |
+       |                          |<- base tokens + order -----|
+       |                          |                            |
+       |                     [matching]                        |
+       |                          |                            |
+       |<---- base tokens --------|                            |
+       |    (settlement)          |------- quote tokens ------>|
+       |                          |         (settlement)       |
 ```
 
-The buyer sends quote tokens (e.g., USDT) to Asset Hub and receives base tokens (e.g., [XAUT](https://gold.tether.to/) — Tether Gold, a tokenized gold asset) after matching. The seller does the opposite. Any pallet-asset on Asset Hub can be traded — the order book is token-agnostic.
+The buyer sends quote tokens (e.g., USDT) to Asset Hub and receives base tokens (e.g., [XAUT](https://gold.tether.to/) — Tether Gold, a tokenized gold asset) after matching. The seller does the opposite. Any asset registered on Asset Hub via `pallet-assets` can be traded — each asset is accessible as an ERC20 through a deterministic [precompile address](https://docs.polkadot.com/smart-contracts/precompiles/erc20/).
 
 ### Placing an Order from Another Parachain
 
