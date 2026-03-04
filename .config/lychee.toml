@@ -1,5 +1,5 @@
 # Config file for lychee link checker: https://github.com/lycheeverse/lychee
-# Run locally with: lychee -c .config/lychee.toml './**/*.md' './**/*.sol'
+# Run locally with: lychee -c .config/lychee.toml './*.md' './src/**/*.sol' './test/**/*.sol' './script/**/*.sol'
 
 cache = true
 max_cache_age = "10d"

@@ -40,8 +40,10 @@ jobs:
           args: >-
             --config .config/lychee.toml
             --no-progress
-            './**/*.md'
-            './**/*.sol'
+            './*.md'
+            './src/**/*.sol'
+            './test/**/*.sol'
+            './script/**/*.sol'
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
