@@ -150,6 +150,7 @@ contract DLOB {
     );
     event OrphanedDotSwept(address recipient, uint128 amount);
     event PriceLevelCreated(uint96 price, Side side);
+    event ExcessQuoteRefunded(uint32 orderId, uint128 amount);
     event PriceLevelRemoved(uint96 price, Side side);
 
     // ──────────────────────── Errors ─────────────────────────────
@@ -297,13 +298,13 @@ contract DLOB {
         }
 
         // --- MATCHING PHASE ---
-        uint32 numCrossChainFills = 0;
-        uint256 gasBeforeMatching = gasleft();
         uint128 remaining = amount;
+        uint128 quoteUsed = 0;
         uint8 fillCount = 0;
 
         if (side == Side.Buy) {
-            remaining = _matchBuy(orderId, price, remaining, originAccount, destParaId, fillCount);
+            (remaining, quoteUsed) =
+                _matchBuy(orderId, price, remaining, originAccount, destParaId, fillCount);
         } else {
             remaining = _matchSell(orderId, price, remaining, originAccount, destParaId, fillCount);
         }
@@ -311,15 +312,15 @@ contract DLOB {
         // Update remaining amount after matching
         orders[orderId].remainingAmount = remaining;
 
-        // --- REIMBURSE TAKER ---
-        if (numCrossChainFills > 0 && destParaId == 0) {
-            uint128 actualGasCost = uint128((gasBeforeMatching - gasleft()) * tx.gasprice);
-            uint128 reimbursementBudget = numCrossChainFills * factory.minCrossChainFee();
-            uint128 totalReimbursement =
-                actualGasCost < reimbursementBudget ? actualGasCost : reimbursementBudget;
-            if (totalReimbursement > 0) {
-                (bool sent,) = payable(msg.sender).call{value: totalReimbursement}("");
-                sent; // silence unused warning
+        // --- REFUND EXCESS QUOTE FOR BUY ORDERS ---
+        if (side == Side.Buy && quoteUsed > 0) {
+            uint128 totalEscrowed = PriceMath.quoteAmountCeil(amount, price, PRECISION);
+            uint128 restingEscrow =
+                remaining > 0 ? PriceMath.quoteAmountCeil(remaining, price, PRECISION) : 0;
+            uint128 excess = totalEscrowed - quoteUsed - restingEscrow;
+            if (excess > 0) {
+                quoteToken.safeTransfer(msg.sender, uint256(excess));
+                emit ExcessQuoteRefunded(orderId, excess);
             }
         }
 
@@ -406,7 +407,7 @@ contract DLOB {
         // Match
         uint128 remaining = amount;
         if (side == Side.Buy) {
-            remaining =
+            (remaining,) =
                 _matchBuy(orderId, type(uint96).max, remaining, originAccount, destParaId, 0);
         } else {
             remaining = _matchSell(orderId, 0, remaining, originAccount, destParaId, 0);
@@ -431,7 +432,7 @@ contract DLOB {
             orderFeeReserve[orderId] = 0;
             totalFeeReserveBalance -= tempFeeReserve;
             (bool sent,) = payable(msg.sender).call{value: tempFeeReserve}("");
-            sent; // silence warning
+            if (!sent) revert TransferFailed();
         }
     }
 
@@ -553,7 +554,7 @@ contract DLOB {
             uint128 excess = availableFee - feePerSettle;
             if (excess > 0) {
                 (bool sent,) = payable(msg.sender).call{value: excess}("");
-                sent;
+                if (!sent) revert TransferFailed();
             }
         } else {
             // Refund: drain all remaining DOT
@@ -698,7 +699,7 @@ contract DLOB {
     function getOrderBook(Side side, uint8 levels)
         external
         view
-        returns (uint96[] memory prices, uint128[] memory volumes)
+        returns (uint96[] memory prices, uint128[] memory volumes, uint8 count)
     {
         prices = new uint96[](levels);
         volumes = new uint128[](levels);
@@ -710,7 +711,7 @@ contract DLOB {
             nodeId = bestAskNodeId;
         }
 
-        uint8 count = 0;
+        count = 0;
         while (nodeId != 0 && count < levels) {
             RedBlackTree.RBNode storage n = nodes[nodeId];
             if (n.totalAmount > 0) {
@@ -736,7 +737,8 @@ contract DLOB {
         bytes32 originAccount,
         uint32, /* takerDestParaId */
         uint8 fillCount
-    ) internal returns (uint128) {
+    ) internal returns (uint128, uint128) {
+        uint128 quoteUsed = 0;
         while (remaining > 0 && fillCount < MAX_FILLS_PER_TX && bestAskNodeId != 0) {
             RedBlackTree.RBNode storage askNode = nodes[bestAskNodeId];
             if (askNode.price > maxPrice) break;
@@ -763,6 +765,7 @@ contract DLOB {
                     remaining < maker.remainingAmount ? remaining : maker.remainingAmount;
 
                 _settleFill(takerOrderId, makerOrderId, fillAmount, askNode.price);
+                quoteUsed += PriceMath.quoteAmount(fillAmount, askNode.price, PRECISION);
 
                 maker.remainingAmount -= fillAmount;
                 remaining -= fillAmount;
@@ -789,7 +792,7 @@ contract DLOB {
                 _updateBestAsk();
             }
         }
-        return remaining;
+        return (remaining, quoteUsed);
     }
 
     function _matchSell(
@@ -1042,7 +1045,7 @@ contract DLOB {
     }
 
     function _extractAssetId(address asset) internal pure returns (uint128) {
-        return uint128(uint160(asset));
+        return uint128(uint160(asset) >> 128);
     }
 
     // ──────────────────────── Internal: Order Tree + Queue ───────

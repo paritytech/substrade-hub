@@ -105,13 +105,10 @@ contract MatchingTest is Test {
         uint256 expectedQuoteSpent =
             (100e6 * 50e15 / PRECISION) + (100e6 * 55e15 / PRECISION) + (50e6 * 60e15 / PRECISION);
 
-        // Alice escrowed 250e6 * 65e15 / 1e18 = 16250e6 quote at her limit price
-        // She spent expectedQuoteSpent = 13500e6 at execution prices
-        // The excess (escrow - actual) remains in DLOB
+        // Alice escrowed at 65e15 but fills at lower prices — excess is refunded
+        // Resting escrow for remaining 0 base = 0
         uint256 aliceQuoteSpent = aliceQuoteBalanceBefore - aliceQuoteBalanceAfter;
-        assertGe(
-            aliceQuoteSpent, expectedQuoteSpent, "Alice should spend at least the matched quote"
-        );
+        assertEq(aliceQuoteSpent, expectedQuoteSpent, "Alice should only pay actual execution cost");
     }
 
     /// @notice Test that buy order executes at the ask (maker) price
@@ -350,7 +347,7 @@ contract MatchingTest is Test {
         assertTrue(true, "Self-trade with different originAccount should be allowed");
     }
 
-    /// @notice Test that buyer placing at higher price and matching at lower price
+    /// @notice Test that buyer placing at higher price gets refund for better-price fill
     function testBuyerRefundExcessQuote() public {
         // Bob places sell at 50e15 for 100e6
         vm.prank(bob);
@@ -374,17 +371,71 @@ contract MatchingTest is Test {
             "Bob should receive quote at maker price"
         );
 
-        // Alice escrowed for 60e15 but matched at 50e15
-        // In current implementation, excess stays in DLOB until order is cancelled or claimed
-        // Alice's quote balance should decrease by at least the matched amount
+        // Alice escrowed at 60e15 but matched at 50e15 — excess should be refunded
         uint256 aliceQuoteSpent = aliceQuoteBalanceBefore - aliceQuoteBalanceAfter;
-
-        // Alice's order was fully filled, so she escrowed for 60e15
-        uint256 aliceEscrowed = (uint256(100e6) * 60e15 + PRECISION - 1) / PRECISION; // quoteAmountCeil
+        uint256 expectedAliceSpent = 100e6 * 50e15 / PRECISION; // matched at maker price
         assertEq(
             aliceQuoteSpent,
-            aliceEscrowed,
-            "Alice should have escrowed full amount at her limit price"
+            expectedAliceSpent,
+            "Alice should only spend quote at execution price (excess refunded)"
+        );
+    }
+
+    /// @notice Test partial fill + resting order refund
+    function testBuyerRefundPartialFill() public {
+        // Bob places sell at 50e15 for 60e6
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 60e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint256 aliceQuoteBalanceBefore = quoteToken.balanceOf(alice);
+
+        // Alice places buy at 60e15 for 100e6 — fills 60e6 at 50e15, rests 40e6 at 60e15
+        vm.prank(alice);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint256 aliceQuoteBalanceAfter = quoteToken.balanceOf(alice);
+
+        // Total escrowed = ceil(100e6 * 60e15 / 1e18) = 6000e6
+        // Quote used at fill = floor(60e6 * 50e15 / 1e18) = 3000e6
+        // Resting escrow = ceil(40e6 * 60e15 / 1e18) = 2400e6
+        // Excess = 6000e6 - 3000e6 - 2400e6 = 600e6
+        uint256 aliceQuoteSpent = aliceQuoteBalanceBefore - aliceQuoteBalanceAfter;
+        uint256 totalEscrowed = (uint256(100e6) * 60e15 + PRECISION - 1) / PRECISION;
+        uint256 quoteUsed = 60e6 * 50e15 / PRECISION;
+        uint256 restingEscrow = (uint256(40e6) * 60e15 + PRECISION - 1) / PRECISION;
+        uint256 expectedSpent = totalEscrowed - (totalEscrowed - quoteUsed - restingEscrow);
+
+        assertEq(
+            aliceQuoteSpent,
+            quoteUsed + restingEscrow,
+            "Alice should be refunded excess from partial fill"
+        );
+    }
+
+    /// @notice Test multi-level fill refund
+    function testBuyerRefundMultiLevel() public {
+        // Bob places sells at two price levels
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 45e15, 50e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 50e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint256 aliceQuoteBalanceBefore = quoteToken.balanceOf(alice);
+
+        // Alice places buy at 60e15 for 100e6 — fills at 45e15 and 50e15
+        vm.prank(alice);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint256 aliceQuoteBalanceAfter = quoteToken.balanceOf(alice);
+
+        // Quote used = floor(50e6 * 45e15 / 1e18) + floor(50e6 * 50e15 / 1e18) = 2250e6 + 2500e6 = 4750e6
+        uint256 expectedQuoteUsed = (50e6 * 45e15 / PRECISION) + (50e6 * 50e15 / PRECISION);
+        uint256 aliceQuoteSpent = aliceQuoteBalanceBefore - aliceQuoteBalanceAfter;
+
+        assertEq(
+            aliceQuoteSpent,
+            expectedQuoteUsed,
+            "Alice should only pay actual execution cost across multiple levels"
         );
     }
 

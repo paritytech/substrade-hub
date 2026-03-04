@@ -456,8 +456,10 @@ contract DLOBTest is Test {
         vm.prank(alice);
         dlob.placeLimitOrder(DLOB.Side.Buy, 30e15, 200e6, bytes32(0), bytes32(0), 0, 0);
 
-        (uint96[] memory prices, uint128[] memory volumes) = dlob.getOrderBook(DLOB.Side.Buy, 5);
+        (uint96[] memory prices, uint128[] memory volumes, uint8 count) =
+            dlob.getOrderBook(DLOB.Side.Buy, 5);
 
+        assertEq(count, 2);
         assertEq(prices[0], 40e15);
         assertEq(volumes[0], 100e6);
         assertEq(prices[1], 30e15);

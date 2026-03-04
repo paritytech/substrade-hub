@@ -251,15 +251,31 @@ forge create src/DLOBFactory.sol:DLOBFactory \
 
 ### Creating a Market
 
-After deploying the factory, create a new order book:
+After deploying the factory, create a new order book. Token addresses are ERC20 precompile addresses derived from the pallet-asset ID:
+
+```
+ERC20 address = 0x<assetId hex, 8 chars>00000000000000000000000001200000
+```
+
+For example, USDT (asset 1984 = `0x000007c0`) → `0x000007c000000000000000000000000001200000`.
+
+Parameters use the token's native decimals:
+- **`TICK_SIZE`** — minimum price increment (in 18-decimal fixed-point)
+- **`MIN_ORDER_SIZE`** — minimum order amount (in base token raw units)
+- **`MAX_ORDER_SIZE`** — maximum order amount (in base token raw units)
+
+Example: XAUT/USDT market (both 6 decimals), tick size $0.01, min 0.001 XAUT, max 1000 XAUT:
 
 ```bash
 cast send <FACTORY_ADDRESS> \
     "createMarket(address,address,uint96,uint96,uint128)" \
-    <BASE_TOKEN> <QUOTE_TOKEN> <TICK_SIZE> <MIN_ORDER_SIZE> <MAX_ORDER_SIZE> \
+    <XAUT_ERC20> 0x000007c000000000000000000000000001200000 \
+    10000000000000000 1000 1000000000 \
     --chain polkadot-testnet \
     --private-key $PRIVATE_KEY
 ```
+
+Where `10000000000000000` = 0.01 * 1e18 (tick size), `1000` = 0.001 * 1e6 (min), `1000000000` = 1000 * 1e6 (max).
 
 ### Interacting with the Contract
 
@@ -337,20 +353,43 @@ The architecture uses two patterns to stay within the EIP-170 contract size limi
 
 ## Configuration
 
-Key parameters set at market creation:
+### Market Parameters
 
-| Parameter | Type | Description |
-|---|---|---|
-| `tickSize` | `uint96` | Minimum price increment |
-| `minOrderSize` | `uint96` | Minimum order amount |
-| `maxOrderSize` | `uint128` | Maximum order amount |
+Each market is created with three parameters that control price precision and order sizing.
+All values are integers — no floating-point. Prices use **18-decimal fixed-point**; amounts use the **base token's native decimals**.
 
-Global parameters (admin-configurable on factory):
+| Parameter | Type | Unit | Description |
+|---|---|---|---|
+| `tickSize` | `uint96` | 18-decimal fixed-point | Minimum price increment. All limit prices must be multiples of this value. |
+| `minOrderSize` | `uint96` | Base token raw units | Smallest allowed order amount. Orders below this are rejected. |
+| `maxOrderSize` | `uint128` | Base token raw units | Largest allowed order amount. Orders above this are rejected. |
 
-| Parameter | Default | Description |
-|---|---|---|
-| `minCrossChainFee` | — | Minimum DOT per XCM settlement leg |
-| `marketCreationDeposit` | 0 | Optional DOT deposit to create a market |
+**Example — XAUT/USDT market** (both tokens have 6 decimals):
+
+| Parameter | Human value | Raw value | Calculation |
+|---|---|---|---|
+| `tickSize` | $0.01 | `10000000000000000` | 0.01 × 10¹⁸ |
+| `minOrderSize` | 0.001 XAUT | `1000` | 0.001 × 10⁶ |
+| `maxOrderSize` | 1,000 XAUT | `1000000000` | 1000 × 10⁶ |
+
+> **Why 18 decimals for price?** Prices are stored in 18-decimal fixed-point regardless of the tokens' native decimals. This ensures uniform precision across all markets and avoids rounding errors for tokens with few decimals.
+
+### Factory Parameters
+
+Global parameters configurable by the factory admin after deployment:
+
+| Parameter | Default | Unit | Description |
+|---|---|---|---|
+| `minCrossChainFee` | — | DOT (native units) | Minimum DOT attached per XCM settlement leg. Covers execution fees on the remote parachain. |
+| `marketCreationDeposit` | 0 | DOT (native units) | Optional deposit required to create a new market. Set to 0 to allow free market creation. |
+
+### Trading with DOT
+
+DOT is the native token on Asset Hub and is not registered in `pallet-assets`, so it doesn't have an ERC20 precompile address. To use DOT in a market, wrap it into an ERC20 via a simple **Wrapped DOT (WDOT)** contract — the same pattern Ethereum uses with WETH.
+
+A basic WDOT contract would expose two functions: `deposit()` accepts native DOT and mints an equal amount of WDOT tokens, and `withdraw()` burns WDOT and returns native DOT. The contract is stateless beyond the standard ERC20 balance mapping, making it easy to audit and trust. Note that deploying and registering a canonical WDOT token on Asset Hub may require a governance proposal.
+
+Once available, WDOT can be used as the base or quote token in any market. For example, a **WDOT/USDT** market lets traders place DOT-denominated orders with USDT settlement.
 
 ## Networks
 

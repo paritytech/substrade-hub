@@ -54,7 +54,8 @@ contract DLOBFactoryTest is Test {
             address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         assertEq(factory.getMarket(address(baseToken), address(quoteToken)), dlob);
-        assertEq(factory.getMarket(address(quoteToken), address(baseToken)), address(0));
+        // With normalized keys, reverse lookup also works
+        assertEq(factory.getMarket(address(quoteToken), address(baseToken)), dlob);
     }
 
     function testSetMinCrossChainFee() public {
@@ -116,5 +117,48 @@ contract DLOBFactoryTest is Test {
         vm.prank(address(0xBEEF));
         vm.expectRevert(DLOBFactory.NotAdmin.selector);
         factory.transferAdmin(address(0xCAFE));
+    }
+
+    // ──────────────────── Parameter Validation Tests ─────────────────
+
+    function testRevertZeroTickSize() public {
+        vm.expectRevert(DLOBFactory.ZeroTickSize.selector);
+        factory.createMarket(
+            address(baseToken), address(quoteToken), 0, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+        );
+    }
+
+    function testRevertZeroMinOrderSize() public {
+        vm.expectRevert(DLOBFactory.ZeroMinOrderSize.selector);
+        factory.createMarket(address(baseToken), address(quoteToken), TICK_SIZE, 0, MAX_ORDER_SIZE);
+    }
+
+    function testRevertMaxBelowMin() public {
+        vm.expectRevert(DLOBFactory.MaxBelowMin.selector);
+        factory.createMarket(
+            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MIN_ORDER_SIZE - 1
+        );
+    }
+
+    // ──────────────────── Unidirectional Market Key Tests ─────────────
+
+    function testReverseTokenOrderReverts() public {
+        factory.createMarket(
+            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+        );
+        // Creating quoteToken/baseToken should revert — same normalized key
+        vm.expectRevert(DLOBFactory.MarketExists.selector);
+        factory.createMarket(
+            address(quoteToken), address(baseToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+        );
+    }
+
+    function testGetMarketBothDirections() public {
+        address dlob = factory.createMarket(
+            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+        );
+        // Both directions should resolve to the same market
+        assertEq(factory.getMarket(address(baseToken), address(quoteToken)), dlob);
+        assertEq(factory.getMarket(address(quoteToken), address(baseToken)), dlob);
     }
 }

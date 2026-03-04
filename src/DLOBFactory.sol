@@ -41,6 +41,9 @@ contract DLOBFactory is IDLOBFactory {
     error InsufficientDeposit();
     error SameToken();
     error ZeroAddress();
+    error ZeroTickSize();
+    error ZeroMinOrderSize();
+    error MaxBelowMin();
 
     // ──────────────────────── Constructor ─────────────────────────
 
@@ -62,9 +65,14 @@ contract DLOBFactory is IDLOBFactory {
     ) external payable returns (address dlob) {
         if (baseToken == quoteToken) revert SameToken();
         if (baseToken == address(0) || quoteToken == address(0)) revert ZeroAddress();
+        if (tickSize == 0) revert ZeroTickSize();
+        if (minOrderSize == 0) revert ZeroMinOrderSize();
+        if (maxOrderSize < minOrderSize) revert MaxBelowMin();
         if (msg.value < marketCreationDeposit) revert InsufficientDeposit();
 
-        bytes32 key = keccak256(abi.encodePacked(baseToken, quoteToken));
+        (address tokenA, address tokenB) =
+            baseToken < quoteToken ? (baseToken, quoteToken) : (quoteToken, baseToken);
+        bytes32 key = keccak256(abi.encodePacked(tokenA, tokenB));
         if (markets[key] != address(0)) revert MarketExists();
 
         dlob = Clones.clone(implementation);
@@ -109,7 +117,8 @@ contract DLOBFactory is IDLOBFactory {
     // ──────────────────────── View Functions ─────────────────────
 
     function getMarket(address base, address quote) external view returns (address) {
-        return markets[keccak256(abi.encodePacked(base, quote))];
+        (address tokenA, address tokenB) = base < quote ? (base, quote) : (quote, base);
+        return markets[keccak256(abi.encodePacked(tokenA, tokenB))];
     }
 
     function getMarketCount() external view returns (uint256) {

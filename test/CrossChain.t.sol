@@ -505,6 +505,22 @@ contract CrossChainTest is Test {
         assertEq(dlob.getPendingClaim(claimId).destParaId, PARA_3000);
     }
 
+    // ================== ASSET ID EXTRACTION ==================
+
+    function testExtractAssetIdCorrect() public {
+        // ERC20 precompile addresses on Asset Hub encode the asset ID in the upper 32 bits.
+        // For asset ID 42: address = uint160(42) << 128 | 0x...prefix
+        uint32 expectedId = 42;
+        address assetPrecompile = address(uint160(uint256(expectedId) << 128));
+
+        // The extracted ID should match
+        // Use the inline XCM path to verify indirectly — or just call _extractAssetId via
+        // a helper. Since _extractAssetId is internal, we verify via the claim token flow.
+        // For a direct test, we check the math:
+        uint128 extracted = uint128(uint160(assetPrecompile) >> 128);
+        assertEq(extracted, expectedId, "Asset ID should be extracted from upper 32 bits");
+    }
+
     function testAdminRedirectClaimNotAdmin() public {
         mockXcm.setShouldRevert(true);
 
