@@ -110,14 +110,14 @@ Most Polkadot parachains already accept common Asset Hub tokens. If the destinat
 
 ## Key Features
 
-- **Red-Black Tree order book** — O(log n) price level insert/remove with best bid/ask tracking
-- **FIFO matching** — Price-time priority within each level, up to 50 fills per transaction
-- **Cross-chain settlement** — XCM reserve transfers to any parachain; DOT fee reserve per order
-- **Pending claim fallback** — If inline XCM fails, a `PendingClaim` is created for later retry by anyone
-- **Limit and market orders** — `placeLimitOrder()` with optional expiry, `placeMarketOrder()` with slippage protection
-- **Order management** — Cancel, batch cancel, reduce-only, claim redirect
-- **Lazy expiry** — Expired orders cleaned during matching, no keeper needed
-- **Self-trade prevention** — Same owner + same origin account reverts
+- **Red-Black Tree price levels** — Bid and ask prices are stored in a red-black tree for O(log n) insert/remove and O(1) best bid/ask lookup
+- **Price-time priority matching** — Orders fill at the best available price first; within the same price level, earlier orders fill before later ones (FIFO). Up to 50 fills per transaction
+- **Cross-chain settlement via XCM** — Matched tokens are delivered to any Polkadot parachain using XCM reserve transfers. Each cross-chain order includes a DOT fee reserve to cover delivery costs
+- **Pending claim fallback** — If inline XCM delivery fails (e.g., destination chain congested), a `PendingClaim` is created. Anyone can call `claimSettlement()` later to retry — no funds are lost
+- **Limit and market orders** — `placeLimitOrder()` rests on the book with optional expiry; `placeMarketOrder()` fills immediately with slippage protection (`minAmountOut`)
+- **Order management** — Cancel, batch cancel, reduce-only (shrink an order without cancelling), and claim redirect (change settlement destination)
+- **Lazy expiry** — Orders with an expiry timestamp are cleaned during matching when encountered — no off-chain keeper or cron job needed
+- **Self-trade prevention** — Matching reverts if both sides share the same owner address and origin account, preventing wash trading
 
 ## Prerequisites
 

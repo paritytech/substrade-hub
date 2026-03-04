@@ -521,6 +521,121 @@ contract CrossChainTest is Test {
         assertEq(extracted, expectedId, "Asset ID should be extracted from upper 32 bits");
     }
 
+    // ================== XCM FAILURE RECOVERY ==================
+
+    /// @notice claimSettlement reverts when XCM fails — PendingClaim is preserved for retry.
+    function testClaimSettlementPreservedOnXcmFailure() public {
+        mockXcm.setShouldRevert(true);
+
+        vm.prank(alice);
+        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+        );
+
+        vm.prank(bob);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        // Verify PendingClaim was created
+        uint32 claimId = dlob.nextClaimId() - 1;
+        DLOB.PendingClaim memory claim = dlob.getPendingClaim(claimId);
+        assertGt(claim.amount, 0, "Claim should exist");
+        assertEq(uint8(claim.claimType), uint8(DLOB.ClaimType.Fill));
+        assertEq(claim.beneficiary, ALICE_SETTLEMENT);
+        assertEq(claim.destParaId, PARA_1000);
+
+        // Try to settle while XCM is still broken — should revert
+        vm.prank(alice);
+        vm.expectRevert("MockXcm: execute reverted");
+        dlob.claimSettlement(claimId);
+
+        // Verify claim is still intact after failed settlement attempt
+        DLOB.PendingClaim memory claimAfter = dlob.getPendingClaim(claimId);
+        assertEq(claimAfter.amount, claim.amount, "Claim amount preserved");
+        assertEq(claimAfter.beneficiary, claim.beneficiary, "Claim beneficiary preserved");
+        assertEq(claimAfter.destParaId, claim.destParaId, "Claim destParaId preserved");
+
+        // Fix XCM and retry — should succeed now
+        mockXcm.setShouldRevert(false);
+        mockXcm.reset();
+
+        vm.prank(alice);
+        dlob.claimSettlement(claimId);
+
+        // Claim should be deleted after successful settlement
+        DLOB.PendingClaim memory claimFinal = dlob.getPendingClaim(claimId);
+        assertEq(claimFinal.amount, 0, "Claim should be deleted after settlement");
+        assertGt(mockXcm.getExecuteCallCount(), 0, "XCM executed on retry");
+    }
+
+    /// @notice Fee reserve is preserved when claimSettlement fails.
+    function testFeeReservePreservedOnClaimFailure() public {
+        mockXcm.setShouldRevert(true);
+
+        vm.prank(alice);
+        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+        );
+
+        vm.prank(bob);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        uint32 claimId = dlob.nextClaimId() - 1;
+        uint128 feeReserveBefore = dlob.getOrderFeeReserve(buyId);
+
+        // Failed settlement attempt — entire tx reverts atomically
+        vm.prank(alice);
+        vm.expectRevert("MockXcm: execute reverted");
+        dlob.claimSettlement(claimId);
+
+        // Fee reserve unchanged (revert rolled back the deduction)
+        assertEq(
+            dlob.getOrderFeeReserve(buyId),
+            feeReserveBefore,
+            "Fee reserve should not change on failed claim"
+        );
+    }
+
+    /// @notice Multiple pending claims from partial fills are all recoverable.
+    function testMultiplePendingClaimsRecoverable() public {
+        mockXcm.setShouldRevert(true);
+
+        // Alice places cross-chain buy with enough fee for 2 fills
+        vm.prank(alice);
+        uint32 buyId = dlob.placeLimitOrder{value: 3e9}(
+            DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+        );
+
+        // Two separate sellers fill partially
+        vm.prank(bob);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        vm.prank(charlie);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        // Should have 2 pending claims (inline XCM failed for each fill)
+        uint32 lastClaimId = dlob.nextClaimId() - 1;
+        uint32 firstClaimId = lastClaimId - 1;
+
+        DLOB.PendingClaim memory claim1 = dlob.getPendingClaim(firstClaimId);
+        DLOB.PendingClaim memory claim2 = dlob.getPendingClaim(lastClaimId);
+        assertGt(claim1.amount, 0, "First claim exists");
+        assertGt(claim2.amount, 0, "Second claim exists");
+
+        // Fix XCM and settle both
+        mockXcm.setShouldRevert(false);
+        mockXcm.reset();
+
+        vm.prank(alice);
+        dlob.claimSettlement(firstClaimId);
+        vm.prank(alice);
+        dlob.claimSettlement(lastClaimId);
+
+        // Both claims deleted
+        assertEq(dlob.getPendingClaim(firstClaimId).amount, 0, "First claim settled");
+        assertEq(dlob.getPendingClaim(lastClaimId).amount, 0, "Second claim settled");
+        assertEq(mockXcm.getExecuteCallCount(), 2, "Two XCM executions");
+    }
+
     function testAdminRedirectClaimNotAdmin() public {
         mockXcm.setShouldRevert(true);
 

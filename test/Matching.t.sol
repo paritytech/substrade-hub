@@ -439,6 +439,76 @@ contract MatchingTest is Test {
         );
     }
 
+    // ================== MARKET BUY "PULL" VALIDATION ==================
+
+    /// @notice Market buy without quote token approval should revert.
+    function testMarketBuyRevertsWithoutApproval() public {
+        // Bob places a sell order
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        // Create a fresh user with base tokens but NO quote approval
+        address dave = address(0xDA7E);
+        quoteToken.mint(dave, 1_000_000e18);
+        // Intentionally NOT approving quote token
+
+        vm.prank(dave);
+        vm.expectRevert(); // safeTransferFrom will revert due to no allowance
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+    }
+
+    /// @notice Market buy succeeds after approval and deducts correct amount.
+    function testMarketBuySucceedsWithApproval() public {
+        // Bob places a sell order at 50e15
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        // Dave approves and buys
+        address dave = address(0xDA7E);
+        quoteToken.mint(dave, 1_000_000e18);
+        vm.prank(dave);
+        quoteToken.approve(address(dlob), type(uint256).max);
+
+        uint256 daveQuoteBefore = quoteToken.balanceOf(dave);
+        uint256 daveBaseBefore = baseToken.balanceOf(dave);
+
+        vm.prank(dave);
+        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        assertEq(filled, 100e6, "Should fill 100e6");
+        assertEq(baseToken.balanceOf(dave) - daveBaseBefore, 100e6, "Dave receives base");
+
+        // Quote deducted = 100e6 * 50e15 / 1e18 = 5000e6
+        uint256 expectedQuote = 100e6 * 50e15 / PRECISION;
+        assertEq(
+            daveQuoteBefore - quoteToken.balanceOf(dave), expectedQuote, "Correct quote deducted"
+        );
+    }
+
+    /// @notice Market buy with insufficient quote balance reverts atomically — no dust.
+    function testMarketBuyInsufficientBalanceNoDust() public {
+        // Bob places large sell order
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 1_000e6, bytes32(0), bytes32(0), 0, 0);
+
+        // Dave has approval but almost no quote tokens
+        address dave = address(0xDA7E);
+        quoteToken.mint(dave, 1); // Only 1 wei of quote
+        vm.prank(dave);
+        quoteToken.approve(address(dlob), type(uint256).max);
+
+        uint256 daveQuoteBefore = quoteToken.balanceOf(dave);
+        uint256 daveBaseBefore = baseToken.balanceOf(dave);
+
+        vm.prank(dave);
+        vm.expectRevert(); // Will fail on safeTransferFrom during first fill
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        // Balances unchanged — atomic revert
+        assertEq(quoteToken.balanceOf(dave), daveQuoteBefore, "No quote dust left");
+        assertEq(baseToken.balanceOf(dave), daveBaseBefore, "No base dust received");
+    }
+
     /// @notice Test market order with minAmountOut that cannot be satisfied (should revert)
     function testMarketOrderSlippageRevert() public {
         // Bob places sell at 50e15 for 100e6

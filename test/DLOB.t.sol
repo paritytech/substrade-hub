@@ -492,4 +492,95 @@ contract DLOBTest is Test {
         vm.expectRevert(DLOB.NotAdmin.selector);
         dlob.sweepOrphanedDot(address(0x1234), 1);
     }
+
+    // ──────────────────── Depth Integrity Tests ───────────────────
+
+    /// @notice Fuzz test: depth at a price level equals sum of remaining amounts after
+    ///         random placements, cancellations, and fills.
+    function testFuzzDepthIntegrity(uint8 numOrders, uint8 cancelMask, uint8 fillCount) public {
+        uint256 n = bound(numOrders, 2, 20);
+        uint96 price = 50e15;
+        uint128 orderSize = 10e6;
+
+        address[3] memory senders = [alice, bob, charlie];
+        uint32[] memory orderIds = new uint32[](n);
+
+        for (uint256 i = 0; i < n; i++) {
+            address sender = senders[i % 3];
+            vm.prank(sender);
+            orderIds[i] = dlob.placeLimitOrder(
+                DLOB.Side.Sell, price, orderSize, bytes32(uint256(i + 100)), bytes32(0), 0, 0
+            );
+        }
+
+        for (uint256 i = 0; i < n; i++) {
+            if (cancelMask & (1 << (i % 8)) != 0) {
+                address sender = senders[i % 3];
+                vm.prank(sender);
+                dlob.cancelOrder(orderIds[i], bytes32(uint256(i + 100)));
+            }
+        }
+
+        uint256 fillN = bound(fillCount, 0, 5);
+        if (fillN > 0) {
+            uint128 buyAmount = uint128(fillN * orderSize);
+            vm.prank(alice);
+            dlob.placeMarketOrder(DLOB.Side.Buy, buyAmount, 0, bytes32(uint256(999)), bytes32(0), 0);
+        }
+
+        uint128 depth = dlob.getDepthAtPrice(DLOB.Side.Sell, price);
+        uint128 sumRemaining = 0;
+        for (uint256 i = 0; i < n; i++) {
+            DLOB.Order memory o = dlob.getOrder(orderIds[i]);
+            if (o.price == price && uint8(o.status) == uint8(DLOB.OrderStatus.Active)) {
+                sumRemaining += o.remainingAmount;
+            }
+        }
+        assertEq(depth, sumRemaining, "Depth must equal sum of remaining amounts");
+    }
+
+    /// @notice Deterministic depth test: place, cancel some, fill some, check depth.
+    function testDepthIntegrityDeterministic() public {
+        uint96 price = 50e15;
+        uint128 orderSize = 100e6;
+
+        vm.prank(bob);
+        uint32 id1 = dlob.placeLimitOrder(
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(10)), bytes32(0), 0, 0
+        );
+        vm.prank(bob);
+        uint32 id2 = dlob.placeLimitOrder(
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(11)), bytes32(0), 0, 0
+        );
+        vm.prank(charlie);
+        uint32 id3 = dlob.placeLimitOrder(
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(12)), bytes32(0), 0, 0
+        );
+        vm.prank(charlie);
+        uint32 id4 = dlob.placeLimitOrder(
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(13)), bytes32(0), 0, 0
+        );
+        vm.prank(bob);
+        uint32 id5 = dlob.placeLimitOrder(
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(14)), bytes32(0), 0, 0
+        );
+
+        assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, price), 500e6);
+
+        vm.prank(bob);
+        dlob.cancelOrder(id2, bytes32(uint256(11)));
+        vm.prank(charlie);
+        dlob.cancelOrder(id4, bytes32(uint256(13)));
+
+        assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, price), 300e6);
+
+        vm.prank(alice);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 150e6, 0, bytes32(0), bytes32(0), 0);
+
+        assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, price), 150e6);
+
+        assertEq(dlob.getOrder(id1).remainingAmount, 0);
+        assertEq(dlob.getOrder(id3).remainingAmount, 50e6);
+        assertEq(dlob.getOrder(id5).remainingAmount, 100e6);
+    }
 }
