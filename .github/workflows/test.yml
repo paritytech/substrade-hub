@@ -20,9 +20,12 @@ jobs:
 
       - name: Install foundry-polkadot
         run: |
-          curl -sSf -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/install | bash
+          curl -sSf -L -o /usr/local/bin/foundryup \
+            https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
+          chmod +x /usr/local/bin/foundryup
+          mkdir -p "$HOME/.foundry/bin" "$HOME/.foundry/versions" "$HOME/.foundry/share/man/man1"
           export PATH="$HOME/.foundry/bin:$PATH"
-          "$HOME/.foundry/bin/foundryup-polkadot"
+          foundryup
           echo "$HOME/.foundry/bin" >> $GITHUB_PATH
 
       - name: Run unit and fuzz tests
@@ -38,9 +41,12 @@ jobs:
 
       - name: Install foundry-polkadot
         run: |
-          curl -sSf -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/install | bash
+          curl -sSf -L -o /usr/local/bin/foundryup \
+            https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
+          chmod +x /usr/local/bin/foundryup
+          mkdir -p "$HOME/.foundry/bin" "$HOME/.foundry/versions" "$HOME/.foundry/share/man/man1"
           export PATH="$HOME/.foundry/bin:$PATH"
-          "$HOME/.foundry/bin/foundryup-polkadot"
+          foundryup
           echo "$HOME/.foundry/bin" >> $GITHUB_PATH
 
       - name: Run invariant tests (lightweight)
