@@ -21,9 +21,8 @@ jobs:
       - name: Install foundry-polkadot
         run: |
           curl -sSf -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/install | bash
-          source "$HOME/.bashrc" 2>/dev/null || true
           export PATH="$HOME/.foundry/bin:$PATH"
-          foundryup-polkadot
+          "$HOME/.foundry/bin/foundryup-polkadot"
           echo "$HOME/.foundry/bin" >> $GITHUB_PATH
 
       - name: Check formatting
@@ -40,9 +39,8 @@ jobs:
       - name: Install foundry-polkadot
         run: |
           curl -sSf -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/install | bash
-          source "$HOME/.bashrc" 2>/dev/null || true
           export PATH="$HOME/.foundry/bin:$PATH"
-          foundryup-polkadot
+          "$HOME/.foundry/bin/foundryup-polkadot"
           echo "$HOME/.foundry/bin" >> $GITHUB_PATH
 
       - name: Build
