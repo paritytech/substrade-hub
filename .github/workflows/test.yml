@@ -19,14 +19,16 @@ jobs:
           submodules: recursive
 
       - name: Install foundry-polkadot
+        env:
+          FOUNDRY_DIR: ${{ github.workspace }}/.foundry
         run: |
           curl -sSf -L -o /usr/local/bin/foundryup \
             https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
           chmod +x /usr/local/bin/foundryup
-          mkdir -p "$HOME/.foundry/bin" "$HOME/.foundry/versions" "$HOME/.foundry/share/man/man1"
-          export PATH="$HOME/.foundry/bin:$PATH"
+          mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
+          export PATH="$FOUNDRY_DIR/bin:$PATH"
           foundryup
-          echo "$HOME/.foundry/bin" >> $GITHUB_PATH
+          echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
 
       - name: Run unit and fuzz tests
         run: forge test --polkadot --no-match-test "invariant_" -v
@@ -40,14 +42,16 @@ jobs:
           submodules: recursive
 
       - name: Install foundry-polkadot
+        env:
+          FOUNDRY_DIR: ${{ github.workspace }}/.foundry
         run: |
           curl -sSf -L -o /usr/local/bin/foundryup \
             https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
           chmod +x /usr/local/bin/foundryup
-          mkdir -p "$HOME/.foundry/bin" "$HOME/.foundry/versions" "$HOME/.foundry/share/man/man1"
-          export PATH="$HOME/.foundry/bin:$PATH"
+          mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
+          export PATH="$FOUNDRY_DIR/bin:$PATH"
           foundryup
-          echo "$HOME/.foundry/bin" >> $GITHUB_PATH
+          echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
 
       - name: Run invariant tests (lightweight)
         run: FOUNDRY_PROFILE=ci forge test --polkadot --match-test "invariant_" -v
