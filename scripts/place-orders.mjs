@@ -6,8 +6,8 @@
 // Step 2: Fund Mario & Luigi with native token for gas
 // Step 3: EVM approve + placeLimitOrder
 //
-// Requires all env vars from .env (see .env.example)
-// Usage: source .env && node scripts/place-orders.mjs
+// Requires all env vars from scripts/.env (see scripts/.env.example)
+// Usage: source scripts/.env && node scripts/place-orders.mjs
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { execSync } from "child_process";

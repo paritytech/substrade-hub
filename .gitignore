@@ -10,6 +10,8 @@ node_modules/
 .env
 .env.local
 .env.*.local
+scripts/.env
+scripts/.env.local
 
 # OS
 .DS_Store
@@ -17,6 +19,9 @@ node_modules/
 # IDE
 .vscode/
 .idea/
+
+# Link checker cache
+.lycheecache
 
 # Logs
 *.log

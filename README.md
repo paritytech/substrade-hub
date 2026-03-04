@@ -1,6 +1,6 @@
 # SubsTrade Hub
 
-A fully on-chain **Decentralized Limit Order Book** for [Polkadot Asset Hub](https://docs.polkadot.com/smart-contracts/), built with Solidity on [pallet-revive](https://docs.polkadot.com/smart-contracts/overview/revive/) and cross-chain settlement via [XCM](https://docs.polkadot.com/polkadot-protocol/basics/interoperability/).
+A fully on-chain **Decentralized Limit Order Book** for [Polkadot Asset Hub](https://docs.polkadot.com/smart-contracts/), built with Solidity on [pallet-revive](https://docs.polkadot.com/polkadot-protocol/smart-contract-basics/) and cross-chain settlement via [XCM](https://docs.polkadot.com/parachains/interoperability/get-started/).
 
 ## What is a DLOB?
 
@@ -15,16 +15,36 @@ Unlike AMMs (Automated Market Makers) that use liquidity pools and bonding curve
 
 This gives traders precise control over execution price, supports true price discovery, and avoids the slippage and impermanent loss inherent in AMM designs.
 
+```
+                          Order Book: XAUT / USDT
+
+  BIDS (buyers) - qty            | Price      | ASKS (sellers) - qty
+  ───────────────────────────────|────────────|──────────────────────────────────────
+  ██████  3                      | $5,147.50  |
+  ████████████  6                | $5,147.75  |
+  ██████████████████  9          | $5,148.00  |
+  ████████████████████████  12   | $5,148.25  |
+                                 | ─spread──  |
+                                 | $5,148.50  | 10 ████████████████████
+                                 | $5,148.75  | 7  ██████████████
+                                 | $5,149.00  | 4  ████████
+                                 | $5,149.50  | 2  ████
+
+```
+
+**Best Bid:** $5,148.25 · **Best Ask:** $5,148.50 · **Spread:** $0.25
+
+- Limit buy at $5,148.50 → fills against the best ask immediately
+- Limit buy at $5,147.00 → rests on the bid side until a seller matches
+- Market buy for 8 XAUT → sweeps the best asks ($5,148.50, then $5,148.75)
+
 ## How It Works
 
 ### Order Lifecycle
 
 1. **Place** — A trader submits a limit order (buy or sell) with a price and amount. The order book escrows the relevant tokens (base for sells, quote for buys) and inserts the order at the correct price level.
-
 2. **Match** — When a new order crosses the spread (bid >= ask), the matching engine fills orders in **price-time priority** (best price first, then FIFO within each price level). A single transaction can execute up to 50 fills.
-
 3. **Settle** — Matched tokens are delivered to the counterparties. For local (Asset Hub) traders, this is a direct token transfer. For cross-chain traders, settlement uses XCM reserve transfers to deliver tokens to the destination parachain.
-
 4. **Cancel / Expire** — Unfilled orders can be cancelled by the owner at any time. Orders with an expiry timestamp are lazily cleaned during matching — no keeper or cron job needed.
 
 ### Cross-Chain Flow
@@ -81,7 +101,7 @@ XCM Program (Parachain A → Asset Hub)
    Order parameters include:
    • originAccount     — user's AccountId32 (self-trade prevention)
    • settlementAccount — where to deliver matched tokens on home chain
-   • destParaId        — home parachain ID (e.g., 1004 for People Chain)
+   • destParaId        — home parachain ID (e.g., 2034 for Hydration)
 ```
 
 The user never manages an Asset Hub account directly. Tokens flow through a derived account during XCM execution and end up escrowed in the DLOB — all in one atomic operation.
@@ -106,7 +126,13 @@ For a parachain to receive settlement tokens from the DLOB:
 2. **Asset recognition** — The destination chain must accept the traded asset as a reserve-backed foreign asset from Asset Hub (via a foreign assets pallet or XCM `AssetTransactor`)
 3. **XCM barriers** — The chain's XCM configuration must permit reserve transfers from Asset Hub
 
-Most Polkadot parachains already accept common Asset Hub tokens. If the destination chain does not recognize a specific asset, the inline XCM will fail and a PendingClaim is created — funds remain safe on Asset Hub until delivery can be retried or redirected via `claimRedirect()`.
+Most Polkadot parachains already accept common Asset Hub tokens. Parachains with active HRMP channels to Asset Hub that can receive settled tokens include:
+
+- **[Hydration](https://hydration.net/)** (2034) — DEX and liquidity hub, the most active cross-chain destination from Asset Hub
+- **[Moonbeam](https://moonbeam.network/)** (2004) — EVM-compatible smart contract platform with a broad DeFi ecosystem
+- **[Bifrost](https://bifrost.io/)** (2030) — Liquid staking protocol supporting DOT and other assets
+
+> **Note:** Cross-chain settlement depends on the destination chain's runtime configuration, HRMP channel health, and asset registration. Parachains may upgrade their runtime, close channels, or stop accepting certain assets at any time. If delivery fails for any reason, a `PendingClaim` is created — funds remain safe on Asset Hub and can be retried via `claimSettlement()` or redirected to a different destination via `redirectClaim()`.
 
 ## Key Features
 
@@ -128,11 +154,11 @@ curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads
 foundryup
 ```
 
-This fork of Foundry adds support for testing against [pallet-revive](https://docs.polkadot.com/smart-contracts/overview/revive/) (the actual Polkadot smart contract runtime) via the `--polkadot` flag.
+This fork of Foundry adds support for testing against [pallet-revive](https://docs.polkadot.com/polkadot-protocol/smart-contract-basics/) (the actual Polkadot smart contract runtime) via the `--polkadot` flag.
 
-Get testnet WND tokens from the [Westend faucet](https://faucet.polkadot.io/westend) to pay for gas on Asset Hub Westend.
+Get testnet PAS tokens from the [Paseo faucet](https://faucet.polkadot.io/) to pay for gas on Paseo Asset Hub.
 
-See the [Foundry for Polkadot docs](https://docs.polkadot.com/smart-contracts/dev-environments/foundry/) for details.
+See the [Foundry for Polkadot docs](https://github.com/paritytech/foundry-polkadot) for details.
 
 ## Build
 
@@ -172,86 +198,55 @@ forge test --match-test "invariant_" -vv
 
 ### Test Suite
 
-| File | Tests | Coverage |
-|---|---|---|
-| `DLOB.t.sol` | 30 | Order placement, cancellation, reduction, matching, expiry, views, admin |
-| `DLOBFactory.t.sol` | 12 | Market creation, duplicate prevention, admin config |
-| `Matching.t.sol` | 10 | Multi-level fills, market orders, max fills cap, self-trade, slippage |
-| `CrossChain.t.sol` | 21 | Inline XCM, claim fallback, fee reserve lifecycle, claim redirect |
-| `GasReport.t.sol` | 12 | Gas benchmarks for all core operations |
-| `DLOB.fuzz.t.sol` | 15 | 7 fuzz tests (257 runs) + 8 stateful invariants (128k calls each) |
+
+| File                | Tests | Coverage                                                                 |
+| ------------------- | ----- | ------------------------------------------------------------------------ |
+| `DLOB.t.sol`        | 32    | Order placement, cancellation, reduction, matching, expiry, depth integrity, views, admin |
+| `DLOBFactory.t.sol` | 17    | Market creation, duplicate prevention, parameter validation, admin config |
+| `Matching.t.sol`    | 15    | Multi-level fills, market orders, max fills cap, self-trade, slippage, buyer refunds, pull validation |
+| `CrossChain.t.sol`  | 25    | Inline XCM, claim fallback, fee reserve lifecycle, claim redirect, XCM failure recovery |
+| `GasReport.t.sol`   | 12    | Gas benchmarks for all core operations                                   |
+| `DLOB.fuzz.t.sol`   | 15    | 7 fuzz tests (257 runs) + 8 stateful invariants (128k calls each)        |
+
 
 ## Deploy
 
-Create a `.env` file (already in `.gitignore`):
+Deployment is a two-step process:
 
-```
-PRIVATE_KEY=your_private_key_here
-```
+1. **Deploy infrastructure** — Run the `DeployFactory` forge script, which deploys the DLOB implementation contract and the DLOBFactory in a single broadcast. Forge automatically deploys the RedBlackTree external library (referenced via `delegatecall` by DLOB) and links it into the bytecode — no need to deploy the library separately or pass `--libraries` flags manually.
+2. **Create markets** — Call `createMarket()` on the factory with `cast send` for each trading pair. Each market is an EIP-1167 minimal proxy clone of the DLOB implementation.
 
-Then load it:
-
-```bash
-source .env
-```
-
-On Asset Hub, the precompile addresses are:
-- **XCM**: `0x0000000000000000000000000000000000A0000`
-- **System**: `0x0000000000000000000000000000000000000900`
-
-### Testnet (Asset Hub Westend)
-
-Deploy in three steps: library, implementation, then factory.
+Copy the example environment file and fill in your deployer key and RPC URL:
 
 ```bash
-# 1. Deploy RedBlackTree library
-forge create src/libraries/RedBlackTree.sol:RedBlackTree \
-    --chain polkadot-testnet \
-    --private-key $PRIVATE_KEY \
-    --broadcast
-
-# 2. Deploy DLOB implementation (linked to library)
-forge create src/DLOB.sol:DLOB \
-    --libraries src/libraries/RedBlackTree.sol:RedBlackTree:<LIBRARY_ADDRESS> \
-    --chain polkadot-testnet \
-    --private-key $PRIVATE_KEY \
-    --broadcast
-
-# 3. Deploy DLOBFactory (with XCM precompile, System precompile, and DLOB implementation)
-forge create src/DLOBFactory.sol:DLOBFactory \
-    --constructor-args 0x0000000000000000000000000000000000A0000 0x0000000000000000000000000000000000000900 <DLOB_IMPL_ADDRESS> \
-    --chain polkadot-testnet \
-    --private-key $PRIVATE_KEY \
-    --broadcast
+cp .env.example .env
 ```
 
-### Mainnet (Polkadot Asset Hub)
+The root `.env.example` contains only what's needed for deployment — deployer key, network config, and contract addresses.
+
+### Deploy Factory
+
+The `DeployFactory` script deploys the full stack (DLOB implementation + DLOBFactory) in a single transaction:
 
 ```bash
-# 1. Deploy RedBlackTree library
-forge create src/libraries/RedBlackTree.sol:RedBlackTree \
-    --chain polkadot \
-    --private-key $PRIVATE_KEY \
+# Testnet (Paseo Asset Hub)
+forge script script/DeployFactory.s.sol \
+    --chain polkadot-testnet \
+    --private-key $DEPLOYER_PRIVATE_KEY \
     --broadcast
 
-# 2. Deploy DLOB implementation (linked to library)
-forge create src/DLOB.sol:DLOB \
-    --libraries src/libraries/RedBlackTree.sol:RedBlackTree:<LIBRARY_ADDRESS> \
+# Mainnet (Polkadot Asset Hub)
+forge script script/DeployFactory.s.sol \
     --chain polkadot \
-    --private-key $PRIVATE_KEY \
-    --broadcast
-
-# 3. Deploy DLOBFactory
-forge create src/DLOBFactory.sol:DLOBFactory \
-    --constructor-args 0x0000000000000000000000000000000000A0000 0x0000000000000000000000000000000000000900 <DLOB_IMPL_ADDRESS> \
-    --chain polkadot \
-    --private-key $PRIVATE_KEY \
+    --private-key $DEPLOYER_PRIVATE_KEY \
     --broadcast
 ```
 
-### Creating a Market
+The script logs deployed addresses to the console. Full transaction receipts are saved to `broadcast/DeployFactory.s.sol/<chainId>/run-latest.json`.
 
-After deploying the factory, create a new order book. Token addresses are ERC20 precompile addresses derived from the pallet-asset ID:
+### Create Market
+
+Token addresses are ERC20 precompile addresses derived from the pallet-asset ID:
 
 ```
 ERC20 address = 0x<assetId hex, 8 chars>00000000000000000000000001200000
@@ -259,23 +254,29 @@ ERC20 address = 0x<assetId hex, 8 chars>00000000000000000000000001200000
 
 For example, USDT (asset 1984 = `0x000007c0`) → `0x000007c000000000000000000000000001200000`.
 
-Parameters use the token's native decimals:
-- **`TICK_SIZE`** — minimum price increment (in 18-decimal fixed-point)
-- **`MIN_ORDER_SIZE`** — minimum order amount (in base token raw units)
-- **`MAX_ORDER_SIZE`** — maximum order amount (in base token raw units)
-
-Example: XAUT/USDT market (both 6 decimals), tick size $0.01, min 0.001 XAUT, max 1000 XAUT:
+Use `cast send` to create a market on the deployed factory:
 
 ```bash
 cast send <FACTORY_ADDRESS> \
     "createMarket(address,address,uint96,uint96,uint128)" \
-    <XAUT_ERC20> 0x000007c000000000000000000000000001200000 \
-    10000000000000000 1000 1000000000 \
+    <BASE_ERC20> <QUOTE_ERC20> \
+    <TICK_SIZE> <MIN_ORDER_SIZE> <MAX_ORDER_SIZE> \
     --chain polkadot-testnet \
-    --private-key $PRIVATE_KEY
+    --private-key $DEPLOYER_PRIVATE_KEY
 ```
 
-Where `10000000000000000` = 0.01 * 1e18 (tick size), `1000` = 0.001 * 1e6 (min), `1000000000` = 1000 * 1e6 (max).
+Example: XAUT/USDT market (both 6 decimals), tick size $0.01, min 0.001 XAUT, max 1000 XAUT:
+
+```bash
+cast send 0x... \
+    "createMarket(address,address,uint96,uint96,uint128)" \
+    0x...XAUT 0x000007c000000000000000000000000001200000 \
+    10000000000000000 1000 1000000000 \
+    --chain polkadot-testnet \
+    --private-key $DEPLOYER_PRIVATE_KEY
+```
+
+Where `10000000000000000` = 0.01 × 10¹⁸ (tick), `1000` = 0.001 × 10⁶ (min), `1000000000` = 1000 × 10⁶ (max).
 
 ### Interacting with the Contract
 
@@ -296,11 +297,7 @@ cast balance $ACCOUNT_ADDRESS --chain polkadot-testnet
 Verify on Blockscout (no API key needed):
 
 ```bash
-forge verify-contract <LIBRARY_ADDRESS> src/libraries/RedBlackTree.sol:RedBlackTree \
-    --chain polkadot-testnet
-
 forge verify-contract <DLOB_IMPL_ADDRESS> src/DLOB.sol:DLOB \
-    --libraries src/libraries/RedBlackTree.sol:RedBlackTree:<LIBRARY_ADDRESS> \
     --chain polkadot-testnet
 
 forge verify-contract <FACTORY_ADDRESS> src/DLOBFactory.sol:DLOBFactory \
@@ -329,27 +326,33 @@ The architecture uses two patterns to stay within the EIP-170 contract size limi
 
 ### Contracts
 
-| Contract | Description |
-|---|---|
-| `DLOB.sol` | Core order book — placement, matching, settlement, cancellation. Deployed once as implementation; cloned per market. |
-| `DLOBFactory.sol` | Market registry — creates EIP-1167 clones of DLOB, manages global config |
+
+| Contract          | Description                                                                                                          |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `DLOB.sol`        | Core order book — placement, matching, settlement, cancellation. Deployed once as implementation; cloned per market. |
+| `DLOBFactory.sol` | Market registry — creates EIP-1167 clones of DLOB, manages global config                                             |
+
 
 ### Libraries
 
-| Library | Description |
-|---|---|
+
+| Library            | Description                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
 | `RedBlackTree.sol` | Deployed library for red-black tree operations (insert, remove, min, max, successor, predecessor) |
-| `PriceMath.sol` | Tick alignment, quote amount calculation (floor and ceil) |
-| `XcmBuilder.sol` | Builds XCM V5 dual-asset reserve transfer messages |
-| `ScaleCodec.sol` | SCALE encoding for Substrate types |
+| `PriceMath.sol`    | Tick alignment, quote amount calculation (floor and ceil)                                         |
+| `XcmBuilder.sol`   | Builds XCM V5 dual-asset reserve transfer messages                                                |
+| `ScaleCodec.sol`   | SCALE encoding for Substrate types                                                                |
+
 
 ### Interfaces
 
-| Interface | Description |
-|---|---|
-| `IXcm.sol` | XCM precompile — `execute()`, `weighMessage()`, `send()` |
-| `ISystem.sol` | System precompile — Blake2 hashing, account conversion |
-| `IDLOBFactory.sol` | Factory interface for DLOB instances |
+
+| Interface          | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `IXcm.sol`         | XCM precompile — `execute()`, `weighMessage()`, `send()` |
+| `ISystem.sol`      | System precompile — Blake2 hashing, account conversion   |
+| `IDLOBFactory.sol` | Factory interface for DLOB instances                     |
+
 
 ## Configuration
 
@@ -358,19 +361,23 @@ The architecture uses two patterns to stay within the EIP-170 contract size limi
 Each market is created with three parameters that control price precision and order sizing.
 All values are integers — no floating-point. Prices use **18-decimal fixed-point**; amounts use the **base token's native decimals**.
 
-| Parameter | Type | Unit | Description |
-|---|---|---|---|
-| `tickSize` | `uint96` | 18-decimal fixed-point | Minimum price increment. All limit prices must be multiples of this value. |
-| `minOrderSize` | `uint96` | Base token raw units | Smallest allowed order amount. Orders below this are rejected. |
-| `maxOrderSize` | `uint128` | Base token raw units | Largest allowed order amount. Orders above this are rejected. |
+
+| Parameter      | Type      | Unit                   | Description                                                                |
+| -------------- | --------- | ---------------------- | -------------------------------------------------------------------------- |
+| `tickSize`     | `uint96`  | 18-decimal fixed-point | Minimum price increment. All limit prices must be multiples of this value. |
+| `minOrderSize` | `uint96`  | Base token raw units   | Smallest allowed order amount. Orders below this are rejected.             |
+| `maxOrderSize` | `uint128` | Base token raw units   | Largest allowed order amount. Orders above this are rejected.              |
+
 
 **Example — XAUT/USDT market** (both tokens have 6 decimals):
 
-| Parameter | Human value | Raw value | Calculation |
-|---|---|---|---|
-| `tickSize` | $0.01 | `10000000000000000` | 0.01 × 10¹⁸ |
-| `minOrderSize` | 0.001 XAUT | `1000` | 0.001 × 10⁶ |
-| `maxOrderSize` | 1,000 XAUT | `1000000000` | 1000 × 10⁶ |
+
+| Parameter      | Human value | Raw value           | Calculation |
+| -------------- | ----------- | ------------------- | ----------- |
+| `tickSize`     | $0.01       | `10000000000000000` | 0.01 × 10¹⁸ |
+| `minOrderSize` | 0.001 XAUT  | `1000`              | 0.001 × 10⁶ |
+| `maxOrderSize` | 1,000 XAUT  | `1000000000`        | 1000 × 10⁶  |
+
 
 > **Why 18 decimals for price?** Prices are stored in 18-decimal fixed-point regardless of the tokens' native decimals. This ensures uniform precision across all markets and avoids rounding errors for tokens with few decimals.
 
@@ -378,10 +385,12 @@ All values are integers — no floating-point. Prices use **18-decimal fixed-poi
 
 Global parameters configurable by the factory admin after deployment:
 
-| Parameter | Default | Unit | Description |
-|---|---|---|---|
-| `minCrossChainFee` | — | DOT (native units) | Minimum DOT attached per XCM settlement leg. Covers execution fees on the remote parachain. |
-| `marketCreationDeposit` | 0 | DOT (native units) | Optional deposit required to create a new market. Set to 0 to allow free market creation. |
+
+| Parameter               | Default | Unit               | Description                                                                                 |
+| ----------------------- | ------- | ------------------ | ------------------------------------------------------------------------------------------- |
+| `minCrossChainFee`      | —       | DOT (native units) | Minimum DOT attached per XCM settlement leg. Covers execution fees on the remote parachain. |
+| `marketCreationDeposit` | 0       | DOT (native units) | Optional deposit required to create a new market. Set to 0 to allow free market creation.   |
+
 
 ### Trading with DOT
 
@@ -393,18 +402,20 @@ Once available, WDOT can be used as the base or quote token in any market. For e
 
 ## Networks
 
-| Network | RPC | Chain ID |
-|---|---|---|
+
+| Network                   | RPC                                             | Chain ID  |
+| ------------------------- | ----------------------------------------------- | --------- |
 | Paseo Asset Hub (testnet) | `https://services.polkadothub-rpc.com/testnet/` | 420420417 |
-| Polkadot Asset Hub | `https://services.polkadothub-rpc.com/mainnet` | 420420419 |
-| Kusama Asset Hub | `https://kusama-asset-hub-eth-rpc.polkadot.io` | 420420418 |
+| Polkadot Asset Hub        | `https://services.polkadothub-rpc.com/mainnet`  | 420420419 |
+| Kusama Asset Hub          | `https://kusama-asset-hub-eth-rpc.polkadot.io`  | 420420418 |
+
 
 ## Documentation
 
 - [Polkadot Smart Contracts](https://docs.polkadot.com/smart-contracts/)
-- [Foundry for Polkadot](https://docs.polkadot.com/smart-contracts/dev-environments/foundry/)
-- [XCM Documentation](https://docs.polkadot.com/polkadot-protocol/basics/interoperability/)
-- [pallet-revive](https://docs.polkadot.com/smart-contracts/overview/revive/)
+- [Foundry for Polkadot](https://github.com/paritytech/foundry-polkadot)
+- [XCM Documentation](https://docs.polkadot.com/parachains/interoperability/get-started/)
+- [pallet-revive](https://docs.polkadot.com/polkadot-protocol/smart-contract-basics/)
 
 ## License
 

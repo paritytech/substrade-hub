@@ -1,0 +1,35 @@
+# Config file for lychee link checker: https://github.com/lycheeverse/lychee
+# Run locally with: lychee -c .config/lychee.toml './**/*.md' './**/*.sol'
+
+cache = true
+max_cache_age = "10d"
+max_redirects = 10
+max_retries = 3
+
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
+
+# Exclude localhost and private IPs
+exclude_all_private = true
+
+accept = [
+    "200",
+    # Rate limited
+    "429",
+]
+
+exclude_path = [
+    "./lib",
+    "./out",
+    "./cache",
+]
+
+exclude = [
+    # RPC endpoints (not meant to be visited in a browser)
+    "https://services.polkadothub-rpc.com/.*",
+    "https://kusama-asset-hub-eth-rpc.polkadot.io",
+    "http://localhost:.*",
+    # Blockscout API endpoints
+    "https://blockscout.*polkadot.io/api.*",
+    # Behind Cloudflare challenge
+    "https://gold.tether.to/",
+]

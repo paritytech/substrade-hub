@@ -33,7 +33,7 @@ depth = 256
 
 [rpc_endpoints]
 anvil_polkadot = "http://localhost:8545"
-asset_hub_westend = "https://services.polkadothub-rpc.com/testnet"
+asset_hub_paseo = "https://services.polkadothub-rpc.com/testnet"
 
 [etherscan]
 polkadot-testnet = { key = "", url = "https://blockscout-testnet.polkadot.io/api?" }

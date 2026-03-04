@@ -1,8 +1,8 @@
 // Creates two test assets on Asset Hub via @polkadot/api.
 // Alice creates the quote token, Bob creates the base token, Charlie gets both.
 //
-// Requires: ALICE_SEED, BOB_SEED, CHARLIE_SEED, WSS_URL in .env
-// Usage: source .env && node scripts/create-assets.mjs
+// Requires: ALICE_SEED, BOB_SEED, CHARLIE_SEED, WSS_URL in scripts/.env
+// Usage: source scripts/.env && node scripts/create-assets.mjs
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 
