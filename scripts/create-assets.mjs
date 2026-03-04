@@ -1,6 +1,7 @@
-// Creates FUSD and BRKB assets on Asset Hub via @polkadot/api
-// Requires: ALICE_SEED, BOB_SEED, CHARLIE_SEED, WSS_URL in .env
+// Creates two test assets on Asset Hub via @polkadot/api.
+// Alice creates the quote token, Bob creates the base token, Charlie gets both.
 //
+// Requires: ALICE_SEED, BOB_SEED, CHARLIE_SEED, WSS_URL in .env
 // Usage: source .env && node scripts/create-assets.mjs
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
@@ -15,6 +16,19 @@ const WS_ENDPOINT = requireEnv("WSS_URL");
 const ALICE_URI = requireEnv("ALICE_SEED");
 const BOB_URI = requireEnv("BOB_SEED");
 const CHARLIE_URI = requireEnv("CHARLIE_SEED");
+
+// Customize these for your token pair
+const QUOTE_NAME = "Test Tether USD";
+const QUOTE_SYMBOL = "tUSDT";
+const QUOTE_DECIMALS = 6;
+const QUOTE_SUPPLY_ALICE = 1_000_000_000_000n;    // 1M to Alice
+const QUOTE_SUPPLY_CHARLIE = 500_000_000_000n;    // 500K to Charlie
+
+const BASE_NAME = "Test Tether Gold";
+const BASE_SYMBOL = "tXAUT";
+const BASE_DECIMALS = 6;
+const BASE_SUPPLY_BOB = 10_000_000_000n;           // 10,000 to Bob
+const BASE_SUPPLY_CHARLIE = 5_000_000_000n;        // 5,000 to Charlie
 
 async function main() {
   const provider = new WsProvider(WS_ENDPOINT);
@@ -36,41 +50,41 @@ async function main() {
   console.log("Bob:", bob.address);
   console.log("Charlie:", charlie.address);
 
-  // Get next available asset ID
+  // Get next available asset ID (Asset Hub uses AutoIncAssetId)
   const nextId = (await api.query.assets.nextAssetId()).unwrap().toNumber();
   console.log("Next asset ID:", nextId);
 
-  const fusdId = nextId;
-  const brkbId = nextId + 1;
+  const quoteId = nextId;
+  const baseId = nextId + 1;
 
-  // --- FUSD: created by Alice (Alice keeps it, Charlie gets some) ---
-  console.log(`\nCreating FUSD (asset ${fusdId}) with Alice...`);
-  const fusdBatch = api.tx.utility.batchAll([
-    api.tx.assets.create(fusdId, alice.address, 1),
-    api.tx.assets.setMetadata(fusdId, "Fake USD", "FUSD", 6),
-    api.tx.assets.mint(fusdId, alice.address, 1_000_000_000_000n),   // 1M FUSD to Alice
-    api.tx.assets.mint(fusdId, charlie.address, 500_000_000_000n),   // 500K FUSD to Charlie
+  // --- Quote token: created by Alice ---
+  console.log(`\nCreating ${QUOTE_SYMBOL} (asset ${quoteId}) with Alice...`);
+  const quoteBatch = api.tx.utility.batchAll([
+    api.tx.assets.create(quoteId, alice.address, 1),
+    api.tx.assets.setMetadata(quoteId, QUOTE_NAME, QUOTE_SYMBOL, QUOTE_DECIMALS),
+    api.tx.assets.mint(quoteId, alice.address, QUOTE_SUPPLY_ALICE),
+    api.tx.assets.mint(quoteId, charlie.address, QUOTE_SUPPLY_CHARLIE),
   ]);
 
-  await sendAndWait(fusdBatch, alice, "FUSD batch");
+  await sendAndWait(quoteBatch, alice, `${QUOTE_SYMBOL} batch`);
 
-  // --- BRKB: created by Bob (Bob keeps it, Charlie gets some) ---
-  console.log(`\nCreating BRKB (asset ${brkbId}) with Bob...`);
-  const brkbBatch = api.tx.utility.batchAll([
-    api.tx.assets.create(brkbId, bob.address, 1),
-    api.tx.assets.setMetadata(brkbId, "Berkshire Hathaway B", "BRKB", 8),
-    api.tx.assets.mint(brkbId, bob.address, 100_000_000_000n),       // 1,000 BRKB to Bob
-    api.tx.assets.mint(brkbId, charlie.address, 50_000_000_000n),    // 500 BRKB to Charlie
+  // --- Base token: created by Bob ---
+  console.log(`\nCreating ${BASE_SYMBOL} (asset ${baseId}) with Bob...`);
+  const baseBatch = api.tx.utility.batchAll([
+    api.tx.assets.create(baseId, bob.address, 1),
+    api.tx.assets.setMetadata(baseId, BASE_NAME, BASE_SYMBOL, BASE_DECIMALS),
+    api.tx.assets.mint(baseId, bob.address, BASE_SUPPLY_BOB),
+    api.tx.assets.mint(baseId, charlie.address, BASE_SUPPLY_CHARLIE),
   ]);
 
-  await sendAndWait(brkbBatch, bob, "BRKB batch");
+  await sendAndWait(baseBatch, bob, `${BASE_SYMBOL} batch`);
 
   // --- Verify ---
   console.log("\n========================================");
   console.log("         ASSET CREATION SUMMARY         ");
   console.log("========================================\n");
 
-  for (const [label, id] of [["FUSD", fusdId], ["BRKB", brkbId]]) {
+  for (const [label, id] of [[QUOTE_SYMBOL, quoteId], [BASE_SYMBOL, baseId]]) {
     const meta = await api.query.assets.metadata(id);
     const info = await api.query.assets.asset(id);
     const aliceBal = await api.query.assets.account(id, alice.address);
@@ -89,6 +103,14 @@ async function main() {
     console.log(`  Charlie balance: ${charlieBal.isSome ? charlieBal.unwrap().balance.toString() : "0"}`);
     console.log();
   }
+
+  console.log("Add these to your .env:");
+  console.log(`  QUOTE_ASSET_ID="${quoteId}"`);
+  console.log(`  QUOTE_ERC20="${assetIdToErc20(quoteId)}"`);
+  console.log(`  QUOTE_DECIMALS="${QUOTE_DECIMALS}"`);
+  console.log(`  BASE_ASSET_ID="${baseId}"`);
+  console.log(`  BASE_ERC20="${assetIdToErc20(baseId)}"`);
+  console.log(`  BASE_DECIMALS="${BASE_DECIMALS}"`);
 
   await api.disconnect();
 }

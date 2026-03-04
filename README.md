@@ -29,20 +29,25 @@ This gives traders precise control over execution price, supports true price dis
 
 ### Cross-Chain Flow
 
-Traders on **any Polkadot parachain** can participate in the same order book on Asset Hub. A user signs one transaction on their home chain — the XCM program handles everything else:
+All tokens in the order book are **Asset Hub native assets** (pallet-assets). Traders on **any Polkadot parachain** can place and settle orders without leaving their home chain — XCM handles the token movement:
 
 ```
 Parachain A                    Asset Hub                     Parachain B
 (Buyer)                     (Order Book)                     (Seller)
     │                            │                               │
-    ├── XCM: tokens + order ────>│                               │
-    │                            │<── XCM: tokens + order ───────┤
+    │── XCM: quote tokens ─────>│                               │
+    │   + placeLimitOrder(buy)   │                               │
+    │                            │<── XCM: base tokens ─────────│
+    │                            │    + placeLimitOrder(sell)    │
     │                            │                               │
     │                       [matching]                           │
     │                            │                               │
-    │<── XCM: deliver base ──────┤                               │
-    │                            ├── XCM: deliver quote ────────>│
+    │<── XCM: base tokens ──────│                               │
+    │   (settlement delivery)    │── XCM: quote tokens ────────>│
+    │                            │   (settlement delivery)      │
 ```
+
+The buyer sends quote tokens (e.g., USDT) to Asset Hub and receives base tokens (e.g., [XAUT](https://gold.tether.to/) — Tether Gold, a tokenized gold asset) after matching. The seller does the opposite. Any pallet-asset on Asset Hub can be traded — the order book is token-agnostic.
 
 ### Placing an Order from Another Parachain
 
@@ -56,7 +61,7 @@ XCM Program (Parachain A → Asset Hub)
 
 1. Transfer tokens + DOT to Asset Hub
    ────────────────────────────────────
-   The XCM program carries the traded tokens (e.g., FUSD) and DOT
+   The XCM program carries the traded tokens (e.g., USDT) and DOT
    from the user's home chain to their derived account on Asset Hub.
    DOT covers both XCM execution fees and the order's fee reserve.
 
@@ -64,7 +69,7 @@ XCM Program (Parachain A → Asset Hub)
    ────────────────────────────────────
    A portion of the DOT pays for XCM execution weight on Asset Hub.
 
-3. Transact → pallet_revive::call(dest: FUSD, data: approve(DLOB, amount))
+3. Transact → pallet_revive::call(dest: TOKEN, data: approve(DLOB, amount))
    ────────────────────────────────────
    ERC20 approve: allows the DLOB market contract to escrow the tokens.
    Tokens live on Asset Hub as pallet-assets with ERC20 precompiles,
