@@ -1,0 +1,45 @@
+name: Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit & Fuzz (pallet-revive)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install foundry-polkadot
+        run: |
+          curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash
+          ~/.foundry/bin/foundryup-polkadot
+          echo "$HOME/.foundry/bin" >> $GITHUB_PATH
+
+      - name: Run unit and fuzz tests
+        run: forge test --polkadot --no-match-test "invariant_" -v
+
+  invariant:
+    name: Invariant (pallet-revive)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install foundry-polkadot
+        run: |
+          curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash
+          ~/.foundry/bin/foundryup-polkadot
+          echo "$HOME/.foundry/bin" >> $GITHUB_PATH
+
+      - name: Run invariant tests (lightweight)
+        run: FOUNDRY_PROFILE=ci forge test --polkadot --match-test "invariant_" -v
