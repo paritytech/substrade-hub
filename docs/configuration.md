@@ -1,0 +1,129 @@
+[← Back to README](../README.md)
+
+# Configuration
+
+## Market Parameters
+
+Each market is created with three parameters that control price precision and order sizing.
+All values are integers, no floating-point. Prices use **18-decimal fixed-point**; amounts use the **base token's native decimals**.
+
+
+| Parameter      | Type      | Unit                   | Description                                                                |
+| -------------- | --------- | ---------------------- | -------------------------------------------------------------------------- |
+| `tickSize`     | `uint96`  | 18-decimal fixed-point | Minimum price increment. All limit prices must be multiples of this value. |
+| `minOrderSize` | `uint96`  | Base token raw units   | Smallest allowed order amount. Orders below this are rejected.             |
+| `maxOrderSize` | `uint128` | Base token raw units   | Largest allowed order amount. Orders above this are rejected.              |
+
+
+### How Tick Size Works
+
+All limit order prices must be exact multiples of `tickSize`. The contract checks this with `price % tickSize == 0` and reverts with `NotTickAligned` if it fails. A smaller tick size allows finer price granularity but increases the number of possible price levels.
+
+For example, with `tickSize = 10000000000000000` (0.01 in 18-decimal):
+- `5148250000000000000000` ($5,148.25): valid (multiple of tick)
+- `5148255000000000000000` ($5,148.255): reverts with `NotTickAligned`
+
+### Price Calculation
+
+Prices are stored as 18-decimal fixed-point values. The formula to convert a human-readable price to the raw value:
+
+```
+rawPrice = humanPrice × 10¹⁸
+```
+
+Quote amounts (how much quote token to escrow for a buy order) are calculated as:
+
+```
+quoteAmount = (baseAmount × price) / 10¹⁸     (floor division for fills)
+quoteAmount = ⌈(baseAmount × price) / 10¹⁸⌉   (ceiling division for escrow)
+```
+
+The contract uses ceiling division when escrowing quote tokens for buy orders to ensure the escrow always covers the fill. Any excess is refunded after matching.
+
+### Examples
+
+**XAUT/USDT market** (both tokens have 6 decimals):
+
+
+| Parameter      | Human value | Raw value           | Calculation  |
+| -------------- | ----------- | ------------------- | ------------ |
+| `tickSize`     | $0.01       | `10000000000000000` | 0.01 × 10¹⁸ |
+| `minOrderSize` | 0.001 XAUT  | `1000`              | 0.001 × 10⁶ |
+| `maxOrderSize` | 1,000 XAUT  | `1000000000`        | 1000 × 10⁶  |
+
+
+**ETH/USDC market** (ETH with 18 decimals, USDC with 6 decimals):
+
+
+| Parameter      | Human value | Raw value              | Calculation   |
+| -------------- | ----------- | ---------------------- | ------------- |
+| `tickSize`     | $0.10       | `100000000000000000`   | 0.10 × 10¹⁸  |
+| `minOrderSize` | 0.01 ETH    | `10000000000000000`    | 0.01 × 10¹⁸  |
+| `maxOrderSize` | 100 ETH     | `100000000000000000000`| 100 × 10¹⁸   |
+
+Note that `minOrderSize` and `maxOrderSize` always use the **base token's native decimals**, while `tickSize` always uses 18-decimal fixed-point regardless of token decimals.
+
+> **Why 18 decimals for price?** Prices are stored in 18-decimal fixed-point regardless of the tokens' native decimals. This ensures uniform precision across all markets and avoids rounding errors for tokens with few decimals.
+
+## Factory Parameters
+
+Global parameters configurable by the factory admin after deployment:
+
+
+| Parameter               | Default | Unit               | Description                                                                                 |
+| ----------------------- | ------- | ------------------ | ------------------------------------------------------------------------------------------- |
+| `minCrossChainFee`      | --      | DOT (native units) | Minimum DOT attached per XCM settlement leg. Covers execution fees on the remote parachain. |
+| `marketCreationDeposit` | 0       | DOT (native units) | Optional deposit required to create a new market. Set to 0 to allow free market creation.   |
+
+
+DOT on Asset Hub uses **10 decimals** (1 DOT = 10,000,000,000 Planck). When setting these parameters, convert accordingly:
+
+| Human value | Planck value       |
+| ----------- | ------------------ |
+| 0.01 DOT    | `100000000`        |
+| 0.1 DOT     | `1000000000`       |
+| 1 DOT       | `10000000000`      |
+
+### Setting Factory Parameters
+
+```bash
+# Set minimum cross-chain fee to 0.01 DOT
+cast send <FACTORY_ADDRESS> \
+    "setMinCrossChainFee(uint128)" \
+    100000000 \
+    --chain polkadot-testnet \
+    --private-key $DEPLOYER_PRIVATE_KEY
+
+# Set market creation deposit to 1 DOT
+cast send <FACTORY_ADDRESS> \
+    "setMarketCreationDeposit(uint128)" \
+    10000000000 \
+    --chain polkadot-testnet \
+    --private-key $DEPLOYER_PRIVATE_KEY
+```
+
+### Reading Current Configuration
+
+```bash
+# Check current min cross-chain fee
+cast call <FACTORY_ADDRESS> "minCrossChainFee()(uint128)" --chain polkadot-testnet
+
+# Check market creation deposit
+cast call <FACTORY_ADDRESS> "marketCreationDeposit()(uint128)" --chain polkadot-testnet
+
+# Check admin address
+cast call <FACTORY_ADDRESS> "admin()(address)" --chain polkadot-testnet
+
+# Check total markets created
+cast call <FACTORY_ADDRESS> "getMarketCount()(uint256)" --chain polkadot-testnet
+```
+
+## Trading with DOT
+
+The DLOB requires all traded tokens to be ERC20s backed by `pallet-assets`. DOT is the native token on Asset Hub and is not registered in `pallet-assets`, so it cannot be used directly as a base or quote token.
+
+To trade DOT, you would wrap it into an ERC20 via a **Wrapped DOT (WDOT)** contract — the same pattern Ethereum uses with WETH. A WDOT contract exposes `deposit()`, which accepts native DOT and mints an equal amount of WDOT tokens, and `withdraw()`, which burns WDOT and returns native DOT. The contract is stateless beyond the standard ERC20 balance mapping, making it easy to audit and trust. Deploying and registering a canonical WDOT token on Asset Hub may require a governance proposal.
+
+Once WDOT is available, it can be used as the base or quote token in any market. For example, a **WDOT/USDT** market would let traders place DOT-denominated orders with USDT settlement.
+
+> **Note:** The DOT fee reserve (native DOT sent as `msg.value` for cross-chain settlement) is separate from WDOT. The fee reserve is required for all cross-chain orders regardless of which tokens are being traded. WDOT is only needed to trade DOT itself as a market asset.
