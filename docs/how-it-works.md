@@ -71,6 +71,16 @@ All tokens in the order book are **Asset Hub native assets** (pallet-assets). Tr
 
 The buyer sends quote tokens (e.g., USDT) to Asset Hub and receives base tokens (e.g., [XAUT](https://gold.tether.to/), Tether Gold, a tokenized gold asset) after matching. The seller does the opposite. Any asset registered on Asset Hub via `pallet-assets` can be traded, and each asset is accessible as an ERC20 through a deterministic [precompile address](https://docs.polkadot.com/smart-contracts/precompiles/erc20/).
 
+### Why Only pallet-assets Tokens?
+
+The DLOB only supports ERC20 tokens backed by `pallet-assets` (the precompile ERC20s at `0x120...` addresses). User-deployed ERC20 contracts (standard Solidity tokens deployed via pallet-revive) are **not supported**, even though they implement the same IERC20 interface.
+
+The reason is cross-chain settlement. When the matching engine fills an order, it delivers tokens to remote parachains via XCM reserve transfers. XCM operates at the runtime level and can only move assets that the runtime knows about, which means assets registered in `pallet-assets`. A user-deployed ERC20 contract stores balances in its own contract storage, invisible to the runtime and the XCM executor. There is no way to reserve-transfer those balances to another parachain.
+
+In contrast, `pallet-assets` tokens exist in native runtime storage. The XCM executor can lock, unlock, mint, and burn them directly as part of a cross-chain transfer. The ERC20 precompile is a Solidity-compatible view into that same native storage: calling `transfer()` on a precompile address updates the same balances that XCM reads and writes.
+
+Even for local-only orders (where `destParaId == 0` and no XCM is involved), the DLOB uses the same token interface and address scheme for consistency. Mixing precompile and deployed ERC20s would require the contract to distinguish between the two at runtime, adding complexity with no practical benefit. Any token worth trading on Asset Hub should be registered in `pallet-assets` so it can participate in cross-chain settlement.
+
 ### Local vs Cross-Chain Orders
 
 The DLOB distinguishes between local and cross-chain orders based on `destParaId`:
