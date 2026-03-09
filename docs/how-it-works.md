@@ -71,15 +71,13 @@ All tokens in the order book are **Asset Hub native assets** (pallet-assets). Tr
 
 The buyer sends quote tokens (e.g., USDT) to Asset Hub and receives base tokens (e.g., [XAUT](https://gold.tether.to/), Tether Gold, a tokenized gold asset) after matching. The seller does the opposite. Any asset registered on Asset Hub via `pallet-assets` can be traded, and each asset is accessible as an ERC20 through a deterministic [precompile address](https://docs.polkadot.com/smart-contracts/precompiles/erc20/).
 
-### Why Only pallet-assets Tokens?
+### Supported Asset Types
 
-The DLOB only supports ERC20 tokens backed by `pallet-assets` (the precompile ERC20s at `0x120...` addresses). User-deployed ERC20 contracts (standard Solidity tokens deployed via pallet-revive) are **not supported**, even though they implement the same IERC20 interface.
+- **Trust-backed assets** — *supported.* Local assets registered via `pallet-assets` with ERC20 precompiles at prefix `0x120`. This includes assets like USDT (asset ID 1984 on Polkadot Asset Hub) and USDC (asset ID 1337 on Polkadot Asset Hub). These work fully for both local and cross-chain orders.
 
-The reason is cross-chain settlement. When the matching engine fills an order, it delivers tokens to remote parachains via XCM reserve transfers. XCM operates at the runtime level and can only move assets that the runtime knows about, which means assets registered in `pallet-assets`. A user-deployed ERC20 contract stores balances in its own contract storage, invisible to the runtime and the XCM executor. There is no way to reserve-transfer those balances to another parachain.
+- **Foreign assets** — *planned.* Assets originating from other consensus systems (KSM, WETH, ETH, WBTC) are registered on Asset Hub via `pallet-assets`, but their ERC20 precompile (prefix `0x220`) is not yet enabled in the runtime. Once it is, supporting foreign asset markets (e.g., WETH/USDT, WBTC/USDC) is a future goal. Local-only orders would work immediately through the standard IERC20 interface, but cross-chain settlement would require contract updates to handle the different XCM Location structure that foreign assets use.
 
-In contrast, `pallet-assets` tokens exist in native runtime storage. The XCM executor can lock, unlock, mint, and burn them directly as part of a cross-chain transfer. The ERC20 precompile is a Solidity-compatible view into that same native storage: calling `transfer()` on a precompile address updates the same balances that XCM reads and writes.
-
-Even for local-only orders (where `destParaId == 0` and no XCM is involved), the DLOB uses the same token interface and address scheme for consistency. Mixing precompile and deployed ERC20s would require the contract to distinguish between the two at runtime, adding complexity with no practical benefit. Any token worth trading on Asset Hub should be registered in `pallet-assets` so it can participate in cross-chain settlement.
+- **User-deployed ERC20 contracts** — *not supported.* Standard Solidity tokens deployed via pallet-revive are not supported, even though they implement the same IERC20 interface. A deployed ERC20 contract stores balances in its own contract storage, invisible to the runtime and the XCM executor. `pallet-assets` tokens, in contrast, exist in native runtime storage. The ERC20 precompile is a Solidity-compatible view into that same storage: calling `transfer()` on a precompile address updates the same balances that XCM reads and writes. Because cross-chain settlement relies on XCM, which can only move assets the runtime knows about, only `pallet-assets`-backed tokens can participate. Even for local-only orders, the DLOB uses the same precompile token interface for consistency.
 
 ### Local vs Cross-Chain Orders
 
