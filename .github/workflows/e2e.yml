@@ -28,48 +28,51 @@ jobs:
       - run: cargo fmt --all --check
         working-directory: e2e
 
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-          components: rust-src
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: e2e
-          cache-on-failure: true
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-dev build-essential
-
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install foundry-polkadot
-        env:
-          FOUNDRY_DIR: ${{ github.workspace }}/.foundry
-        run: |
-          curl -sSf -L -o /usr/local/bin/foundryup \
-            https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
-          chmod +x /usr/local/bin/foundryup
-          mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
-          export PATH="$FOUNDRY_DIR/bin:$PATH"
-          foundryup
-          echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
-
-      - name: Build Solidity contracts
-        run: forge build
-
-      - run: cargo test -- --nocapture
-        working-directory: e2e
+  # TODO: Enable when parity-large-new runners are available.
+  # Compiling polkadot-sdk runtimes (westend, asset-hub, penpal WASM builds)
+  # takes >1h on ubuntu-latest (4 cores). Needs a larger runner.
+  # test:
+  #   name: Test
+  #   runs-on: parity-large-new
+  #   timeout-minutes: 60
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #
+  #     - uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         targets: wasm32-unknown-unknown
+  #         components: rust-src
+  #
+  #     - uses: Swatinem/rust-cache@v2
+  #       with:
+  #         workspaces: e2e
+  #         cache-on-failure: true
+  #
+  #     - name: Install build dependencies
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y clang libclang-dev build-essential
+  #
+  #     - uses: arduino/setup-protoc@v3
+  #       with:
+  #         repo-token: ${{ secrets.GITHUB_TOKEN }}
+  #
+  #     - name: Install foundry-polkadot
+  #       env:
+  #         FOUNDRY_DIR: ${{ github.workspace }}/.foundry
+  #       run: |
+  #         curl -sSf -L -o /usr/local/bin/foundryup \
+  #           https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
+  #         chmod +x /usr/local/bin/foundryup
+  #         mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
+  #         export PATH="$FOUNDRY_DIR/bin:$PATH"
+  #         foundryup
+  #         echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
+  #
+  #     - name: Build Solidity contracts
+  #       run: forge build
+  #
+  #     - run: cargo test -- --nocapture
+  #       working-directory: e2e
