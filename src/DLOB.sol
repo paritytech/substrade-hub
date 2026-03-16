@@ -997,11 +997,10 @@ contract DLOB {
 
     // ──────────────────────── Internal: Validation ─────────────
 
-    function _validateOrderParams(
-        uint128 amount,
-        bytes32 settlementAccount,
-        uint32 destParaId
-    ) internal view {
+    function _validateOrderParams(uint128 amount, bytes32 settlementAccount, uint32 destParaId)
+        internal
+        view
+    {
         if (amount < minOrderSize) revert BelowMinSize();
         if (amount > maxOrderSize) revert AboveMaxSize();
         if (nextOrderId >= type(uint32).max) revert OrderIdOverflow();
