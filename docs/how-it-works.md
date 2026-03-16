@@ -86,6 +86,8 @@ The DLOB distinguishes between local and cross-chain orders based on `destParaId
 - **Local order** (`destParaId == 0`): Both escrow and settlement happen via direct ERC20 transfers on Asset Hub. No XCM involved, no fee reserve required. Sending `msg.value` with a local order reverts with `LocalOrderWithValue`.
 - **Cross-chain order** (`destParaId != 0`): Tokens arrive via XCM, and settlement is delivered via XCM reserve transfer. Requires a DOT fee reserve (`msg.value >= factory.minCrossChainFee()`).
 
+Both order types require the caller to have an **ERC-20 allowance** set before placing an order. The DLOB contract escrows tokens via `transferFrom`, so traders must first call `approve(marketAddress, amount)` on the relevant token precompile. For buy orders, approve the quote token; for sell orders, approve the base token. For cross-chain orders, the parachain's sovereign account on Asset Hub is the one that needs the allowance.
+
 ## Placing an Order from Another Parachain
 
 The DLOB contract lives on Asset Hub and accepts calls from any origin. Traders on other parachains interact with it via **XCM `Transact`**, which calls `pallet_revive::call()`, the Substrate extrinsic for invoking EVM contracts with a native value transfer.
@@ -164,11 +166,12 @@ If a destination chain becomes unreachable (e.g., HRMP channel closed), the clai
 
 ## Destination Chain Requirements
 
-For a parachain to receive settlement tokens from the DLOB:
+For a parachain to place and receive orders on the DLOB:
 
 1. **HRMP channel.** Open channel between Asset Hub and the destination parachain.
 2. **Asset recognition.** The destination chain must accept the traded asset as a reserve-backed foreign asset from Asset Hub (via a foreign assets pallet or XCM `AssetTransactor`).
 3. **XCM barriers.** The chain's XCM configuration must permit reserve transfers from Asset Hub.
+4. **Sovereign account mapping.** The parachain's sovereign account on Asset Hub must be registered in `pallet_revive` via `map_account()` before it can interact with contracts. This can be done once via an XCM Transact that calls `pallet_revive::map_account()`, or by any account on Asset Hub calling it on behalf of the sovereign.
 
 Most Polkadot parachains already accept common Asset Hub tokens. Parachains with active HRMP channels to Asset Hub that can receive settled tokens include:
 

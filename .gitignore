@@ -23,5 +23,9 @@ scripts/.env.local
 # Link checker cache
 .lycheecache
 
+# E2E test build artifacts and polkadot-sdk cache
+e2e/target/
+e2e/.cache/
+
 # Logs
 *.log

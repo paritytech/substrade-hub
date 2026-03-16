@@ -2,12 +2,12 @@
 // Copyright (C) Parity Technologies (UK) Ltd.
 pragma solidity ^0.8.20;
 
-import "forge-std/Test.sol";
-import "../src/DLOBFactory.sol";
-import "../src/DLOB.sol";
-import "../src/mocks/MockERC20.sol";
-import "../src/mocks/MockXcm.sol";
-import "../src/mocks/MockSystem.sol";
+import {Test} from "forge-std/Test.sol";
+import {DLOBFactory} from "../src/DLOBFactory.sol";
+import {DLOB} from "../src/DLOB.sol";
+import {MockERC20} from "../src/mocks/MockERC20.sol";
+import {MockXcm} from "../src/mocks/MockXcm.sol";
+import {MockSystem} from "../src/mocks/MockSystem.sol";
 
 /// @title DLOBHandler — Invariant test handler for DLOB
 /// @notice Wraps DLOB operations for invariant testing with ghost variable tracking
@@ -24,10 +24,10 @@ contract DLOBHandler is Test {
     uint256 constant PRECISION = 1e18;
 
     // Ghost variables for tracking
-    uint256 public ghost_totalActiveBuyEscrow;
-    uint256 public ghost_totalActiveSellEscrow;
-    uint256 public ghost_totalOrders;
-    uint256 public ghost_totalReduces;
+    uint256 public ghostTotalActiveBuyEscrow;
+    uint256 public ghostTotalActiveSellEscrow;
+    uint256 public ghostTotalOrders;
+    uint256 public ghostTotalReduces;
 
     constructor(DLOB _dlob, MockERC20 _base, MockERC20 _quote, address[] memory _users) {
         dlob = _dlob;
@@ -56,8 +56,8 @@ contract DLOBHandler is Test {
         try dlob.placeLimitOrder(DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0)
         returns (uint32 id) {
             orderIds.push(id);
-            ghost_totalOrders++;
-            ghost_totalActiveBuyEscrow += quoteAmount;
+            ghostTotalOrders++;
+            ghostTotalActiveBuyEscrow += quoteAmount;
         } catch {}
     }
 
@@ -77,8 +77,8 @@ contract DLOBHandler is Test {
         try dlob.placeLimitOrder(DLOB.Side.Sell, price, amount, bytes32(0), bytes32(0), 0, 0)
         returns (uint32 id) {
             orderIds.push(id);
-            ghost_totalOrders++;
-            ghost_totalActiveSellEscrow += amount;
+            ghostTotalOrders++;
+            ghostTotalActiveSellEscrow += amount;
         } catch {}
     }
 
@@ -96,12 +96,12 @@ contract DLOBHandler is Test {
         if (o.side == DLOB.Side.Buy) {
             uint128 quoteAmount =
                 uint128((uint256(o.remainingAmount) * uint256(o.price) + PRECISION - 1) / PRECISION);
-            if (ghost_totalActiveBuyEscrow >= quoteAmount) {
-                ghost_totalActiveBuyEscrow -= quoteAmount;
+            if (ghostTotalActiveBuyEscrow >= quoteAmount) {
+                ghostTotalActiveBuyEscrow -= quoteAmount;
             }
         } else {
-            if (ghost_totalActiveSellEscrow >= o.remainingAmount) {
-                ghost_totalActiveSellEscrow -= o.remainingAmount;
+            if (ghostTotalActiveSellEscrow >= o.remainingAmount) {
+                ghostTotalActiveSellEscrow -= o.remainingAmount;
             }
         }
 
@@ -129,18 +129,18 @@ contract DLOBHandler is Test {
         if (o.side == DLOB.Side.Buy) {
             uint128 quoteReduction =
                 uint128((uint256(reduction) * uint256(o.price) + PRECISION - 1) / PRECISION);
-            if (ghost_totalActiveBuyEscrow >= quoteReduction) {
-                ghost_totalActiveBuyEscrow -= quoteReduction;
+            if (ghostTotalActiveBuyEscrow >= quoteReduction) {
+                ghostTotalActiveBuyEscrow -= quoteReduction;
             }
         } else {
-            if (ghost_totalActiveSellEscrow >= reduction) {
-                ghost_totalActiveSellEscrow -= reduction;
+            if (ghostTotalActiveSellEscrow >= reduction) {
+                ghostTotalActiveSellEscrow -= reduction;
             }
         }
 
         vm.prank(o.owner);
         try dlob.reduceOrder(orderId, newAmount, bytes32(0)) {
-            ghost_totalReduces++;
+            ghostTotalReduces++;
         } catch {}
     }
 
@@ -515,7 +515,7 @@ contract DLOBFuzzTest is Test {
 
         // Allow rounding tolerance: each reduce introduces up to 1 wei gap (ceil refund vs floor escrow)
         // Each partial fill during matching can also introduce 1 wei gap
-        uint256 tolerance = handler.ghost_totalReduces() + orderCount;
+        uint256 tolerance = handler.ghostTotalReduces() + orderCount;
         assertGe(
             contractBalance + tolerance,
             totalActiveBuyEscrow,

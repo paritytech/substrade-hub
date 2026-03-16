@@ -2,10 +2,9 @@
 // Copyright (C) Parity Technologies (UK) Ltd.
 pragma solidity ^0.8.20;
 
-import "forge-std/Script.sol";
-import "../src/DLOBFactory.sol";
-import "../src/DLOB.sol";
-import "../src/libraries/RedBlackTree.sol";
+import {Script, console} from "forge-std/Script.sol";
+import {DLOBFactory} from "../src/DLOBFactory.sol";
+import {DLOB} from "../src/DLOB.sol";
 
 /// @notice Deploys the full SubsTrade Hub stack: RedBlackTree → DLOB implementation → DLOBFactory.
 /// @dev Usage:

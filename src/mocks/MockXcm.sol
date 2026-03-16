@@ -2,7 +2,7 @@
 // Copyright (C) Parity Technologies (UK) Ltd.
 pragma solidity ^0.8.20;
 
-import "../interfaces/IXcm.sol";
+import {IXcm} from "../interfaces/IXcm.sol";
 
 /// @title MockXcm
 /// @notice Stands in for the XCM precompile (0xA0000) during local testing.

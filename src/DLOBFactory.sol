@@ -2,11 +2,11 @@
 // Copyright (C) Parity Technologies (UK) Ltd.
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/proxy/Clones.sol";
-import "./interfaces/IXcm.sol";
-import "./interfaces/ISystem.sol";
-import "./interfaces/IDLOBFactory.sol";
-import "./DLOB.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {IXcm} from "./interfaces/IXcm.sol";
+import {ISystem} from "./interfaces/ISystem.sol";
+import {IDLOBFactory} from "./interfaces/IDLOBFactory.sol";
+import {DLOB} from "./DLOB.sol";
 
 /// @title DLOBFactory
 /// @notice Market registry and fee configuration for the DLOB protocol.
@@ -17,9 +17,9 @@ contract DLOBFactory is IDLOBFactory {
     mapping(bytes32 => address) public markets; // hash(base, quote) → DLOB address
     address[] public allMarkets;
 
-    IXcm public immutable xcmPrecompile;
-    ISystem public immutable systemPrecompile;
-    address public immutable implementation;
+    IXcm public immutable XCM_PRECOMPILE;
+    ISystem public immutable SYSTEM_PRECOMPILE;
+    address public immutable IMPLEMENTATION;
     address public admin;
 
     uint128 public minCrossChainFee;
@@ -48,9 +48,9 @@ contract DLOBFactory is IDLOBFactory {
     // ──────────────────────── Constructor ─────────────────────────
 
     constructor(address _xcm, address _system, address _implementation) {
-        xcmPrecompile = IXcm(_xcm);
-        systemPrecompile = ISystem(_system);
-        implementation = _implementation;
+        XCM_PRECOMPILE = IXcm(_xcm);
+        SYSTEM_PRECOMPILE = ISystem(_system);
+        IMPLEMENTATION = _implementation;
         admin = msg.sender;
     }
 
@@ -75,15 +75,15 @@ contract DLOBFactory is IDLOBFactory {
         bytes32 key = keccak256(abi.encodePacked(tokenA, tokenB));
         if (markets[key] != address(0)) revert MarketExists();
 
-        dlob = Clones.clone(implementation);
+        dlob = Clones.clone(IMPLEMENTATION);
         DLOB(payable(dlob)).initialize{value: msg.value}(
             baseToken,
             quoteToken,
             tickSize,
             minOrderSize,
             maxOrderSize,
-            address(xcmPrecompile),
-            address(systemPrecompile),
+            address(XCM_PRECOMPILE),
+            address(SYSTEM_PRECOMPILE),
             address(this)
         );
 
