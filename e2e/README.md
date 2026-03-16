@@ -52,7 +52,11 @@ Two additional **standalone smoke tests** run independently:
 
 ## Network topology
 
-The `xcm-emulator` runs everything in a single process:
+The tests use polkadot-sdk's `xcm-emulator`, which runs real relay and parachain
+runtimes in a single process. Each chain executes in its own `TestExternalities`
+and XCM messages are relayed between them automatically at the end of every
+`execute_with` block. This gives us production-equivalent XCM routing, barriers,
+and fee logic.
 
 ```
 ┌─────────────┐
@@ -69,22 +73,4 @@ The `xcm-emulator` runs everything in a single process:
     HRMP channels pre-configured in both directions
 ```
 
-## Setup sequence
-
-1. Fund native balances on AH (Alice, Bob, Dave, sovereign of para 2000)
-2. Create test assets: tUSD (id 100, quote) and tGOLD (id 101, base), and mint to participants
-3. Register tGOLD as a foreign asset on PenpalA (needed for cross-chain settlement delivery)
-4. Register accounts in `pallet_revive` via `map_account()`
-5. Deploy contracts: RedBlackTree library → DLOB implementation → DLOBFactory
-6. Create a tGOLD/tUSD market and set `minCrossChainFee`
-7. Run t0 → t4 sequentially
-
-## Implementation notes
-
-- **Contract deployment** uses `pallet_revive::bare_instantiate` with CREATE2 (unique salts per deploy)
-- **Local calls** use the `pallet_revive::Pallet::call` dispatchable inside `execute_with` blocks
-- **Read-only queries** use `pallet_revive::bare_call` (e.g. `balanceOf`, `bestBid`)
-- **Cross-chain orders** send real XCM programs from PenpalA over HRMP, containing `Transact` instructions that call `pallet_revive::call` on AH as the sovereign account — the same flow production parachains would use
-- **Cross-chain settlement** is the full happy path: matched tokens are delivered to PenpalA via XCM reserve transfer (`DepositReserveAsset`), verified by checking `ForeignAssets` balance on PenpalA
-- **ABI encoding** uses `alloy-sol-types`' `sol!` macro with the same Solidity function signatures as the contracts
 
