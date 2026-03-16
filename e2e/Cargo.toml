@@ -7,24 +7,24 @@ edition = "2021"
 codec = { package = "parity-scale-codec", version = "3", features = ["derive"] }
 
 # Substrate
-frame-support = { path = "../../polkadot-sdk/substrate/frame/support", default-features = false, features = ["std"] }
-frame-system = { path = "../../polkadot-sdk/substrate/frame/system", default-features = false, features = ["std"] }
-sp-core = { path = "../../polkadot-sdk/substrate/primitives/core", default-features = false, features = ["std"] }
-sp-runtime = { path = "../../polkadot-sdk/substrate/primitives/runtime", default-features = false, features = ["std"] }
-pallet-balances = { path = "../../polkadot-sdk/substrate/frame/balances", default-features = false, features = ["std"] }
-pallet-assets = { path = "../../polkadot-sdk/substrate/frame/assets", default-features = false, features = ["std"] }
-pallet-revive = { path = "../../polkadot-sdk/substrate/frame/revive", default-features = false, features = ["std"] }
+frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
+pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
+pallet-assets = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
+pallet-revive = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
 
 # Polkadot XCM
-pallet-xcm = { path = "../../polkadot-sdk/polkadot/xcm/pallet-xcm", default-features = false, features = ["std"] }
-xcm = { package = "staging-xcm", path = "../../polkadot-sdk/polkadot/xcm", default-features = false, features = ["std"] }
-xcm-executor = { package = "staging-xcm-executor", path = "../../polkadot-sdk/polkadot/xcm/xcm-executor", default-features = false, features = ["std"] }
+pallet-xcm = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
+xcm = { package = "staging-xcm", git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
+xcm-executor = { package = "staging-xcm-executor", git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
 
 # Cumulus / emulated test infra
-emulated-integration-tests-common = { path = "../../polkadot-sdk/cumulus/parachains/integration-tests/emulated/common", default-features = true }
-westend-system-emulated-network = { path = "../../polkadot-sdk/cumulus/parachains/integration-tests/emulated/networks/westend-system" }
-parachains-common = { path = "../../polkadot-sdk/cumulus/parachains/common", default-features = true }
-cumulus-pallet-xcmp-queue = { path = "../../polkadot-sdk/cumulus/pallets/xcmp-queue", default-features = false, features = ["std"] }
+emulated-integration-tests-common = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = true }
+westend-system-emulated-network = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
+parachains-common = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = true }
+cumulus-pallet-xcmp-queue = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = false, features = ["std"] }
 
 # ABI encoding for Solidity contract interaction
 alloy-sol-types = "1"
@@ -35,4 +35,4 @@ serde_json = "1"
 hex = "0.4"
 
 [dev-dependencies]
-sp-tracing = { path = "../../polkadot-sdk/substrate/primitives/tracing", default-features = true }
+sp-tracing = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", default-features = true }
