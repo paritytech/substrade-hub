@@ -2,14 +2,14 @@
 // Copyright (C) Parity Technologies (UK) Ltd.
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "./interfaces/IXcm.sol";
-import "./interfaces/ISystem.sol";
-import "./interfaces/IDLOBFactory.sol";
-import "./libraries/PriceMath.sol";
-import "./libraries/XcmBuilder.sol";
-import "./libraries/RedBlackTree.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IXcm} from "./interfaces/IXcm.sol";
+import {ISystem} from "./interfaces/ISystem.sol";
+import {IDLOBFactory} from "./interfaces/IDLOBFactory.sol";
+import {PriceMath} from "./libraries/PriceMath.sol";
+import {XcmBuilder} from "./libraries/XcmBuilder.sol";
+import {RedBlackTree} from "./libraries/RedBlackTree.sol";
 
 /// @title DLOB — Decentralized Limit Order Book
 /// @notice Cross-chain order book on Asset Hub. One instance per base/quote token pair.
@@ -245,22 +245,10 @@ contract DLOB {
     ) external payable nonReentrant returns (uint32 orderId) {
         // --- Validation ---
         if (!PriceMath.isTickAligned(price, tickSize)) revert NotTickAligned();
-        if (amount < minOrderSize) revert BelowMinSize();
-        if (amount > maxOrderSize) revert AboveMaxSize();
-        if (nextOrderId >= type(uint32).max) revert OrderIdOverflow();
+        _validateOrderParams(amount, settlementAccount, destParaId);
         if (expireTimestamp != 0 && expireTimestamp <= uint64(block.timestamp)) {
             revert AlreadyExpired();
         }
-        if (destParaId > 0 && settlementAccount == bytes32(0)) {
-            revert InvalidSettlementAccount();
-        }
-        if (destParaId == 0 && settlementAccount != bytes32(0)) {
-            revert InvalidSettlementAccount();
-        }
-        if (destParaId > 0 && msg.value < factory.minCrossChainFee()) {
-            revert InsufficientFeeReserve();
-        }
-        if (destParaId == 0 && msg.value > 0) revert LocalOrderWithValue();
 
         // --- Calculate escrow ---
         uint128 escrowAmount;
@@ -352,19 +340,7 @@ contract DLOB {
         bytes32 settlementAccount,
         uint32 destParaId
     ) external payable nonReentrant returns (uint128 filledAmount) {
-        if (amount < minOrderSize) revert BelowMinSize();
-        if (amount > maxOrderSize) revert AboveMaxSize();
-        if (nextOrderId >= type(uint32).max) revert OrderIdOverflow();
-        if (destParaId > 0 && settlementAccount == bytes32(0)) {
-            revert InvalidSettlementAccount();
-        }
-        if (destParaId == 0 && settlementAccount != bytes32(0)) {
-            revert InvalidSettlementAccount();
-        }
-        if (destParaId > 0 && msg.value < factory.minCrossChainFee()) {
-            revert InsufficientFeeReserve();
-        }
-        if (destParaId == 0 && msg.value > 0) revert LocalOrderWithValue();
+        _validateOrderParams(amount, settlementAccount, destParaId);
 
         // Allocate temporary orderId for fee reserve tracking
         uint32 orderId = nextOrderId++;
@@ -444,23 +420,7 @@ contract DLOB {
         if (msg.sender != o.owner) revert NotOrderOwner();
         if (originAccount != o.originAccount) revert WrongOriginAccount();
 
-        o.status = OrderStatus.Cancelled;
-        uint128 refundAmount = o.remainingAmount;
-
-        // Decrement depth before zeroing remainingAmount
-        uint32 nodeId = orderLinks[orderId].priceNodeId;
-        if (nodeId != 0) nodes[nodeId].totalAmount -= refundAmount;
-
-        o.remainingAmount = 0;
-
-        // Remove from tree + queue
-        _removeOrder(orderId, o.side, o.price);
-        totalOrders--;
-
-        // Refund
-        uint32 claimId = _refundEscrow(orderId, refundAmount, o.side, o.price, o.owner);
-
-        emit OrderCancelled(orderId, refundAmount, claimId);
+        _cancelOrderInternal(orderId, originAccount);
     }
 
     /// @notice Batch cancel multiple orders.
@@ -477,20 +437,7 @@ contract DLOB {
             if (msg.sender != o.owner) continue;
             if (originAccount != o.originAccount) continue;
 
-            o.status = OrderStatus.Cancelled;
-            uint128 refundAmount = o.remainingAmount;
-
-            uint32 nid = orderLinks[oid].priceNodeId;
-            if (nid != 0) nodes[nid].totalAmount -= refundAmount;
-
-            o.remainingAmount = 0;
-
-            _removeOrder(oid, o.side, o.price);
-            totalOrders--;
-
-            uint32 claimId = _refundEscrow(oid, refundAmount, o.side, o.price, o.owner);
-
-            emit OrderCancelled(oid, refundAmount, claimId);
+            _cancelOrderInternal(oid, originAccount);
         }
     }
 
@@ -1048,53 +995,49 @@ contract DLOB {
         return uint128(uint160(asset) >> 128);
     }
 
+    // ──────────────────────── Internal: Validation ─────────────
+
+    function _validateOrderParams(
+        uint128 amount,
+        bytes32 settlementAccount,
+        uint32 destParaId
+    ) internal view {
+        if (amount < minOrderSize) revert BelowMinSize();
+        if (amount > maxOrderSize) revert AboveMaxSize();
+        if (nextOrderId >= type(uint32).max) revert OrderIdOverflow();
+        if (destParaId > 0 && settlementAccount == bytes32(0)) {
+            revert InvalidSettlementAccount();
+        }
+        if (destParaId == 0 && settlementAccount != bytes32(0)) {
+            revert InvalidSettlementAccount();
+        }
+        if (destParaId > 0 && msg.value < factory.minCrossChainFee()) {
+            revert InsufficientFeeReserve();
+        }
+        if (destParaId == 0 && msg.value > 0) revert LocalOrderWithValue();
+    }
+
     // ──────────────────────── Internal: Order Tree + Queue ───────
 
     function _insertOrder(uint32 orderId, Side side, uint96 price) internal {
-        // Find or create node for this price
-        uint32 nodeId;
-        if (side == Side.Buy) {
-            nodeId = bidPriceToNode[price];
-            if (nodeId == 0) {
-                if (nextNodeId >= type(uint32).max) revert NodeIdOverflow();
-                nodeId = nextNodeId++;
-                nodes[nodeId] = RedBlackTree.RBNode({
-                    parent: 0,
-                    left: 0,
-                    right: 0,
-                    color: RedBlackTree.Color.Red,
-                    price: price,
-                    orderCount: 0,
-                    orderHead: 0,
-                    orderTail: 0,
-                    totalAmount: 0
-                });
-                bidPriceToNode[price] = nodeId;
+        bool isBuy = (side == Side.Buy);
+        mapping(uint96 => uint32) storage priceToNode = isBuy ? bidPriceToNode : askPriceToNode;
+        uint32 nodeId = priceToNode[price];
+
+        if (nodeId == 0) {
+            if (nextNodeId >= type(uint32).max) revert NodeIdOverflow();
+            nodeId = nextNodeId++;
+            nodes[nodeId].price = price;
+            nodes[nodeId].color = RedBlackTree.Color.Red;
+            priceToNode[price] = nodeId;
+            if (isBuy) {
                 bidTreeRoot = RedBlackTree.insert(nodes, bidTreeRoot, nodeId);
                 _updateBestBid();
-                emit PriceLevelCreated(price, Side.Buy);
-            }
-        } else {
-            nodeId = askPriceToNode[price];
-            if (nodeId == 0) {
-                if (nextNodeId >= type(uint32).max) revert NodeIdOverflow();
-                nodeId = nextNodeId++;
-                nodes[nodeId] = RedBlackTree.RBNode({
-                    parent: 0,
-                    left: 0,
-                    right: 0,
-                    color: RedBlackTree.Color.Red,
-                    price: price,
-                    orderCount: 0,
-                    orderHead: 0,
-                    orderTail: 0,
-                    totalAmount: 0
-                });
-                askPriceToNode[price] = nodeId;
+            } else {
                 askTreeRoot = RedBlackTree.insert(nodes, askTreeRoot, nodeId);
                 _updateBestAsk();
-                emit PriceLevelCreated(price, Side.Sell);
             }
+            emit PriceLevelCreated(price, side);
         }
 
         // Append order to this node's queue

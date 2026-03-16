@@ -2,7 +2,7 @@
 // Copyright (C) Parity Technologies (UK) Ltd.
 pragma solidity ^0.8.20;
 
-import "./ScaleCodec.sol";
+import {ScaleCodec} from "./ScaleCodec.sol";
 
 /// @title XcmBuilder
 /// @notice Builds SCALE-encoded XCM V5 messages for cross-chain asset transfers.
@@ -18,22 +18,24 @@ library XcmBuilder {
     uint8 constant JUNCTION_PALLET_INSTANCE = 4;
     uint8 constant JUNCTION_GENERAL_INDEX = 5;
 
-    // --- XCM Instruction enum indices ---
+    // --- XCM V5 Instruction enum indices (auto-assigned, no codec(index) overrides) ---
     uint8 constant INSTRUCTION_WITHDRAW_ASSET = 0;
-    uint8 constant INSTRUCTION_TRANSFER_ASSET = 7;
-    uint8 constant INSTRUCTION_DEPOSIT_RESERVE_ASSET = 9;
-    uint8 constant INSTRUCTION_BUY_EXECUTION = 12;
+    uint8 constant INSTRUCTION_TRANSFER_ASSET = 4;
+    uint8 constant INSTRUCTION_DEPOSIT_RESERVE_ASSET = 14;
+    uint8 constant INSTRUCTION_BUY_EXECUTION = 19;
     uint8 constant INSTRUCTION_DEPOSIT_ASSET = 13;
 
-    // --- Fungibility / Wild ---
+    // --- Fungibility / Wild / WeightLimit ---
     uint8 constant FUNGIBLE = 0;
-    uint8 constant WILD_ALL = 0;
+    // AssetFilter::Wild = enum variant 1; WildAsset::All = enum variant 0
+    uint8 constant ASSET_FILTER_WILD = 1;
+    uint8 constant WILD_ASSET_ALL = 0;
     uint8 constant WEIGHT_LIMIT_UNLIMITED = 0;
 
     /// @notice Build VersionedLocation for a sibling parachain destination.
     function buildDestination(uint32 paraId) internal pure returns (bytes memory) {
         bytes memory parachainJunction =
-            ScaleCodec.encodeEnum(JUNCTION_PARACHAIN, ScaleCodec.encodeU32(paraId));
+            ScaleCodec.encodeEnum(JUNCTION_PARACHAIN, ScaleCodec.encodeCompact(uint256(paraId)));
         bytes memory interior = ScaleCodec.encodeEnum(1, parachainJunction);
         bytes memory location = abi.encodePacked(uint8(1), interior);
         return ScaleCodec.encodeEnum(XCM_V5, location);
@@ -99,7 +101,7 @@ library XcmBuilder {
     }
 
     /// @notice Build a dual-asset reserve transfer for custom ERC20 tokens.
-    function buildDualAssetReserveTransferERC20(
+    function buildDualAssetReserveTransferErc20(
         uint128 dotFee,
         address contractAddress,
         uint128 amount,
@@ -136,22 +138,37 @@ library XcmBuilder {
             ScaleCodec.encodeEnum(FUNGIBLE, ScaleCodec.encodeCompact(uint256(amount)));
         bytes memory tokenAsset = abi.encodePacked(tokenLocation, tokenFungibility);
 
-        // Assets = Vec<Asset> with 2 items
-        bytes memory assets = abi.encodePacked(ScaleCodec.encodeCompact(2), dotAsset, tokenAsset);
+        // Assets = Vec<Asset> with 2 items, sorted by AssetId (Location).
+        // XCM V5 requires assets to be in sorted order.
+        // Token location (parents=0) sorts before DOT (parents=1).
+        bytes memory assets;
+        if (_locationLessThan(tokenLocation, dotLocation)) {
+            assets = abi.encodePacked(ScaleCodec.encodeCompact(2), tokenAsset, dotAsset);
+        } else {
+            assets = abi.encodePacked(ScaleCodec.encodeCompact(2), dotAsset, tokenAsset);
+        }
 
         // WithdrawAsset instruction
         bytes memory withdrawAsset = ScaleCodec.encodeEnum(INSTRUCTION_WITHDRAW_ASSET, assets);
 
         // Inner XCM for destination: [BuyExecution, DepositAsset]
-        // BuyExecution { fees: Asset(DOT, dotFee), weight_limit: Unlimited }
-        bytes memory buyExecAsset = abi.encodePacked(dotLocation, dotFungibility);
+        // BuyExecution.fees is the MAX DOT to take from holding for execution fees.
+        // Use 50% of dotFee to leave headroom for XCM delivery fees (charged by
+        // DepositReserveAsset on the sending chain before assets reach the destination).
+        // The barrier replaces Unlimited with Limited(max_weight), so BuyExecution
+        // will actually run; any unspent fees stay in holding for DepositAsset.
+        uint128 buyExecFee = dotFee / 2;
+        bytes memory buyExecFungibility =
+            ScaleCodec.encodeEnum(FUNGIBLE, ScaleCodec.encodeCompact(uint256(buyExecFee)));
+        bytes memory buyExecAsset = abi.encodePacked(dotLocation, buyExecFungibility);
         bytes memory buyExecution = ScaleCodec.encodeEnum(
             INSTRUCTION_BUY_EXECUTION,
             abi.encodePacked(buyExecAsset, ScaleCodec.encodeEnum(WEIGHT_LIMIT_UNLIMITED))
         );
 
         // DepositAsset { assets: Wild(All), beneficiary }
-        bytes memory wildAll = ScaleCodec.encodeEnum(WILD_ALL);
+        // AssetFilter::Wild(WildAsset::All) = 0x01 0x00
+        bytes memory wildAll = abi.encodePacked(ASSET_FILTER_WILD, WILD_ASSET_ALL);
         bytes memory beneficiaryLocation = buildLocalBeneficiary(beneficiary);
         bytes memory depositAsset = ScaleCodec.encodeEnum(
             INSTRUCTION_DEPOSIT_ASSET, abi.encodePacked(wildAll, beneficiaryLocation)
@@ -163,7 +180,7 @@ library XcmBuilder {
 
         // Destination Location { parents: 1, interior: X1(Parachain(destParaId)) }
         bytes memory parachainJunction =
-            ScaleCodec.encodeEnum(JUNCTION_PARACHAIN, ScaleCodec.encodeU32(destParaId));
+            ScaleCodec.encodeEnum(JUNCTION_PARACHAIN, ScaleCodec.encodeCompact(uint256(destParaId)));
         bytes memory destInterior = ScaleCodec.encodeEnum(1, parachainJunction);
         bytes memory dest = abi.encodePacked(uint8(1), destInterior);
 
@@ -178,5 +195,16 @@ library XcmBuilder {
 
         // VersionedXcm::V5
         return ScaleCodec.encodeEnum(XCM_V5, xcmProgram);
+    }
+
+    /// @notice Lexicographic comparison of two SCALE-encoded Location byte strings.
+    /// Used to sort assets in WithdrawAsset per XCM V5 requirements.
+    function _locationLessThan(bytes memory a, bytes memory b) private pure returns (bool) {
+        uint256 len = a.length < b.length ? a.length : b.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (a[i] < b[i]) return true;
+            if (a[i] > b[i]) return false;
+        }
+        return a.length < b.length;
     }
 }

@@ -2,7 +2,7 @@
 // Copyright (C) Parity Technologies (UK) Ltd.
 pragma solidity ^0.8.20;
 
-import "../interfaces/ISystem.sol";
+import {ISystem} from "../interfaces/ISystem.sol";
 
 /// @title MockSystem
 /// @notice Stands in for the System precompile (0x900) during local testing.

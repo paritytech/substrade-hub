@@ -2,12 +2,12 @@
 // Copyright (C) Parity Technologies (UK) Ltd.
 pragma solidity ^0.8.20;
 
-import "forge-std/Test.sol";
-import "../src/DLOBFactory.sol";
-import "../src/DLOB.sol";
-import "../src/mocks/MockERC20.sol";
-import "../src/mocks/MockXcm.sol";
-import "../src/mocks/MockSystem.sol";
+import {Test} from "forge-std/Test.sol";
+import {DLOBFactory} from "../src/DLOBFactory.sol";
+import {DLOB} from "../src/DLOB.sol";
+import {MockERC20} from "../src/mocks/MockERC20.sol";
+import {MockXcm} from "../src/mocks/MockXcm.sol";
+import {MockSystem} from "../src/mocks/MockSystem.sol";
 
 contract GasReportTest is Test {
     DLOBFactory public factory;

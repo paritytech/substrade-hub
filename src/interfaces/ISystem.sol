@@ -10,7 +10,7 @@ address constant SYSTEM_PRECOMPILE_ADDRESS = 0x000000000000000000000000000000000
 interface ISystem {
     function hashBlake256(bytes memory input) external pure returns (bytes32 digest);
     function hashBlake128(bytes memory input) external pure returns (bytes32 digest);
-    function toAccountId(address input) external view returns (bytes memory account_id);
+    function toAccountId(address input) external view returns (bytes memory accountId);
     function callerIsOrigin() external view returns (bool);
     function callerIsRoot() external view returns (bool);
     function minimumBalance() external view returns (uint256);
