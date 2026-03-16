@@ -20,10 +20,9 @@ mod tests {
     use frame_support::{assert_ok, pallet_prelude::Weight};
     use sp_core::{Pair as _, H160};
     use xcm::prelude::{
-        AccountId32 as AccountId32Junction, Asset, AssetId, Fungible, GeneralIndex,
-        Location, OriginKind, PalletInstance, Parachain as ParachainJunction,
-        RefundSurplus, Transact, Unlimited, VersionedLocation, VersionedXcm, Wild,
-        WithdrawAsset, Xcm,
+        AccountId32 as AccountId32Junction, Asset, AssetId, Fungible, GeneralIndex, Location,
+        OriginKind, PalletInstance, Parachain as ParachainJunction, RefundSurplus, Transact,
+        Unlimited, VersionedLocation, VersionedXcm, Wild, WithdrawAsset, Xcm,
     };
 
     use emulated_integration_tests_common::xcm_emulator::{
@@ -32,12 +31,10 @@ mod tests {
 
     use westend_system_emulated_network::{
         asset_hub_westend_emulated_chain::{
-            asset_hub_westend_runtime,
-            genesis::ED as ASSET_HUB_WESTEND_ED,
+            asset_hub_westend_runtime, genesis::ED as ASSET_HUB_WESTEND_ED,
         },
         penpal_emulated_chain::PenpalAParaPallet as PenpalAPallet,
-        AssetHubWestendPara as AssetHubWestend,
-        AssetHubWestendParaSender as AssetHubWestendSender,
+        AssetHubWestendPara as AssetHubWestend, AssetHubWestendParaSender as AssetHubWestendSender,
         PenpalAPara as PenpalA,
     };
 
@@ -72,10 +69,12 @@ mod tests {
     const AMOUNT_5: u128 = 5_000_000;
 
     /// Pallet-revive precompile addresses (fixed on Asset Hub)
-    const XCM_PRECOMPILE: [u8; 20] =
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0A, 0, 0];
-    const SYSTEM_PRECOMPILE: [u8; 20] =
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x09, 0];
+    const XCM_PRECOMPILE: [u8; 20] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0A, 0, 0,
+    ];
+    const SYSTEM_PRECOMPILE: [u8; 20] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x09, 0,
+    ];
 
     /// Asset IDs for test tokens
     const QUOTE_ASSET_ID: u32 = 100; // tUSD (test USD stablecoin)
@@ -144,12 +143,10 @@ mod tests {
     fn read_bytecode(artifact_path: &str) -> Vec<u8> {
         let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let full_path = base.join(artifact_path);
-        let json: serde_json::Value = serde_json::from_reader(
-            std::io::BufReader::new(
-                std::fs::File::open(&full_path)
-                    .unwrap_or_else(|e| panic!("Failed to open {}: {e}", full_path.display())),
-            ),
-        )
+        let json: serde_json::Value = serde_json::from_reader(std::io::BufReader::new(
+            std::fs::File::open(&full_path)
+                .unwrap_or_else(|e| panic!("Failed to open {}: {e}", full_path.display())),
+        ))
         .expect("Failed to parse artifact JSON");
 
         let hex_str = json["bytecode"]["object"]
@@ -172,9 +169,9 @@ mod tests {
     /// Read link references from a Forge JSON artifact.
     fn read_link_references(artifact_path: &str) -> Vec<(String, usize, usize)> {
         let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let json: serde_json::Value = serde_json::from_reader(
-            std::io::BufReader::new(std::fs::File::open(base.join(artifact_path)).unwrap()),
-        )
+        let json: serde_json::Value = serde_json::from_reader(std::io::BufReader::new(
+            std::fs::File::open(base.join(artifact_path)).unwrap(),
+        ))
         .unwrap();
 
         let mut refs = Vec::new();
@@ -359,22 +356,29 @@ mod tests {
     fn send_xcm_transact_revive(sovereign: &AccountId, call: &ReviveCall) {
         let fee_amount = ASSET_HUB_WESTEND_ED * 500_000;
 
-        let revive_call = asset_hub_westend_runtime::RuntimeCall::Revive(
-            pallet_revive::Call::<AHRuntime>::call {
-                dest: call.dest,
-                value: call.value,
-                weight_limit: Weight::from_parts(50_000_000_000, 5_000_000),
-                storage_deposit_limit: 100 * DOT,
-                data: call.data.clone(),
-            },
-        );
+        let revive_call = asset_hub_westend_runtime::RuntimeCall::Revive(pallet_revive::Call::<
+            AHRuntime,
+        >::call {
+            dest: call.dest,
+            value: call.value,
+            weight_limit: Weight::from_parts(50_000_000_000, 5_000_000),
+            storage_deposit_limit: 100 * DOT,
+            data: call.data.clone(),
+        });
 
         let xcm = VersionedXcm::V5(Xcm(vec![
             WithdrawAsset(
-                Asset { id: AssetId(Location::parent()), fun: Fungible(fee_amount) }.into(),
+                Asset {
+                    id: AssetId(Location::parent()),
+                    fun: Fungible(fee_amount),
+                }
+                .into(),
             ),
             xcm::prelude::BuyExecution {
-                fees: Asset { id: AssetId(Location::parent()), fun: Fungible(fee_amount) },
+                fees: Asset {
+                    id: AssetId(Location::parent()),
+                    fun: Fungible(fee_amount),
+                },
                 weight_limit: Unlimited,
             },
             Transact {
@@ -387,7 +391,10 @@ mod tests {
                 assets: Wild(xcm::prelude::All),
                 beneficiary: Location::new(
                     0,
-                    [AccountId32Junction { network: None, id: sovereign.clone().into() }],
+                    [AccountId32Junction {
+                        network: None,
+                        id: sovereign.clone().into(),
+                    }],
                 ),
             },
         ]));
@@ -407,7 +414,6 @@ mod tests {
             AssetHubWestend::assert_xcmp_queue_success(None);
         });
     }
-
 
     fn encode_create_market(
         base: H160,
@@ -517,14 +523,12 @@ mod tests {
                 .public()
                 .0,
         ));
-        let charlie: AccountId = sp_runtime::AccountId32::from(
-            sp_core::sr25519::Public::from_raw(
-                sp_core::sr25519::Pair::from_string("//Charlie", None)
-                    .unwrap()
-                    .public()
-                    .0,
-            ),
-        );
+        let charlie: AccountId = sp_runtime::AccountId32::from(sp_core::sr25519::Public::from_raw(
+            sp_core::sr25519::Pair::from_string("//Charlie", None)
+                .unwrap()
+                .public()
+                .0,
+        ));
 
         // Use the framework's sovereign account derivation to ensure it matches
         // what the XCM executor on AH will use for Sibling(2000).
@@ -627,7 +631,11 @@ mod tests {
             type ForeignAssets = <PenpalA as PenpalAPallet>::ForeignAssets;
             let base_on_penpal = Location::new(
                 1,
-                [ParachainJunction(1000), PalletInstance(50), GeneralIndex(BASE_ASSET_ID as u128)],
+                [
+                    ParachainJunction(1000),
+                    PalletInstance(50),
+                    GeneralIndex(BASE_ASSET_ID as u128),
+                ],
             );
             assert_ok!(ForeignAssets::force_create(
                 <PenpalA as Chain>::RuntimeOrigin::root(),
@@ -700,8 +708,18 @@ mod tests {
             // Pre-approve the market contract to escrow tokens for local participants.
             // Cross-chain participants (sovereign) approve via XCM Transact in their order flow.
             let large_allowance: u128 = 1_000_000_000_000; // enough for all test scenarios
-            call_contract(bob.clone(), quote_erc20, 0, encode_approve(market, large_allowance));
-            call_contract(dave.clone(), base_erc20, 0, encode_approve(market, large_allowance));
+            call_contract(
+                bob.clone(),
+                quote_erc20,
+                0,
+                encode_approve(market, large_allowance),
+            );
+            call_contract(
+                dave.clone(),
+                base_erc20,
+                0,
+                encode_approve(market, large_allowance),
+            );
 
             TestState {
                 market,
@@ -722,21 +740,24 @@ mod tests {
             eprintln!("[t0] Verifying setup...");
 
             // Alice has quote tokens
-            let alice_quote = <asset_hub_westend_runtime::Assets as frame_support::traits::fungibles::Inspect<_>>::balance(
-                QUOTE_ASSET_ID,
-                &alice,
-            );
+            let alice_quote =
+                <asset_hub_westend_runtime::Assets as frame_support::traits::fungibles::Inspect<
+                    _,
+                >>::balance(QUOTE_ASSET_ID, &alice);
             assert!(alice_quote > 0, "Alice should hold quote tokens");
 
             // Alice has base tokens
-            let alice_base = <asset_hub_westend_runtime::Assets as frame_support::traits::fungibles::Inspect<_>>::balance(
-                BASE_ASSET_ID,
-                &alice,
-            );
+            let alice_base =
+                <asset_hub_westend_runtime::Assets as frame_support::traits::fungibles::Inspect<
+                    _,
+                >>::balance(BASE_ASSET_ID, &alice);
             assert!(alice_base > 0, "Alice should hold base tokens");
 
             // Bob has native balance
-            let bob_native = <asset_hub_westend_runtime::Balances as frame_support::traits::fungible::Inspect<_>>::balance(&bob);
+            let bob_native =
+                <asset_hub_westend_runtime::Balances as frame_support::traits::fungible::Inspect<
+                    _,
+                >>::balance(&bob);
             assert!(bob_native > 0, "Bob should have native balance");
 
             // Market contract exists (nextOrderId should be 1 — initial state)
@@ -810,28 +831,34 @@ mod tests {
 
         // Step 1: ERC-20 approve via XCM Transact
         eprintln!("[t2] XCM Transact #1: approve quote token...");
-        send_xcm_transact_revive(&sov_2000, &ReviveCall {
-            dest: state.quote_erc20,
-            value: 0,
-            data: encode_approve(state.market, large_allowance),
-        });
+        send_xcm_transact_revive(
+            &sov_2000,
+            &ReviveCall {
+                dest: state.quote_erc20,
+                value: 0,
+                data: encode_approve(state.market, large_allowance),
+            },
+        );
 
         // Step 2: Place cross-chain BUY order via XCM Transact
         // value = DOT fee reserve for cross-chain settlement delivery
         eprintln!("[t2] XCM Transact #2: placeLimitOrder...");
-        send_xcm_transact_revive(&sov_2000, &ReviveCall {
-            dest: state.market,
-            value: 10 * DOT,
-            data: encode_place_limit_order(
-                0, // Buy
-                PRICE_LOW,
-                AMOUNT_5,
-                charlie.clone().into(),
-                charlie.clone().into(),
-                2000,
-                0,
-            ),
-        });
+        send_xcm_transact_revive(
+            &sov_2000,
+            &ReviveCall {
+                dest: state.market,
+                value: 10 * DOT,
+                data: encode_place_limit_order(
+                    0, // Buy
+                    PRICE_LOW,
+                    AMOUNT_5,
+                    charlie.clone().into(),
+                    charlie.clone().into(),
+                    2000,
+                    0,
+                ),
+            },
+        );
 
         AssetHubWestend::execute_with(|| {
             let id_after = query_next_order_id(state.market);
@@ -842,7 +869,10 @@ mod tests {
             );
 
             let bid = query_best_bid(state.market);
-            assert_eq!(bid, PRICE_LOW, "Best bid should be the cross-chain order price");
+            assert_eq!(
+                bid, PRICE_LOW,
+                "Best bid should be the cross-chain order price"
+            );
 
             eprintln!("[t2] Cross-chain order placed via XCM Transact");
         });
@@ -857,19 +887,22 @@ mod tests {
 
         // Approve already set in t2 (large allowance), just place the order
         eprintln!("[t3] XCM Transact: placeLimitOrder from PenpalA...");
-        send_xcm_transact_revive(&sov_2000, &ReviveCall {
-            dest: state.market,
-            value: 10 * DOT,
-            data: encode_place_limit_order(
-                0, // Buy
-                PRICE_LOW,
-                AMOUNT_5,
-                charlie.clone().into(),
-                charlie.clone().into(),
-                2000,
-                0,
-            ),
-        });
+        send_xcm_transact_revive(
+            &sov_2000,
+            &ReviveCall {
+                dest: state.market,
+                value: 10 * DOT,
+                data: encode_place_limit_order(
+                    0, // Buy
+                    PRICE_LOW,
+                    AMOUNT_5,
+                    charlie.clone().into(),
+                    charlie.clone().into(),
+                    2000,
+                    0,
+                ),
+            },
+        );
         eprintln!("[t3] Cross-chain BUY placed via XCM Transact");
 
         // Dave places local SELL at $4,990 → matches the cross-chain BUY
@@ -889,10 +922,10 @@ mod tests {
 
         // Verify sovereign quote balance decreased (tokens escrowed + settlement)
         AssetHubWestend::execute_with(|| {
-            let sov_quote = <asset_hub_westend_runtime::Assets as frame_support::traits::fungibles::Inspect<_>>::balance(
-                QUOTE_ASSET_ID,
-                &sov_2000,
-            );
+            let sov_quote =
+                <asset_hub_westend_runtime::Assets as frame_support::traits::fungibles::Inspect<
+                    _,
+                >>::balance(QUOTE_ASSET_ID, &sov_2000);
             eprintln!("[t3] Sovereign quote balance after settlement: {sov_quote}");
             assert!(
                 sov_quote < 100_000_000_000,
@@ -907,12 +940,17 @@ mod tests {
             type ForeignAssets = <PenpalA as PenpalAPallet>::ForeignAssets;
             let base_on_penpal = Location::new(
                 1,
-                [ParachainJunction(1000), PalletInstance(50), GeneralIndex(BASE_ASSET_ID as u128)],
+                [
+                    ParachainJunction(1000),
+                    PalletInstance(50),
+                    GeneralIndex(BASE_ASSET_ID as u128),
+                ],
             );
-            let charlie_base = <ForeignAssets as frame_support::traits::fungibles::Inspect<_>>::balance(
-                base_on_penpal.clone(),
-                &charlie,
-            );
+            let charlie_base =
+                <ForeignAssets as frame_support::traits::fungibles::Inspect<_>>::balance(
+                    base_on_penpal.clone(),
+                    &charlie,
+                );
             eprintln!("[t3] Charlie's tGOLD on PenpalA: {charlie_base}");
             assert!(
                 charlie_base > 0,
@@ -933,19 +971,22 @@ mod tests {
 
         // Approve already set in t2 (large allowance), just place the order
         eprintln!("[t4] XCM Transact: placeLimitOrder at $100...");
-        send_xcm_transact_revive(&sov_2000, &ReviveCall {
-            dest: state.market,
-            value: 10 * DOT,
-            data: encode_place_limit_order(
-                0, // Buy
-                far_price,
-                AMOUNT_5,
-                charlie.clone().into(),
-                charlie.clone().into(),
-                2000,
-                0,
-            ),
-        });
+        send_xcm_transact_revive(
+            &sov_2000,
+            &ReviveCall {
+                dest: state.market,
+                value: 10 * DOT,
+                data: encode_place_limit_order(
+                    0, // Buy
+                    far_price,
+                    AMOUNT_5,
+                    charlie.clone().into(),
+                    charlie.clone().into(),
+                    2000,
+                    0,
+                ),
+            },
+        );
 
         // Get the order ID and claim count
         let (order_id, claim_id_before) = AssetHubWestend::execute_with(|| {
@@ -957,18 +998,19 @@ mod tests {
 
         // Cancel the order via XCM Transact
         eprintln!("[t4] XCM Transact: cancelOrder({order_id})...");
-        send_xcm_transact_revive(&sov_2000, &ReviveCall {
-            dest: state.market,
-            value: 0,
-            data: encode_cancel_order(order_id, charlie.clone().into()),
-        });
+        send_xcm_transact_revive(
+            &sov_2000,
+            &ReviveCall {
+                dest: state.market,
+                value: 0,
+                data: encode_cancel_order(order_id, charlie.clone().into()),
+            },
+        );
 
         // Verify cancel created a PendingClaim (refund)
         AssetHubWestend::execute_with(|| {
             let claim_id_after = query_next_claim_id(state.market);
-            eprintln!(
-                "[t4] nextClaimId: before={claim_id_before}, after={claim_id_after}"
-            );
+            eprintln!("[t4] nextClaimId: before={claim_id_before}, after={claim_id_after}");
             assert!(
                 claim_id_after > claim_id_before,
                 "Cancel should create a refund PendingClaim (before={claim_id_before}, after={claim_id_after})"
@@ -1075,15 +1117,15 @@ mod tests {
         // Build XCM with Transact calling pallet_revive::call to a dummy address.
         // The call will fail at the EVM level but the XCM pipeline should process it.
         let dummy_dest = H160::from([0x01u8; 20]);
-        let revive_call = asset_hub_westend_runtime::RuntimeCall::Revive(
-            pallet_revive::Call::<AHRuntime>::call {
-                dest: dummy_dest,
-                value: 0u128,
-                weight_limit: Weight::from_parts(500_000_000, 100_000),
-                storage_deposit_limit: 0u128,
-                data: vec![],
-            },
-        );
+        let revive_call = asset_hub_westend_runtime::RuntimeCall::Revive(pallet_revive::Call::<
+            AHRuntime,
+        >::call {
+            dest: dummy_dest,
+            value: 0u128,
+            weight_limit: Weight::from_parts(500_000_000, 100_000),
+            storage_deposit_limit: 0u128,
+            data: vec![],
+        });
 
         let fee_amount = ASSET_HUB_WESTEND_ED * 100_000;
         let xcm = VersionedXcm::V5(Xcm::<()>(vec![
