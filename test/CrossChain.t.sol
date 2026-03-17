@@ -8,6 +8,7 @@ import {DLOB} from "../src/DLOB.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockXcm} from "../src/mocks/MockXcm.sol";
 import {MockSystem} from "../src/mocks/MockSystem.sol";
+import {TokenConfig} from "../src/types/TokenConfig.sol";
 
 contract CrossChainTest is Test {
     DLOBFactory public factory;
@@ -48,7 +49,9 @@ contract CrossChainTest is Test {
         baseToken = new MockERC20("Base", "BASE");
         quoteToken = new MockERC20("Quote", "QUOTE");
         address dlobAddr = factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            TokenConfig(address(baseToken), ""),
+            TokenConfig(address(quoteToken), ""),
+            TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         dlob = DLOB(payable(dlobAddr));
 

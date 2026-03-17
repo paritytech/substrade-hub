@@ -7,6 +7,7 @@ import {IXcm} from "./interfaces/IXcm.sol";
 import {ISystem} from "./interfaces/ISystem.sol";
 import {IDLOBFactory} from "./interfaces/IDLOBFactory.sol";
 import {DLOB} from "./DLOB.sol";
+import {TokenConfig} from "./types/TokenConfig.sol";
 
 /// @title DLOBFactory
 /// @notice Market registry and fee configuration for the DLOB protocol.
@@ -56,41 +57,38 @@ contract DLOBFactory is IDLOBFactory {
 
     // ──────────────────────── Market Creation ────────────────────
 
+    /// @notice Create a new DLOB market for a token pair.
+    /// @param base Base token configuration. See `TokenConfig` for details on `xcmLocation`.
+    /// @param quote Quote token configuration.
     function createMarket(
-        address baseToken,
-        address quoteToken,
+        TokenConfig calldata base,
+        TokenConfig calldata quote,
         uint96 tickSize,
         uint96 minOrderSize,
         uint128 maxOrderSize
     ) external payable returns (address dlob) {
-        if (baseToken == quoteToken) revert SameToken();
-        if (baseToken == address(0) || quoteToken == address(0)) revert ZeroAddress();
+        if (base.token == quote.token) revert SameToken();
+        if (base.token == address(0) || quote.token == address(0)) revert ZeroAddress();
         if (tickSize == 0) revert ZeroTickSize();
         if (minOrderSize == 0) revert ZeroMinOrderSize();
         if (maxOrderSize < minOrderSize) revert MaxBelowMin();
         if (msg.value < marketCreationDeposit) revert InsufficientDeposit();
 
         (address tokenA, address tokenB) =
-            baseToken < quoteToken ? (baseToken, quoteToken) : (quoteToken, baseToken);
+            base.token < quote.token ? (base.token, quote.token) : (quote.token, base.token);
         bytes32 key = keccak256(abi.encodePacked(tokenA, tokenB));
         if (markets[key] != address(0)) revert MarketExists();
 
         dlob = Clones.clone(IMPLEMENTATION);
         DLOB(payable(dlob)).initialize{value: msg.value}(
-            baseToken,
-            quoteToken,
-            tickSize,
-            minOrderSize,
-            maxOrderSize,
-            address(XCM_PRECOMPILE),
-            address(SYSTEM_PRECOMPILE),
-            address(this)
+            base, quote, tickSize, minOrderSize, maxOrderSize,
+            address(XCM_PRECOMPILE), address(SYSTEM_PRECOMPILE), address(this)
         );
 
         markets[key] = dlob;
         allMarkets.push(dlob);
 
-        emit MarketCreated(baseToken, quoteToken, dlob, msg.value);
+        emit MarketCreated(base.token, quote.token, dlob, msg.value);
     }
 
     // ──────────────────────── Admin Functions ────────────────────

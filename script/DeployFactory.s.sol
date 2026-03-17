@@ -6,7 +6,8 @@ import {Script, console} from "forge-std/Script.sol";
 import {DLOBFactory} from "../src/DLOBFactory.sol";
 import {DLOB} from "../src/DLOB.sol";
 
-/// @notice Deploys the full SubsTrade Hub stack: RedBlackTree → DLOB implementation → DLOBFactory.
+/// @notice Deploys the full SubsTrade Hub stack:
+///         RedBlackTree + XcmBuilder (libraries) → DLOB implementation → DLOBFactory.
 /// @dev Usage:
 ///   forge script script/DeployFactory.s.sol --chain polkadot-testnet --private-key $DEPLOYER_PRIVATE_KEY --broadcast
 ///   forge script script/DeployFactory.s.sol --chain polkadot --private-key $DEPLOYER_PRIVATE_KEY --broadcast
@@ -15,9 +16,9 @@ import {DLOB} from "../src/DLOB.sol";
 ///   - Console logs with all deployed addresses
 ///   - broadcast/DeployFactory.s.sol/<chainId>/run-latest.json with full transaction receipts
 ///
-/// Note: Forge auto-deploys the RedBlackTree library during broadcast because DLOB
-/// references it as an external (deployed) library. The library address is resolved
-/// automatically — no --libraries flag is needed.
+/// Note: Forge auto-deploys the RedBlackTree and XcmBuilder libraries during broadcast
+/// because DLOB references them as external (deployed) libraries. The library addresses
+/// are resolved automatically, no --libraries flag is needed.
 contract DeployFactory is Script {
     // Fixed precompile addresses on Asset Hub
     address constant XCM_PRECOMPILE = 0x00000000000000000000000000000000000a0000;
@@ -27,8 +28,9 @@ contract DeployFactory is Script {
         vm.startBroadcast();
 
         // 1. Deploy DLOB implementation
-        //    Forge automatically deploys the RedBlackTree library (referenced via
-        //    delegatecall by DLOB) and links it into the bytecode before broadcasting.
+        //    Forge automatically deploys the RedBlackTree and XcmBuilder libraries
+        //    (referenced via delegatecall by DLOB) and links them into the bytecode
+        //    before broadcasting.
         DLOB impl = new DLOB();
 
         // 2. Deploy DLOBFactory

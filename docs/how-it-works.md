@@ -73,11 +73,52 @@ The buyer sends quote tokens (e.g., USDT) to Asset Hub and receives base tokens 
 
 ### Supported Asset Types
 
-- **Trust-backed assets** — *supported.* Local assets registered via `pallet-assets` with ERC20 precompiles at prefix `0x120`. This includes assets like USDT (asset ID 1984 on Polkadot Asset Hub) and USDC (asset ID 1337 on Polkadot Asset Hub). These work fully for both local and cross-chain orders.
+- **Trust-backed assets** (pallet-assets, ERC20 precompile prefix `0x0120`). Local assets registered via `pallet-assets`. This includes assets like USDT (asset ID 1984) and USDC (asset ID 1337) on Polkadot Asset Hub. When creating a market with a trust-backed asset, leave the `xcmLocation` field empty in `TokenConfig`; the contract derives the XCM Location on-chain from the precompile address.
 
-- **Foreign assets** — *planned.* Assets originating from other consensus systems (KSM, WETH, ETH, WBTC) are registered on Asset Hub via `pallet-assets`, but their ERC20 precompile (prefix `0x220`) is not yet enabled in the runtime. Once it is, supporting foreign asset markets (e.g., WETH/USDT, WBTC/USDC) is a future goal. Local-only orders would work immediately through the standard IERC20 interface, but cross-chain settlement would require contract updates to handle the different XCM Location structure that foreign assets use.
+- **Foreign assets** (ERC20 precompile prefix `0x0220`). Assets originating from other consensus systems (e.g., KSM, WETH, WBTC) that are registered on Asset Hub. Before a foreign asset can be traded on the DLOB, it must be registered on Asset Hub via the `ForeignAssets` pallet (typically through governance or `force_create`). When the asset is registered, the `pallet-assets-precompiles` pallet automatically assigns it a sequential u32 index and makes it accessible through an ERC20 precompile address at prefix `0x0220`. When creating a market with a foreign asset, provide the SCALE-encoded XCM Location in the `xcmLocation` field of `TokenConfig`. The contract cannot derive this on-chain because the precompile address only contains the u32 index, and the index-to-location mapping lives in substrate storage (inaccessible from Solidity). See [Configuring XCM Locations](#configuring-xcm-locations) below.
 
-- **User-deployed ERC20 contracts** — *not supported.* Standard Solidity tokens deployed via pallet-revive are not supported, even though they implement the same IERC20 interface. A deployed ERC20 contract stores balances in its own contract storage, invisible to the runtime and the XCM executor. `pallet-assets` tokens, in contrast, exist in native runtime storage. The ERC20 precompile is a Solidity-compatible view into that same storage: calling `transfer()` on a precompile address updates the same balances that XCM reads and writes. Because cross-chain settlement relies on XCM, which can only move assets the runtime knows about, only `pallet-assets`-backed tokens can participate. Even for local-only orders, the DLOB uses the same precompile token interface for consistency.
+- **User-deployed ERC20 contracts** are **not** supported, even though they implement the same IERC20 interface. An ERC20 precompile is not a deployed contract. It is a synthetic address provided by the runtime that reads and writes `pallet-assets` storage directly. Calling `transfer()` on a precompile updates the same balances that XCM reads and writes. A user-deployed ERC20, in contrast, stores balances in its own contract storage, invisible to the runtime and the XCM executor. Because cross-chain settlement relies on XCM, which can only move assets the runtime knows about, only precompile-backed tokens can participate. Even for local-only orders, the DLOB uses the same precompile interface for consistency.
+
+### Configuring XCM Locations
+
+Markets are created via `DLOBFactory.createMarket()`, which takes a `TokenConfig` struct for each token:
+
+```solidity
+struct TokenConfig {
+    address token;       // ERC20 precompile address
+    bytes xcmLocation;   // SCALE-encoded XCM Location (empty for pallet assets)
+}
+```
+
+**Trust-backed assets** (prefix `0x0120`): leave `xcmLocation` empty. The contract derives the location automatically:
+
+```
+Location { parents: 0, interior: X2(PalletInstance(50), GeneralIndex(assetId)) }
+```
+
+where `assetId` is extracted from the upper 4 bytes of the precompile address. For example, USDT on Asset Hub has asset ID 1984 and precompile address `0x000007C0000000000000000000000000001200000` (truncated); the contract reads `0x000007C0` = 1984 and builds the location on-chain.
+
+**Foreign assets** (prefix `0x0220`): provide the SCALE-encoded `xcmLocation`. This is the XCM `Location` that the Asset Hub runtime uses to identify the asset. The contract stores it as-is and uses it verbatim for cross-chain settlement XCM messages.
+
+To obtain the correct SCALE-encoded location for a foreign asset:
+
+1. **Query the runtime.** On Asset Hub, the storage map `ForeignAssets::AssetIdOf` (or `AssetIndexToForeignAssetId`) maps the u32 index to an XCM `Location`. Use the Polkadot.js Apps storage query or `subxt` to read the location for your asset.
+
+2. **SCALE-encode the Location.** The `xcmLocation` bytes must be the SCALE encoding of the `xcm::v5::Location` struct, which is `(parents: u8, interior: Junctions)`. For example, WETH bridged from Ethereum through Snowbridge has:
+   ```
+   Location {
+       parents: 2,
+       interior: X2(
+           GlobalConsensus(Ethereum { chain_id: 1 }),
+           AccountKey20 { network: None, key: 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 }
+       )
+   }
+   ```
+   The SCALE encoding of this location is what goes into the `xcmLocation` field.
+
+3. **Verify before deploying.** The contract cannot validate that a foreign asset location is correct. An incorrect location will cause cross-chain settlement to fail (the XCM executor will not find the asset) or, worse, deliver the wrong asset. Always test with a small market on a testnet first.
+
+For trust-backed assets, no manual encoding is needed; the contract handles everything on-chain.
 
 ### Local vs Cross-Chain Orders
 

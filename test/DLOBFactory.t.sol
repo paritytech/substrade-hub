@@ -8,6 +8,7 @@ import {DLOB} from "../src/DLOB.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockXcm} from "../src/mocks/MockXcm.sol";
 import {MockSystem} from "../src/mocks/MockSystem.sol";
+import {TokenConfig} from "../src/types/TokenConfig.sol";
 
 contract DLOBFactoryTest is Test {
     DLOBFactory public factory;
@@ -30,9 +31,13 @@ contract DLOBFactoryTest is Test {
         quoteToken = new MockERC20("Quote Token", "QUOTE");
     }
 
+    function _tc(address token) internal pure returns (TokenConfig memory) {
+        return TokenConfig(token, "");
+    }
+
     function testCreateMarket() public {
         address dlob = factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         assertTrue(dlob != address(0));
         assertEq(factory.getMarketCount(), 1);
@@ -41,17 +46,17 @@ contract DLOBFactoryTest is Test {
 
     function testCreateDuplicateMarketReverts() public {
         factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         vm.expectRevert(DLOBFactory.MarketExists.selector);
         factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
     }
 
     function testGetMarket() public {
         address dlob = factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         assertEq(factory.getMarket(address(baseToken), address(quoteToken)), dlob);
         // With normalized keys, reverse lookup also works
@@ -78,7 +83,7 @@ contract DLOBFactoryTest is Test {
         factory.setMarketCreationDeposit(0.1 ether);
 
         address dlob = factory.createMarket{value: 0.1 ether}(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         assertEq(address(dlob).balance, 0.1 ether);
     }
@@ -88,21 +93,21 @@ contract DLOBFactoryTest is Test {
 
         vm.expectRevert(DLOBFactory.InsufficientDeposit.selector);
         factory.createMarket{value: 0.05 ether}(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
     }
 
     function testCreateMarketSameTokenReverts() public {
         vm.expectRevert(DLOBFactory.SameToken.selector);
         factory.createMarket(
-            address(baseToken), address(baseToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(baseToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
     }
 
     function testGetMarketCount() public {
         assertEq(factory.getMarketCount(), 0);
         factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         assertEq(factory.getMarketCount(), 1);
     }
@@ -124,19 +129,21 @@ contract DLOBFactoryTest is Test {
     function testRevertZeroTickSize() public {
         vm.expectRevert(DLOBFactory.ZeroTickSize.selector);
         factory.createMarket(
-            address(baseToken), address(quoteToken), 0, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), 0, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
     }
 
     function testRevertZeroMinOrderSize() public {
         vm.expectRevert(DLOBFactory.ZeroMinOrderSize.selector);
-        factory.createMarket(address(baseToken), address(quoteToken), TICK_SIZE, 0, MAX_ORDER_SIZE);
+        factory.createMarket(
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, 0, MAX_ORDER_SIZE
+        );
     }
 
     function testRevertMaxBelowMin() public {
         vm.expectRevert(DLOBFactory.MaxBelowMin.selector);
         factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MIN_ORDER_SIZE - 1
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MIN_ORDER_SIZE - 1
         );
     }
 
@@ -144,18 +151,18 @@ contract DLOBFactoryTest is Test {
 
     function testReverseTokenOrderReverts() public {
         factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         // Creating quoteToken/baseToken should revert — same normalized key
         vm.expectRevert(DLOBFactory.MarketExists.selector);
         factory.createMarket(
-            address(quoteToken), address(baseToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(quoteToken)), _tc(address(baseToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
     }
 
     function testGetMarketBothDirections() public {
         address dlob = factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            _tc(address(baseToken)), _tc(address(quoteToken)), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         // Both directions should resolve to the same market
         assertEq(factory.getMarket(address(baseToken), address(quoteToken)), dlob);

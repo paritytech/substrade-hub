@@ -8,6 +8,7 @@ import {DLOB} from "../src/DLOB.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockXcm} from "../src/mocks/MockXcm.sol";
 import {MockSystem} from "../src/mocks/MockSystem.sol";
+import {TokenConfig} from "../src/types/TokenConfig.sol";
 
 contract MatchingTest is Test {
     DLOBFactory public factory;
@@ -37,7 +38,9 @@ contract MatchingTest is Test {
         baseToken = new MockERC20("Base", "BASE");
         quoteToken = new MockERC20("Quote", "QUOTE");
         address dlobAddr = factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            TokenConfig(address(baseToken), ""),
+            TokenConfig(address(quoteToken), ""),
+            TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
         );
         dlob = DLOB(payable(dlobAddr));
 
@@ -300,21 +303,13 @@ contract MatchingTest is Test {
             dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
 
         // Verify Alice's order exists and has remaining amount
-        (
-            address owner,
-            DLOB.Side side,
-            ,
-            uint96 price,
-            uint128 remainingAmount,
-            uint128 originalAmount,
-            ,
-        ) = dlob.orders(aliceOrderId);
+        DLOB.Order memory o = dlob.getOrder(aliceOrderId);
 
-        assertEq(owner, alice, "Order owner should be Alice");
-        assertEq(uint8(side), uint8(DLOB.Side.Buy), "Order should be buy side");
-        assertEq(price, 50e15, "Order price should be 50e15");
-        assertEq(originalAmount, 600e6, "Order original amount should be 600e6");
-        assertEq(remainingAmount, 100e6, "Order should have 100e6 remaining on book");
+        assertEq(o.owner, alice, "Order owner should be Alice");
+        assertEq(uint8(o.side), uint8(DLOB.Side.Buy), "Order should be buy side");
+        assertEq(o.price, 50e15, "Order price should be 50e15");
+        assertEq(o.originalAmount, 600e6, "Order original amount should be 600e6");
+        assertEq(o.remainingAmount, 100e6, "Order should have 100e6 remaining on book");
     }
 
     /// @notice Test that same owner with different originAccount can trade (self-trade allowed)

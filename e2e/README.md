@@ -20,9 +20,11 @@ cargo test -- --nocapture
 
 ## What the tests cover
 
-The tests run **five sequential scenarios** (t0 → t4) inside a single test
-function because each scenario's on-chain state feeds into the next.
+### Pallet asset tests (`pallet_asset_tests.rs`)
 
+`full_dlob_lifecycle` runs scenarios **t0 → t4** sequentially in one test
+(each scenario's on-chain state feeds into the next).
+These use **trust-backed pallet assets** (prefix `0x0120`).
 
 | Scenario                        | Description                                                                                                                         |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,11 +34,20 @@ function because each scenario's on-chain state feeds into the next.
 | **t3 — Cross-chain settlement** | Another XCM Transact BUY + Dave's local SELL → match → base tokens delivered to Charlie on PenpalA via XCM reserve transfer        |
 | **t4 — Cross-chain cancel**     | XCM Transact places then cancels a resting order → refund `PendingClaim` created                                                   |
 
-
 Two additional **standalone smoke tests** run independently:
 
-- `hrmp_message_from_penpal_to_asset_hub_works`: basic XCM message delivery between parachains
-- `xcm_transact_revive_call_on_asset_hub`: XCM Transact invoking `pallet_revive::call` on Asset Hub
+- `hrmp_message_from_penpal_to_asset_hub_works` — basic XCM message delivery between parachains
+- `xcm_transact_revive_call_on_asset_hub` — XCM Transact invoking `pallet_revive::call` on Asset Hub
+
+### Foreign asset tests (`foreign_asset_tests.rs`)
+
+These test markets where the base token is a **foreign asset** (prefix `0x0220`),
+registered via the `ForeignAssets` pallet with an explicit SCALE-encoded XCM
+Location stored in `TokenConfig.xcmLocation` at market creation time.
+
+| Scenario                              | Description                                                                                              |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **foreign_asset_local_settlement**    | Register a bridged Ethereum asset (tWETH) on AH, create a tWETH/tUSD market with xcmLocation, verify local BUY+SELL settlement |
 
 ## Actors
 
@@ -49,6 +60,17 @@ Two additional **standalone smoke tests** run independently:
 | **Charlie**        | Cross-chain trader on PenpalA (para 2000)                                                  |
 | **Sovereign 2000** | PenpalA's sovereign account on Asset Hub, executes cross-chain orders on behalf of Charlie |
 
+
+## File structure
+
+```
+e2e/src/
+  lib.rs                           # Crate root, declares test module
+  tests/
+    mod.rs                         # Shared imports, constants, helpers, setup
+    pallet_asset_tests.rs          # Trust-backed asset lifecycle + smoke tests
+    foreign_asset_tests.rs         # Foreign asset (0x0220) market tests
+```
 
 ## Network topology
 
