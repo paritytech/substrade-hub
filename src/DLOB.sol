@@ -221,11 +221,15 @@ contract DLOB {
         baseToken = IERC20(base.token);
         quoteToken = IERC20(quote.token);
 
-        // Store caller-provided XCM location for foreign assets.
-        // For pallet assets the caller passes empty bytes; the location is
-        // derived on-the-fly at settlement time via _resolveLocation().
-        baseXcmLocation = base.xcmLocation;
-        quoteXcmLocation = quote.xcmLocation;
+        // Always store the XCM location so both asset types have consistent
+        // storage. For trust-backed assets the caller passes empty bytes, so
+        // we derive the location from the precompile address at init time.
+        baseXcmLocation = base.xcmLocation.length > 0
+            ? base.xcmLocation
+            : XcmBuilder.locationFromPalletAsset(base.token);
+        quoteXcmLocation = quote.xcmLocation.length > 0
+            ? quote.xcmLocation
+            : XcmBuilder.locationFromPalletAsset(quote.token);
 
         tickSize = _tickSize;
         minOrderSize = _minOrderSize;
@@ -1007,12 +1011,11 @@ contract DLOB {
 
     // ──────────────────────── Internal: XCM Location ───────────
 
-    /// @dev Return the XCM Location for `token`. Foreign assets have a stored
-    /// location; pallet assets derive it on-the-fly from the precompile address.
+    /// @dev Return the stored XCM Location for `token`.
     function _resolveLocation(address token) internal view returns (bytes memory) {
-        bytes storage stored = token == address(baseToken) ? baseXcmLocation : quoteXcmLocation;
-        if (stored.length > 0) return stored;
-        return XcmBuilder.locationFromPalletAsset(token);
+        if (token == address(baseToken)) return baseXcmLocation;
+        if (token == address(quoteToken)) return quoteXcmLocation;
+        revert("unknown token");
     }
 
     // ──────────────────────── Internal: Validation ─────────────

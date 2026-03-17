@@ -523,7 +523,7 @@ contract DLOBTest is Test {
         }
 
         for (uint256 i = 0; i < n; i++) {
-            if (cancelMask & (1 << (i % 8)) != 0) {
+            if (cancelMask & (uint256(1) << (i % 8)) != 0) {
                 address sender = senders[i % 3];
                 vm.prank(sender);
                 dlob.cancelOrder(orderIds[i], bytes32(uint256(i + 100)));

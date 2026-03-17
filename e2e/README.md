@@ -60,18 +60,6 @@ Location stored in `TokenConfig.xcmLocation` at market creation time.
 | **Charlie**        | Cross-chain trader on PenpalA (para 2000)                                                  |
 | **Sovereign 2000** | PenpalA's sovereign account on Asset Hub, executes cross-chain orders on behalf of Charlie |
 
-
-## File structure
-
-```
-e2e/src/
-  lib.rs                           # Crate root, declares test module
-  tests/
-    mod.rs                         # Shared imports, constants, helpers, setup
-    pallet_asset_tests.rs          # Trust-backed asset lifecycle + smoke tests
-    foreign_asset_tests.rs         # Foreign asset (0x0220) market tests
-```
-
 ## Network topology
 
 The tests use polkadot-sdk's `xcm-emulator`, which runs real relay and parachain
