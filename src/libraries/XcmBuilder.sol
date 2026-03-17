@@ -16,7 +16,7 @@ library XcmBuilder {
     uint8 constant JUNCTION_PALLET_INSTANCE = 4;
     uint8 constant JUNCTION_GENERAL_INDEX = 5;
 
-    // --- Pallet index for trust-backed assets on Asset Hub ---
+    // --- Pallet index for trust-backed assets (from pallet-assets) on Asset Hub ---
     uint8 constant ASSETS_PALLET_INDEX = 50;
 
     // --- XCM V5 Instruction enum indices (auto-assigned, no codec(index) overrides) ---
@@ -34,8 +34,8 @@ library XcmBuilder {
 
     // ─────────────────────── Location helpers ───────────────────────
 
-    /// @notice Derive the SCALE-encoded XCM Location for a trust-backed pallet-asset
-    /// from its ERC20 precompile address (prefix 0x0120).
+    /// @notice Derive the SCALE-encoded XCM Location for a trust-backed asset
+    /// (registered in `pallet-assets`) from its ERC20 precompile address (prefix 0x0120).
     ///
     /// The precompile address encodes the asset ID in its upper 4 bytes:
     ///   `0x<assetId_be_4bytes>000000000000000001200000`

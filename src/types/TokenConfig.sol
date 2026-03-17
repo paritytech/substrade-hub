@@ -6,7 +6,7 @@ pragma solidity ^0.8.20;
 ///
 /// Two modes depending on `xcmLocation`:
 ///
-/// 1. **Pallet asset** (trust-backed, ERC20 precompile prefix 0x0120):
+/// 1. **Trust-backed asset** (registered in `pallet-assets`, ERC20 precompile prefix 0x0120):
 ///    Leave `xcmLocation` empty. The contract derives the XCM Location on-chain
 ///    from the precompile address:
 ///    `Location { parents: 0, interior: X2(PalletInstance(50), GeneralIndex(assetId)) }`

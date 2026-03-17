@@ -75,11 +75,11 @@ The buyer sends quote tokens (e.g., USDT) to Asset Hub and receives base tokens 
 
 Asset Hub manages two categories of assets, each with its own pallet and ERC20 precompile prefix:
 
-- **Trust-backed assets** are tokens issued directly on Asset Hub by a trusted admin (an account or governance body). The admin creates the asset via `pallet-assets`, sets metadata, and controls minting. Examples include USDT (asset ID 1984) and USDC (asset ID 1337), where Tether and Circle respectively are the trusted issuers. These use ERC20 precompile prefix `0x0120`, and their XCM Location can be derived deterministically from the asset ID. When creating a market with a trust-backed asset, leave the `xcmLocation` field empty in `TokenConfig`.
+1. **Trust-backed assets** are tokens issued directly on Asset Hub by a trusted admin (an account or governance body). The admin creates the asset via `pallet-assets`, sets metadata, and controls minting. Examples include USDT (asset ID 1984) and USDC (asset ID 1337), where Tether and Circle respectively are the trusted issuers. These use ERC20 precompile prefix `0x0120`, and their XCM Location can be derived deterministically from the asset ID. When creating a market with a trust-backed asset, leave the `xcmLocation` field empty in `TokenConfig`.
 
-- **Foreign assets** are tokens that originate from other consensus systems (Ethereum, Kusama, other parachains) and are bridged onto Asset Hub. They are registered via the `ForeignAssets` pallet, typically through governance, and identified by their XCM Location (e.g., `GlobalConsensus(Ethereum) / AccountKey20(0xC02a...)` for WETH). Examples include bridged WETH, WBTC, and KSM. These use ERC20 precompile prefix `0x0220`, with sequential indices assigned automatically by `pallet-assets-precompiles` at registration time. When creating a market with a foreign asset, provide the SCALE-encoded XCM Location in the `xcmLocation` field of `TokenConfig`. The contract cannot derive this on-chain because the precompile address only contains the u32 index, and the index-to-location mapping lives in substrate storage (inaccessible from Solidity). See [Configuring XCM Locations](#configuring-xcm-locations) below.
+2. **Foreign assets** are tokens that originate from other consensus systems (Ethereum, Kusama, other parachains) and are bridged onto Asset Hub. They are registered via the `ForeignAssets` pallet, typically through governance, and identified by their XCM Location (e.g., `GlobalConsensus(Ethereum) / AccountKey20(0xC02a...)` for WETH). Examples include bridged WETH, WBTC, and KSM. These use ERC20 precompile prefix `0x0220`, with sequential indices assigned automatically by `pallet-assets-precompiles` at registration time. When creating a market with a foreign asset, provide the SCALE-encoded XCM Location in the `xcmLocation` field of `TokenConfig`. The contract cannot derive this on-chain because the precompile address only contains the u32 index, and the index-to-location mapping lives in substrate storage (inaccessible from Solidity). See [Configuring XCM Locations](#configuring-xcm-locations) below.
 
-- **User-deployed ERC20 contracts** are **not** supported, even though they implement the same IERC20 interface. An ERC20 precompile is not a deployed contract. It is a synthetic address provided by the runtime that reads and writes `pallet-assets` storage directly. Calling `transfer()` on a precompile updates the same balances that XCM reads and writes. A user-deployed ERC20, in contrast, stores balances in its own contract storage, invisible to the runtime and the XCM executor. Because cross-chain settlement relies on XCM, which can only move assets the runtime knows about, only precompile-backed tokens can participate. Even for local-only orders, the DLOB uses the same precompile interface for consistency.
+**User-deployed ERC20 contracts** are not supported, even though they implement the same IERC20 interface. An ERC20 precompile is not a deployed contract. It is a synthetic address provided by the runtime that reads and writes `pallet-assets` storage directly. Calling `transfer()` on a precompile updates the same balances that XCM reads and writes. A user-deployed ERC20, in contrast, stores balances in its own contract storage, invisible to the runtime and the XCM executor. Because cross-chain settlement relies on XCM, which can only move assets the runtime knows about, only precompile-backed tokens can participate. Even for local-only orders, the DLOB uses the same precompile interface for consistency.
 
 ### Configuring XCM Locations
 
@@ -88,7 +88,7 @@ Markets are created via `DLOBFactory.createMarket()`, which takes a `TokenConfig
 ```solidity
 struct TokenConfig {
     address token;       // ERC20 precompile address
-    bytes xcmLocation;   // SCALE-encoded XCM Location (empty for pallet assets)
+    bytes xcmLocation;   // SCALE-encoded XCM Location (empty for trust-backed assets)
 }
 ```
 
@@ -120,7 +120,7 @@ To obtain the correct SCALE-encoded location for a foreign asset:
 
 3. **Verify before deploying.** The contract cannot validate that a foreign asset location is correct. An incorrect location will cause cross-chain settlement to fail (the XCM executor will not find the asset) or, worse, deliver the wrong asset. Always test with a small market on a testnet first.
 
-For trust-backed assets, no manual encoding is needed; the contract handles everything on-chain.
+For trust-backed assets, no manual encoding is needed; the contract derives the location on-chain.
 
 ### Local vs Cross-Chain Orders
 

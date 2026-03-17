@@ -24,7 +24,7 @@ cargo test -- --nocapture
 
 `full_dlob_lifecycle` runs scenarios **t0 → t4** sequentially in one test
 (each scenario's on-chain state feeds into the next).
-These use **trust-backed pallet assets** (prefix `0x0120`).
+These use **trust-backed assets** (locally issued via `pallet-assets`, prefix `0x0120`).
 
 | Scenario                        | Description                                                                                                                         |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |

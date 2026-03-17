@@ -131,7 +131,7 @@ cast send <FACTORY_ADDRESS> \
     --private-key $DEPLOYER_PRIVATE_KEY
 ```
 
-Example: XAUT/USDT market (both trust-backed, 6 decimals), tick size $0.01, min 0.001 XAUT, max 1000 XAUT:
+Example: XAUT/USDT market (both trust-backed `pallet-assets` tokens, 6 decimals), tick size $0.01, min 0.001 XAUT, max 1000 XAUT:
 
 ```bash
 cast send 0x... \
