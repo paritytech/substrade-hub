@@ -256,7 +256,9 @@ fn call_contract(origin: AccountId, dest: H160, value: u128, data: Vec<u8>) {
         data,
     );
     if let Err(e) = &result {
-        eprintln!("  call_contract FAILED: origin={origin:?}, dest={dest:?}, value={value}, error={e:?}");
+        eprintln!(
+            "  call_contract FAILED: origin={origin:?}, dest={dest:?}, value={value}, error={e:?}"
+        );
     }
     assert_ok!(result);
 }
@@ -374,15 +376,14 @@ struct ReviveCall {
 fn send_xcm_transact_revive(sovereign: &AccountId, call: &ReviveCall) {
     let fee_amount = ASSET_HUB_WESTEND_ED * 500_000;
 
-    let revive_call = asset_hub_westend_runtime::RuntimeCall::Revive(pallet_revive::Call::<
-        AHRuntime,
-    >::call {
-        dest: call.dest,
-        value: call.value,
-        weight_limit: Weight::from_parts(50_000_000_000, 5_000_000),
-        storage_deposit_limit: 100 * DOT,
-        data: call.data.clone(),
-    });
+    let revive_call =
+        asset_hub_westend_runtime::RuntimeCall::Revive(pallet_revive::Call::<AHRuntime>::call {
+            dest: call.dest,
+            value: call.value,
+            weight_limit: Weight::from_parts(50_000_000_000, 5_000_000),
+            storage_deposit_limit: 100 * DOT,
+            data: call.data.clone(),
+        });
 
     let xcm = VersionedXcm::V5(Xcm(vec![
         WithdrawAsset(
@@ -499,8 +500,14 @@ struct TestState {
 
 /// Deploy all contracts and create a pallet-asset market (tGOLD/tUSD).
 /// Sets up accounts, funds, assets, and returns the shared TestState.
-fn setup_pallet_asset_market() -> (TestState, AccountId, AccountId, AccountId, AccountId, AccountId)
-{
+fn setup_pallet_asset_market() -> (
+    TestState,
+    AccountId,
+    AccountId,
+    AccountId,
+    AccountId,
+    AccountId,
+) {
     let alice: AccountId = AssetHubWestendSender::get();
     let bob: AccountId = sp_runtime::AccountId32::from(sp_core::sr25519::Public::from_raw(
         sp_core::sr25519::Pair::from_string("//Bob", None)
@@ -521,9 +528,9 @@ fn setup_pallet_asset_market() -> (TestState, AccountId, AccountId, AccountId, A
             .0,
     ));
 
-    let sov_2000 = AssetHubWestend::sovereign_account_id_of(
-        AssetHubWestend::sibling_location_of(PenpalA::para_id()),
-    );
+    let sov_2000 = AssetHubWestend::sovereign_account_id_of(AssetHubWestend::sibling_location_of(
+        PenpalA::para_id(),
+    ));
     eprintln!("[setup] Sovereign account for para 2000: {sov_2000:?}");
 
     let base_erc20 = asset_id_to_erc20(BASE_ASSET_ID);

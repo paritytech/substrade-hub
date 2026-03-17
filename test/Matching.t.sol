@@ -40,7 +40,9 @@ contract MatchingTest is Test {
         address dlobAddr = factory.createMarket(
             TokenConfig(address(baseToken), ""),
             TokenConfig(address(quoteToken), ""),
-            TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            TICK_SIZE,
+            MIN_ORDER_SIZE,
+            MAX_ORDER_SIZE
         );
         dlob = DLOB(payable(dlobAddr));
 

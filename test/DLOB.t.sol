@@ -39,7 +39,9 @@ contract DLOBTest is Test {
         address dlobAddr = factory.createMarket(
             TokenConfig(address(baseToken), ""),
             TokenConfig(address(quoteToken), ""),
-            TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            TICK_SIZE,
+            MIN_ORDER_SIZE,
+            MAX_ORDER_SIZE
         );
         dlob = DLOB(payable(dlobAddr));
 
@@ -479,7 +481,9 @@ contract DLOBTest is Test {
         address dlob2Addr = factory.createMarket{value: 0.1 ether}(
             TokenConfig(address(base2), ""),
             TokenConfig(address(quote2), ""),
-            TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            TICK_SIZE,
+            MIN_ORDER_SIZE,
+            MAX_ORDER_SIZE
         );
         DLOB dlob2 = DLOB(payable(dlob2Addr));
 

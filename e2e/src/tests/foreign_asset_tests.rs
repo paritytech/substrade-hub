@@ -140,7 +140,11 @@ fn foreign_asset_local_settlement() {
         call_contract(alice.clone(), pallet_state.factory, 0, create_data);
 
         let market = query_get_market(pallet_state.factory, foreign_erc20, quote_erc20);
-        assert_ne!(market, H160::zero(), "Foreign market should not be zero address");
+        assert_ne!(
+            market,
+            H160::zero(),
+            "Foreign market should not be zero address"
+        );
         eprintln!("[foreign] Foreign market deployed at {:?}", market);
 
         // Approve the market for Bob (buyer — needs quote tokens) and Dave (seller — needs foreign tokens)

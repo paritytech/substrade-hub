@@ -199,11 +199,10 @@ fn full_dlob_lifecycle() {
                 GeneralIndex(BASE_ASSET_ID as u128),
             ],
         );
-        let charlie_base =
-            <ForeignAssets as frame_support::traits::fungibles::Inspect<_>>::balance(
-                base_on_penpal.clone(),
-                &charlie,
-            );
+        let charlie_base = <ForeignAssets as frame_support::traits::fungibles::Inspect<_>>::balance(
+            base_on_penpal.clone(),
+            &charlie,
+        );
         eprintln!("[t3] Charlie's tGOLD on PenpalA: {charlie_base}");
         assert!(
             charlie_base > 0,
@@ -318,8 +317,7 @@ fn hrmp_message_from_penpal_to_asset_hub_works() {
         },
     ]));
 
-    let dest: VersionedLocation =
-        PenpalA::sibling_location_of(AssetHubWestend::para_id()).into();
+    let dest: VersionedLocation = PenpalA::sibling_location_of(AssetHubWestend::para_id()).into();
 
     PenpalA::execute_with(|| {
         assert_ok!(<PenpalA as PenpalAPallet>::PolkadotXcm::send(
@@ -359,15 +357,14 @@ fn xcm_transact_revive_call_on_asset_hub() {
     )]);
 
     let dummy_dest = H160::from([0x01u8; 20]);
-    let revive_call = asset_hub_westend_runtime::RuntimeCall::Revive(pallet_revive::Call::<
-        AHRuntime,
-    >::call {
-        dest: dummy_dest,
-        value: 0u128,
-        weight_limit: Weight::from_parts(500_000_000, 100_000),
-        storage_deposit_limit: 0u128,
-        data: vec![],
-    });
+    let revive_call =
+        asset_hub_westend_runtime::RuntimeCall::Revive(pallet_revive::Call::<AHRuntime>::call {
+            dest: dummy_dest,
+            value: 0u128,
+            weight_limit: Weight::from_parts(500_000_000, 100_000),
+            storage_deposit_limit: 0u128,
+            data: vec![],
+        });
 
     let fee_amount = ASSET_HUB_WESTEND_ED * 100_000;
     let xcm = VersionedXcm::V5(Xcm::<()>(vec![
@@ -403,8 +400,7 @@ fn xcm_transact_revive_call_on_asset_hub() {
         },
     ]));
 
-    let dest: VersionedLocation =
-        PenpalA::sibling_location_of(AssetHubWestend::para_id()).into();
+    let dest: VersionedLocation = PenpalA::sibling_location_of(AssetHubWestend::para_id()).into();
 
     PenpalA::execute_with(|| {
         assert_ok!(<PenpalA as PenpalAPallet>::PolkadotXcm::send(

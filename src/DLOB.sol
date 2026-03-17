@@ -522,7 +522,11 @@ contract DLOB {
 
         // Build and execute XCM
         bytes memory message = XcmBuilder.buildDualAssetReserveTransfer(
-            dotForXcm, _resolveLocation(claim.token), claim.amount, claim.destParaId, claim.beneficiary
+            dotForXcm,
+            _resolveLocation(claim.token),
+            claim.amount,
+            claim.destParaId,
+            claim.beneficiary
         );
         IXcm.Weight memory weight = xcmPrecompile.weighMessage(message);
         xcmPrecompile.execute(message, weight);
@@ -601,21 +605,9 @@ contract DLOB {
     function getMarketInfo()
         external
         view
-        returns (
-            address base,
-            address quote,
-            uint96 tick,
-            uint96 minSize,
-            uint128 maxSize
-        )
+        returns (address base, address quote, uint96 tick, uint96 minSize, uint128 maxSize)
     {
-        return (
-            address(baseToken),
-            address(quoteToken),
-            tickSize,
-            minOrderSize,
-            maxOrderSize
-        );
+        return (address(baseToken), address(quoteToken), tickSize, minOrderSize, maxOrderSize);
     }
 
     function getBestPrices() external view returns (uint96 bid, uint96 ask) {
@@ -1018,9 +1010,7 @@ contract DLOB {
     /// @dev Return the XCM Location for `token`. Foreign assets have a stored
     /// location; pallet assets derive it on-the-fly from the precompile address.
     function _resolveLocation(address token) internal view returns (bytes memory) {
-        bytes storage stored = token == address(baseToken)
-            ? baseXcmLocation
-            : quoteXcmLocation;
+        bytes storage stored = token == address(baseToken) ? baseXcmLocation : quoteXcmLocation;
         if (stored.length > 0) return stored;
         return XcmBuilder.locationFromPalletAsset(token);
     }

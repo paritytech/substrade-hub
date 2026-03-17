@@ -81,8 +81,14 @@ contract DLOBFactory is IDLOBFactory {
 
         dlob = Clones.clone(IMPLEMENTATION);
         DLOB(payable(dlob)).initialize{value: msg.value}(
-            base, quote, tickSize, minOrderSize, maxOrderSize,
-            address(XCM_PRECOMPILE), address(SYSTEM_PRECOMPILE), address(this)
+            base,
+            quote,
+            tickSize,
+            minOrderSize,
+            maxOrderSize,
+            address(XCM_PRECOMPILE),
+            address(SYSTEM_PRECOMPILE),
+            address(this)
         );
 
         markets[key] = dlob;
