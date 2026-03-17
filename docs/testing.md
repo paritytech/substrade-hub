@@ -72,7 +72,7 @@ forge test --match-test "testFuzz" -vv
 All tests follow the same setup pattern:
 
 1. Deploy `DLOBFactory` with mock XCM and System precompiles
-2. Create a market via `factory.createMarket()`
+2. Create a market via `factory.createMarket()` with `TokenConfig` structs (empty `xcmLocation` for mock tokens)
 3. Mint test tokens (MockERC20) to test accounts
 4. Approve the DLOB market to spend tokens
 

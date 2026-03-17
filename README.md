@@ -66,10 +66,16 @@ The project compiles with Solc 0.8.28, EVM target `prague`, and `via_ir = true` 
 ## Test
 
 ```bash
-forge test --polkadot
+forge test
 ```
 
-See the [testing guide](docs/testing.md) for gas reporting, invariant tests, and the full test suite breakdown.
+End-to-end tests run the full Westend relay + Asset Hub + PenpalA network in-process via `xcm-emulator`, covering contract deployment, local settlement, and cross-chain order flow:
+
+```bash
+cd e2e && cargo test -- --nocapture
+```
+
+See the [testing guide](docs/testing.md) for gas reporting, invariant tests, and the full Solidity test suite breakdown. See the [e2e README](e2e/README.md) for the emulated XCM test scenarios.
 
 ## Deploy
 
@@ -83,10 +89,14 @@ See the [deployment guide](docs/deployment.md) for full instructions and [config
 RedBlackTree (deployed library, ~6KB)
   └── delegatecall from DLOB for O(log n) tree operations
 
+XcmBuilder (deployed library, ~3KB)
+  └── delegatecall from DLOB to build SCALE-encoded XCM messages
+
 DLOBFactory (~2KB)
   └── creates EIP-1167 minimal proxy clones of DLOB implementation
         └── DLOB clone (~45 bytes proxy → delegates to implementation)
               ├── RedBlackTree library (bid + ask price levels, O(log n))
+              ├── XcmBuilder library (XCM message encoding)
               ├── FIFO Order Queue (per price level, doubly-linked list)
               ├── Matching Engine (up to 50 fills per tx)
               └── XCM Settlement (inline or pending claim fallback)
@@ -96,7 +106,7 @@ Each market is a **DLOB** contract that maintains two red-black trees (one for b
 
 **DLOBFactory** creates new markets as EIP-1167 minimal proxy clones of a single DLOB implementation. The architecture uses two patterns to stay within the EIP-170 contract size limit (24KB) enforced by pallet-revive:
 
-- **External library.** The Red-Black Tree (~6KB bytecode) is deployed separately and called via `delegatecall`, keeping it out of DLOB's runtime code.
+- **External libraries.** RedBlackTree (~6KB) and XcmBuilder (~3KB) are deployed separately and called via `delegatecall`, keeping their bytecode out of DLOB's runtime code.
 - **EIP-1167 clones.** Each market is a minimal proxy (~45 bytes) that delegates to a single DLOB implementation, so DLOBFactory doesn't embed DLOB's creation bytecode.
 
 ## Networks

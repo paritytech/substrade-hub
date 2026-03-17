@@ -6,7 +6,6 @@ import {ScaleCodec} from "./ScaleCodec.sol";
 
 /// @title XcmBuilder
 /// @notice Builds SCALE-encoded XCM V5 messages for cross-chain asset transfers.
-/// Extended from the cross-chain-escrow version with dual-asset (DOT + token) support.
 library XcmBuilder {
     // --- XCM Version enum indices ---
     uint8 constant XCM_V5 = 5;
@@ -14,13 +13,14 @@ library XcmBuilder {
     // --- Junction enum indices ---
     uint8 constant JUNCTION_PARACHAIN = 0;
     uint8 constant JUNCTION_ACCOUNT_ID32 = 1;
-    uint8 constant JUNCTION_ACCOUNT_KEY20 = 2;
     uint8 constant JUNCTION_PALLET_INSTANCE = 4;
     uint8 constant JUNCTION_GENERAL_INDEX = 5;
 
+    // --- Pallet index for trust-backed assets (from pallet-assets) on Asset Hub ---
+    uint8 constant ASSETS_PALLET_INDEX = 50;
+
     // --- XCM V5 Instruction enum indices (auto-assigned, no codec(index) overrides) ---
     uint8 constant INSTRUCTION_WITHDRAW_ASSET = 0;
-    uint8 constant INSTRUCTION_TRANSFER_ASSET = 4;
     uint8 constant INSTRUCTION_DEPOSIT_RESERVE_ASSET = 14;
     uint8 constant INSTRUCTION_BUY_EXECUTION = 19;
     uint8 constant INSTRUCTION_DEPOSIT_ASSET = 13;
@@ -31,6 +31,20 @@ library XcmBuilder {
     uint8 constant ASSET_FILTER_WILD = 1;
     uint8 constant WILD_ASSET_ALL = 0;
     uint8 constant WEIGHT_LIMIT_UNLIMITED = 0;
+
+    // ─────────────────────── Location helpers ───────────────────────
+
+    /// @notice Derive the SCALE-encoded XCM Location for a trust-backed asset
+    /// (registered in `pallet-assets`) from its ERC20 precompile address (prefix 0x0120).
+    ///
+    /// The precompile address encodes the asset ID in its upper 4 bytes:
+    ///   `0x<assetId_be_4bytes>000000000000000001200000`
+    ///
+    /// Returns: Location { parents: 0, interior: X2(PalletInstance(50), GeneralIndex(assetId)) }
+    function locationFromPalletAsset(address token) public pure returns (bytes memory) {
+        uint128 assetId = uint128(uint160(token) >> 128);
+        return buildPalletAssetLocation(ASSETS_PALLET_INDEX, assetId);
+    }
 
     /// @notice Build VersionedLocation for a sibling parachain destination.
     function buildDestination(uint32 paraId) internal pure returns (bytes memory) {
@@ -74,61 +88,33 @@ library XcmBuilder {
         return abi.encodePacked(uint8(0), interior);
     }
 
+    // ─────────────────────── XCM message builder ───────────────────
+
     /// @notice Build a dual-asset reserve transfer XCM message (DOT fee + settlement token).
+    /// @param dotFee Amount of DOT to include for execution fees.
+    /// @param tokenLocation SCALE-encoded XCM Location identifying the settlement token.
+    ///        For pallet assets, use `locationFromPalletAsset(token)`.
+    ///        For foreign assets, this is the caller-provided location stored at market creation.
+    /// @param amount Amount of settlement token to transfer.
+    /// @param destParaId Destination parachain ID.
+    /// @param beneficiary AccountId32 of the recipient on the destination chain.
     /// @dev Builds: VersionedXcm::V5([
     ///   WithdrawAsset([ Asset(DOT, dotFee), Asset(token, amount) ]),
     ///   DepositReserveAsset {
     ///     assets: Wild(All),
     ///     dest: Parachain(destParaId),
-    ///     xcm: [ BuyExecution(DOT, dotFee, Unlimited), DepositAsset(All, beneficiary) ]
+    ///     xcm: [ BuyExecution(DOT, dotFee/2, Unlimited), DepositAsset(All, beneficiary) ]
     ///   }
     /// ])
     function buildDualAssetReserveTransfer(
         uint128 dotFee,
-        uint8 palletIndex,
-        uint128 assetId,
-        uint128 amount,
-        uint32 destParaId,
-        bytes32 beneficiary
-    ) internal pure returns (bytes memory) {
-        // Build asset locations
-        bytes memory dotLocation = buildDotLocation();
-        bytes memory tokenLocation = buildPalletAssetLocation(palletIndex, assetId);
-
-        return _buildDualAssetReserveTransferInner(
-            dotFee, dotLocation, tokenLocation, amount, destParaId, beneficiary
-        );
-    }
-
-    /// @notice Build a dual-asset reserve transfer for custom ERC20 tokens.
-    function buildDualAssetReserveTransferErc20(
-        uint128 dotFee,
-        address contractAddress,
-        uint128 amount,
-        uint32 destParaId,
-        bytes32 beneficiary
-    ) internal pure returns (bytes memory) {
-        bytes memory dotLocation = buildDotLocation();
-        // Custom ERC20: Location { parents: 0, interior: X1(AccountKey20 { key, network: None }) }
-        bytes memory accountKeyJunction = ScaleCodec.encodeEnum(
-            JUNCTION_ACCOUNT_KEY20, abi.encodePacked(uint8(0), bytes20(contractAddress))
-        );
-        bytes memory tokenInterior = ScaleCodec.encodeEnum(1, accountKeyJunction);
-        bytes memory tokenLocation = abi.encodePacked(uint8(0), tokenInterior);
-
-        return _buildDualAssetReserveTransferInner(
-            dotFee, dotLocation, tokenLocation, amount, destParaId, beneficiary
-        );
-    }
-
-    function _buildDualAssetReserveTransferInner(
-        uint128 dotFee,
-        bytes memory dotLocation,
         bytes memory tokenLocation,
         uint128 amount,
         uint32 destParaId,
         bytes32 beneficiary
-    ) private pure returns (bytes memory) {
+    ) public pure returns (bytes memory) {
+        bytes memory dotLocation = buildDotLocation();
+
         // Asset { id: AssetId(location), fun: Fungible(amount) }
         bytes memory dotFungibility =
             ScaleCodec.encodeEnum(FUNGIBLE, ScaleCodec.encodeCompact(uint256(dotFee)));
@@ -140,7 +126,6 @@ library XcmBuilder {
 
         // Assets = Vec<Asset> with 2 items, sorted by AssetId (Location).
         // XCM V5 requires assets to be in sorted order.
-        // Token location (parents=0) sorts before DOT (parents=1).
         bytes memory assets;
         if (_locationLessThan(tokenLocation, dotLocation)) {
             assets = abi.encodePacked(ScaleCodec.encodeCompact(2), tokenAsset, dotAsset);

@@ -8,6 +8,7 @@ import {DLOB} from "../src/DLOB.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockXcm} from "../src/mocks/MockXcm.sol";
 import {MockSystem} from "../src/mocks/MockSystem.sol";
+import {TokenConfig} from "../src/types/TokenConfig.sol";
 
 contract DLOBTest is Test {
     DLOBFactory public factory;
@@ -36,7 +37,11 @@ contract DLOBTest is Test {
         baseToken = new MockERC20("Base", "BASE");
         quoteToken = new MockERC20("Quote", "QUOTE");
         address dlobAddr = factory.createMarket(
-            address(baseToken), address(quoteToken), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            TokenConfig(address(baseToken), ""),
+            TokenConfig(address(quoteToken), ""),
+            TICK_SIZE,
+            MIN_ORDER_SIZE,
+            MAX_ORDER_SIZE
         );
         dlob = DLOB(payable(dlobAddr));
 
@@ -474,7 +479,11 @@ contract DLOBTest is Test {
         MockERC20 base2 = new MockERC20("B2", "B2");
         MockERC20 quote2 = new MockERC20("Q2", "Q2");
         address dlob2Addr = factory.createMarket{value: 0.1 ether}(
-            address(base2), address(quote2), TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE
+            TokenConfig(address(base2), ""),
+            TokenConfig(address(quote2), ""),
+            TICK_SIZE,
+            MIN_ORDER_SIZE,
+            MAX_ORDER_SIZE
         );
         DLOB dlob2 = DLOB(payable(dlob2Addr));
 
@@ -514,7 +523,7 @@ contract DLOBTest is Test {
         }
 
         for (uint256 i = 0; i < n; i++) {
-            if (cancelMask & (1 << (i % 8)) != 0) {
+            if (cancelMask & (uint256(1) << (i % 8)) != 0) {
                 address sender = senders[i % 3];
                 vm.prank(sender);
                 dlob.cancelOrder(orderIds[i], bytes32(uint256(i + 100)));

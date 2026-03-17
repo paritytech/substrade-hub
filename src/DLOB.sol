@@ -10,6 +10,7 @@ import {IDLOBFactory} from "./interfaces/IDLOBFactory.sol";
 import {PriceMath} from "./libraries/PriceMath.sol";
 import {XcmBuilder} from "./libraries/XcmBuilder.sol";
 import {RedBlackTree} from "./libraries/RedBlackTree.sol";
+import {TokenConfig} from "./types/TokenConfig.sol";
 
 /// @title DLOB — Decentralized Limit Order Book
 /// @notice Cross-chain order book on Asset Hub. One instance per base/quote token pair.
@@ -67,43 +68,44 @@ contract DLOB {
 
     // ──────────────────────── Precompile addresses ─────────────────────
 
-    IXcm public xcmPrecompile;
-    ISystem public systemPrecompile;
+    IXcm internal xcmPrecompile;
+    ISystem internal systemPrecompile;
 
     // ──────────────────────── Config (set once via initialize) ────────
 
-    IERC20 public baseToken;
-    IERC20 public quoteToken;
-    uint96 public tickSize;
-    uint96 public minOrderSize;
-    uint128 public maxOrderSize;
-    IDLOBFactory public factory;
+    IERC20 internal baseToken;
+    IERC20 internal quoteToken;
+    bytes internal baseXcmLocation;
+    bytes internal quoteXcmLocation;
+    uint96 internal tickSize;
+    uint96 internal minOrderSize;
+    uint128 internal maxOrderSize;
+    IDLOBFactory internal factory;
 
     // ──────────────────────── Constants ────────────────────────────────
 
-    uint8 public constant ASSETS_PALLET_INDEX = 50;
-    uint256 public constant PRECISION = 1e18;
-    uint8 public constant MAX_FILLS_PER_TX = 50;
+    uint256 internal constant PRECISION = 1e18;
+    uint8 internal constant MAX_FILLS_PER_TX = 50;
 
     // ──────────────────────── State ──────────────────────────────
 
     uint32 public nextOrderId = 1;
-    uint32 public nextNodeId = 1;
+    uint32 internal nextNodeId = 1;
     uint32 public nextClaimId = 1;
-    uint32 public totalOrders;
+    uint32 internal totalOrders;
 
-    uint32 public bidTreeRoot;
-    uint32 public askTreeRoot;
+    uint32 internal bidTreeRoot;
+    uint32 internal askTreeRoot;
 
     uint96 public bestBid;
     uint96 public bestAsk;
-    uint32 public bestBidNodeId;
-    uint32 public bestAskNodeId;
+    uint32 internal bestBidNodeId;
+    uint32 internal bestAskNodeId;
 
     uint8 private _locked;
     bool private _initialized;
 
-    mapping(uint32 => Order) public orders;
+    mapping(uint32 => Order) internal orders;
     mapping(uint32 => OrderLink) internal orderLinks;
     mapping(uint32 => bytes32) internal settlementAccounts;
     mapping(uint32 => uint128) internal orderFeeReserve;
@@ -111,7 +113,7 @@ contract DLOB {
     mapping(uint32 => RedBlackTree.RBNode) internal nodes;
     mapping(uint96 => uint32) internal bidPriceToNode;
     mapping(uint96 => uint32) internal askPriceToNode;
-    mapping(uint32 => PendingClaim) public pendingClaims;
+    mapping(uint32 => PendingClaim) internal pendingClaims;
 
     uint128 public totalFeeReserveBalance;
 
@@ -204,8 +206,8 @@ contract DLOB {
     // ──────────────────────── Initializer ────────────────────────
 
     function initialize(
-        address _baseToken,
-        address _quoteToken,
+        TokenConfig calldata base,
+        TokenConfig calldata quote,
         uint96 _tickSize,
         uint96 _minOrderSize,
         uint128 _maxOrderSize,
@@ -216,8 +218,19 @@ contract DLOB {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
 
-        baseToken = IERC20(_baseToken);
-        quoteToken = IERC20(_quoteToken);
+        baseToken = IERC20(base.token);
+        quoteToken = IERC20(quote.token);
+
+        // Always store the XCM location so both asset types have consistent
+        // storage. For trust-backed assets the caller passes empty bytes, so
+        // we derive the location from the precompile address at init time.
+        baseXcmLocation = base.xcmLocation.length > 0
+            ? base.xcmLocation
+            : XcmBuilder.locationFromPalletAsset(base.token);
+        quoteXcmLocation = quote.xcmLocation.length > 0
+            ? quote.xcmLocation
+            : XcmBuilder.locationFromPalletAsset(quote.token);
+
         tickSize = _tickSize;
         minOrderSize = _minOrderSize;
         maxOrderSize = _maxOrderSize;
@@ -512,11 +525,9 @@ contract DLOB {
         }
 
         // Build and execute XCM
-        uint128 assetId = _extractAssetId(claim.token);
         bytes memory message = XcmBuilder.buildDualAssetReserveTransfer(
             dotForXcm,
-            ASSETS_PALLET_INDEX,
-            assetId,
+            _resolveLocation(claim.token),
             claim.amount,
             claim.destParaId,
             claim.beneficiary
@@ -594,6 +605,14 @@ contract DLOB {
     }
 
     // ──────────────────────── View Functions ──────────────────────
+
+    function getMarketInfo()
+        external
+        view
+        returns (address base, address quote, uint96 tick, uint96 minSize, uint128 maxSize)
+    {
+        return (address(baseToken), address(quoteToken), tickSize, minOrderSize, maxOrderSize);
+    }
 
     function getBestPrices() external view returns (uint96 bid, uint96 ask) {
         return (bestBid, bestAsk);
@@ -881,9 +900,8 @@ contract DLOB {
             orderFeeReserve[orderId] -= feePerSettle;
             totalFeeReserveBalance -= feePerSettle;
 
-            uint128 assetId = _extractAssetId(token);
             bytes memory message = XcmBuilder.buildDualAssetReserveTransfer(
-                feePerSettle, ASSETS_PALLET_INDEX, assetId, amount, destParaId, beneficiary
+                feePerSettle, _resolveLocation(token), amount, destParaId, beneficiary
             );
             IXcm.Weight memory weight = xcmPrecompile.weighMessage(message);
 
@@ -991,8 +1009,13 @@ contract DLOB {
         emit OrderExpired(orderId, refundAmount);
     }
 
-    function _extractAssetId(address asset) internal pure returns (uint128) {
-        return uint128(uint160(asset) >> 128);
+    // ──────────────────────── Internal: XCM Location ───────────
+
+    /// @dev Return the stored XCM Location for `token`.
+    function _resolveLocation(address token) internal view returns (bytes memory) {
+        if (token == address(baseToken)) return baseXcmLocation;
+        if (token == address(quoteToken)) return quoteXcmLocation;
+        revert("unknown token");
     }
 
     // ──────────────────────── Internal: Validation ─────────────

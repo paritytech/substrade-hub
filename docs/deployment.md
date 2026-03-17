@@ -33,8 +33,8 @@ Get testnet PAS tokens from the [Paseo faucet](https://faucet.polkadot.io/) to p
 
 The `DeployFactory` script deploys the full stack in a single broadcast:
 
-1. Deploys the **RedBlackTree** external library (~6KB). Forge detects the library linkage in the bytecode and deploys it automatically.
-2. Deploys the **DLOB implementation** contract with the library linked.
+1. Deploys the **RedBlackTree** (~6KB) and **XcmBuilder** (~3KB) external libraries. Forge detects the library linkages in the bytecode and deploys them automatically.
+2. Deploys the **DLOB implementation** contract with both libraries linked.
 3. Deploys the **DLOBFactory** with the XCM precompile, System precompile, and DLOB implementation addresses.
 
 ```bash
@@ -86,44 +86,63 @@ See [configuration](configuration.md) for details on these parameters.
 
 ### Token Address Derivation
 
-Token addresses on Asset Hub are ERC20 precompile addresses derived from the pallet-asset ID:
+Token addresses on Asset Hub are ERC20 precompile addresses derived deterministically from the asset's pallet index.
+
+**Trust-backed assets** (pallet-assets, prefix `0x0120`):
 
 ```
 ERC20 address = 0x<assetId hex, 8 chars>00000000000000000000000001200000
 ```
-
-For example:
 
 | Asset       | Asset ID | Hex        | ERC20 Precompile Address                       |
 | ----------- | -------- | ---------- | ---------------------------------------------- |
 | USDT        | 1984     | `000007c0` | `0x000007c000000000000000000000000001200000`    |
 | USDC        | 1337     | `00000539` | `0x0000053900000000000000000000000001200000`    |
 
+**Foreign assets** (prefix `0x0220`):
+
+```
+ERC20 address = 0x<index hex, 8 chars>00000000000000000000000002200000
+```
+
+Foreign asset indices are assigned sequentially by `pallet-assets-precompiles` when the asset is registered via the `ForeignAssets` pallet. Query the index on-chain via `ForeignAssetIdToAssetIndex` storage.
+
+See [how it works](how-it-works.md#supported-asset-types) for details on asset types and XCM location configuration.
+
 ### Creating a Market
 
-Use `cast send` to create a market on the deployed factory:
+Markets are created via `createMarket()`, which takes a `TokenConfig` struct for each token:
+
+```solidity
+struct TokenConfig {
+    address token;       // ERC20 precompile address
+    bytes xcmLocation;   // SCALE-encoded XCM Location (empty for trust-backed assets)
+}
+```
+
+For trust-backed assets, leave `xcmLocation` empty. For foreign assets, provide the SCALE-encoded XCM Location (see [Configuring XCM Locations](how-it-works.md#configuring-xcm-locations)).
 
 ```bash
 cast send <FACTORY_ADDRESS> \
-    "createMarket(address,address,uint96,uint96,uint128)" \
-    <BASE_ERC20> <QUOTE_ERC20> \
+    "createMarket((address,bytes),(address,bytes),uint96,uint96,uint128)" \
+    "(<BASE_ERC20>,0x)" "(<QUOTE_ERC20>,0x)" \
     <TICK_SIZE> <MIN_ORDER_SIZE> <MAX_ORDER_SIZE> \
     --chain polkadot-testnet \
     --private-key $DEPLOYER_PRIVATE_KEY
 ```
 
-Example: XAUT/USDT market (both 6 decimals), tick size $0.01, min 0.001 XAUT, max 1000 XAUT:
+Example: XAUT/USDT market (both trust-backed `pallet-assets` tokens, 6 decimals), tick size $0.01, min 0.001 XAUT, max 1000 XAUT:
 
 ```bash
 cast send 0x... \
-    "createMarket(address,address,uint96,uint96,uint128)" \
-    0x...XAUT 0x000007c000000000000000000000000001200000 \
+    "createMarket((address,bytes),(address,bytes),uint96,uint96,uint128)" \
+    "(0x...XAUT,0x)" "(0x000007c000000000000000000000000001200000,0x)" \
     10000000000000000 1000 1000000000 \
     --chain polkadot-testnet \
     --private-key $DEPLOYER_PRIVATE_KEY
 ```
 
-Where `10000000000000000` = 0.01 × 10¹⁸ (tick), `1000` = 0.001 × 10⁶ (min), `1000000000` = 1000 × 10⁶ (max).
+Where `10000000000000000` = 0.01 × 10¹⁸ (tick), `1000` = 0.001 × 10⁶ (min), `1000000000` = 1000 × 10⁶ (max). The `0x` in each tuple is an empty `xcmLocation` (trust-backed asset).
 
 See [configuration](configuration.md) for how to calculate these values for different token decimal combinations.
 
