@@ -7,13 +7,13 @@ on:
       - "**.md"
       - "**.sol"
       - ".github/workflows/check-links.yml"
-      - ".config/lychee.toml"
+      - "contracts/.config/lychee.toml"
   pull_request:
     paths:
       - "**.md"
       - "**.sol"
       - ".github/workflows/check-links.yml"
-      - ".config/lychee.toml"
+      - "contracts/.config/lychee.toml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -38,12 +38,13 @@ jobs:
         uses: lycheeverse/lychee-action@v2
         with:
           args: >-
-            --config .config/lychee.toml
+            --config contracts/.config/lychee.toml
             --no-progress
             './*.md'
-            './src/**/*.sol'
-            './test/**/*.sol'
-            './script/**/*.sol'
+            './contracts/src/**/*.sol'
+            './contracts/test/**/*.sol'
+            './contracts/script/**/*.sol'
+            './contracts/docs/**/*.md'
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

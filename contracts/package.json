@@ -1,0 +1,14 @@
+{
+  "name": "@substrade/contracts",
+  "private": true,
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test --polkadot",
+    "fmt": "forge fmt",
+    "fmt:check": "forge fmt --check"
+  },
+  "dependencies": {
+    "@polkadot/api": "^16.5.4",
+    "@polkadot/keyring": "^14.0.1"
+  }
+}

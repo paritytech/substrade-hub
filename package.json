@@ -1,6 +1,21 @@
 {
-  "dependencies": {
-    "@polkadot/api": "^16.5.4",
-    "@polkadot/keyring": "^14.0.1"
+  "name": "substrade-hub",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "forge:build": "cd contracts && forge build",
+    "forge:test": "cd contracts && forge test --polkadot",
+    "forge:fmt": "cd contracts && forge fmt",
+    "e2e": "cd e2e && cargo test -- --nocapture"
+  },
+  "devDependencies": {
+    "turbo": "^2"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": ">=22.0.0"
   }
 }
