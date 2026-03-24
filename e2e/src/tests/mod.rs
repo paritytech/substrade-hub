@@ -650,14 +650,14 @@ fn setup_pallet_asset_market() -> (
         eprintln!("[setup] Deploying contracts...");
 
         // 1. Deploy libraries (RedBlackTree + XcmBuilder)
-        let rbt_code = read_bytecode("../out/RedBlackTree.sol/RedBlackTree.json");
+        let rbt_code = read_bytecode("../contracts/out/RedBlackTree.sol/RedBlackTree.json");
         let rbt_addr = deploy_contract(alice.clone(), rbt_code, vec![]);
 
-        let xcm_builder_code = read_bytecode("../out/XcmBuilder.sol/XcmBuilder.json");
+        let xcm_builder_code = read_bytecode("../contracts/out/XcmBuilder.sol/XcmBuilder.json");
         let xcm_builder_addr = deploy_contract(alice.clone(), xcm_builder_code, vec![]);
 
         // 2. Deploy DLOB implementation (linked with RedBlackTree + XcmBuilder)
-        let dlob_artifact = "../out/DLOB.sol/DLOB.json";
+        let dlob_artifact = "../contracts/out/DLOB.sol/DLOB.json";
         let mut dlob_code = read_bytecode(dlob_artifact);
         let link_refs = read_link_references(dlob_artifact);
         link_bytecode(&mut dlob_code, "RedBlackTree", rbt_addr, &link_refs);
@@ -665,7 +665,7 @@ fn setup_pallet_asset_market() -> (
         let dlob_impl = deploy_contract(alice.clone(), dlob_code, vec![]);
 
         // 3. Deploy DLOBFactory(xcm_precompile, system_precompile, dlob_impl)
-        let factory_code = read_bytecode("../out/DLOBFactory.sol/DLOBFactory.json");
+        let factory_code = read_bytecode("../contracts/out/DLOBFactory.sol/DLOBFactory.json");
         let constructor_args = (
             to_alloy_addr(H160::from(XCM_PRECOMPILE)),
             to_alloy_addr(H160::from(SYSTEM_PRECOMPILE)),

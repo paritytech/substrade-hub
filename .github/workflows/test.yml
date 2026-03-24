@@ -32,6 +32,7 @@ jobs:
 
       - name: Run unit and fuzz tests
         run: forge test --polkadot --no-match-test "invariant_" -v
+        working-directory: contracts
 
   invariant:
     name: Invariant (pallet-revive)
@@ -55,3 +56,4 @@ jobs:
 
       - name: Run invariant tests (lightweight)
         run: FOUNDRY_PROFILE=ci forge test --polkadot --match-test "invariant_" -v
+        working-directory: contracts

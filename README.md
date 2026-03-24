@@ -40,7 +40,27 @@ Example: [XAUT](https://gold.tether.to/) (Tether Gold, a tokenized gold asset) t
 - Limit buy at $5,147.00 → rests on the bid side until a seller matches
 - Market buy for 12 XAUT → sweeps the best asks (10 at $5,148.50, then 2 at $5,148.75)
 
-See [how it works](docs/how-it-works.md) for the full cross-chain flow, order lifecycle, and feature details.
+See [how it works](contracts/docs/how-it-works.md) for the full cross-chain flow, order lifecycle, and feature details.
+
+## Repository Structure
+
+```
+substrade-hub/
+├── apps/                  # Frontend applications
+│   └── trade/             # Trading UI (React + Vite)
+├── contracts/             # Foundry project (Solidity smart contracts)
+│   ├── src/               # DLOB, DLOBFactory, libraries
+│   ├── test/              # Forge unit, fuzz, and invariant tests
+│   ├── script/            # Deployment scripts (Solidity)
+│   ├── scripts/           # Operational scripts (JS)
+│   ├── lib/               # Dependencies (forge-std, OpenZeppelin)
+│   ├── docs/              # Contract documentation
+│   └── foundry.toml       # Foundry configuration
+├── e2e/                   # Rust E2E tests (xcm-emulator)
+├── package.json           # Workspace root
+├── pnpm-workspace.yaml    # pnpm workspace config
+└── turbo.json             # Turborepo task runner
+```
 
 ## Prerequisites
 
@@ -58,15 +78,15 @@ Get testnet PAS tokens from the [Paseo faucet](https://faucet.polkadot.io/) to p
 ## Build
 
 ```bash
-forge build
+cd contracts && forge build
 ```
 
-The project compiles with Solc 0.8.28, EVM target `prague`, and `via_ir = true` (required due to contract size). See `foundry.toml` for full config.
+The project compiles with Solc 0.8.28, EVM target `prague`, and `via_ir = true` (required due to contract size). See `contracts/foundry.toml` for full config.
 
 ## Test
 
 ```bash
-forge test
+cd contracts && forge test
 ```
 
 End-to-end tests run the full Westend relay + Asset Hub + PenpalA network in-process via `xcm-emulator`, covering contract deployment, local settlement, and cross-chain order flow:
@@ -75,13 +95,13 @@ End-to-end tests run the full Westend relay + Asset Hub + PenpalA network in-pro
 cd e2e && cargo test -- --nocapture
 ```
 
-See the [testing guide](docs/testing.md) for gas reporting, invariant tests, and the full Solidity test suite breakdown. See the [e2e README](e2e/README.md) for the emulated XCM test scenarios.
+See the [testing guide](contracts/docs/testing.md) for gas reporting, invariant tests, and the full Solidity test suite breakdown. See the [e2e README](e2e/README.md) for the emulated XCM test scenarios.
 
 ## Deploy
 
 Deploy the factory and create markets on Paseo Asset Hub (testnet) or Polkadot Asset Hub (mainnet) using `forge script` and `cast send`.
 
-See the [deployment guide](docs/deployment.md) for full instructions and [configuration](docs/configuration.md) for market parameters and factory setup.
+See the [deployment guide](contracts/docs/deployment.md) for full instructions and [configuration](contracts/docs/configuration.md) for market parameters and factory setup.
 
 ## Architecture
 
@@ -121,10 +141,10 @@ Each market is a **DLOB** contract that maintains two red-black trees (one for b
 
 ## Documentation
 
-- [How it works](docs/how-it-works.md): Order lifecycle, cross-chain flow, XCM settlement
-- [Deployment guide](docs/deployment.md): Deploy factory, create markets, verify on Blockscout
-- [Configuration](docs/configuration.md): Market parameters, factory parameters, trading with DOT
-- [Testing](docs/testing.md): Test suite, invariant tests, gas reporting
+- [How it works](contracts/docs/how-it-works.md): Order lifecycle, cross-chain flow, XCM settlement
+- [Deployment guide](contracts/docs/deployment.md): Deploy factory, create markets, verify on Blockscout
+- [Configuration](contracts/docs/configuration.md): Market parameters, factory parameters, trading with DOT
+- [Testing](contracts/docs/testing.md): Test suite, invariant tests, gas reporting
 - [Polkadot Smart Contracts](https://docs.polkadot.com/smart-contracts/)
 - [Foundry for Polkadot](https://github.com/paritytech/foundry-polkadot)
 - [XCM Documentation](https://docs.polkadot.com/parachains/interoperability/get-started/)

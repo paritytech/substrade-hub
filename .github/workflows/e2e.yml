@@ -73,6 +73,7 @@ jobs:
   #
   #     - name: Build Solidity contracts
   #       run: forge build
+  #       working-directory: contracts
   #
   #     - run: cargo test -- --nocapture
   #       working-directory: e2e

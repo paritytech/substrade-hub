@@ -1,7 +1,7 @@
-# Compiler output
-cache/
-out/
-broadcast/
+# Foundry compiler output
+contracts/cache/
+contracts/out/
+contracts/broadcast/
 
 # Dependencies
 node_modules/
@@ -10,8 +10,8 @@ node_modules/
 .env
 .env.local
 .env.*.local
-scripts/.env
-scripts/.env.local
+contracts/scripts/.env
+contracts/scripts/.env.local
 
 # OS
 .DS_Store
@@ -29,3 +29,10 @@ e2e/.cache/
 
 # Logs
 *.log
+
+# Turbo
+.turbo/
+
+# Build output
+dist/
+package-lock.json

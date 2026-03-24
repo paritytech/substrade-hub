@@ -1,5 +1,5 @@
 # Config file for lychee link checker: https://github.com/lycheeverse/lychee
-# Run locally with: lychee -c .config/lychee.toml './*.md' './src/**/*.sol' './test/**/*.sol' './script/**/*.sol'
+# Run locally with: lychee -c contracts/.config/lychee.toml './*.md' './contracts/src/**/*.sol' './contracts/test/**/*.sol' './contracts/script/**/*.sol' './contracts/docs/**/*.md'
 
 cache = true
 max_cache_age = "10d"
@@ -18,9 +18,9 @@ accept = [
 ]
 
 exclude_path = [
-    "./lib",
-    "./out",
-    "./cache",
+    "./contracts/lib",
+    "./contracts/out",
+    "./contracts/cache",
 ]
 
 exclude = [
