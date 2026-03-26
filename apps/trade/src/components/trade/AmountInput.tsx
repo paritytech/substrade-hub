@@ -22,7 +22,8 @@ export function AmountInput() {
 
   const handleMax = () => {
     if (balance != null) {
-      setAmount(formatTokenAmount(balance, baseDecimals));
+      // Show full precision for the spend token when setting max
+      setAmount(formatTokenAmount(balance, baseDecimals, baseDecimals));
     }
   };
 
@@ -34,7 +35,7 @@ export function AmountInput() {
         </label>
         {balance != null && spendToken && (
           <span className="text-xs text-text-muted">
-            Bal: {formatTokenAmount(balance, spendDecimals)} {spendToken.symbol}
+            Bal: {formatTokenAmount(balance, spendDecimals, 2)} {spendToken.symbol}
           </span>
         )}
       </div>

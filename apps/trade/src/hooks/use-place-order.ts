@@ -8,6 +8,7 @@ import { useToastStore } from "../stores/toast";
 import { quoteAmountCeil } from "../lib/format";
 import { parseTokenAmount } from "../lib/format";
 import { Side } from "../types/market";
+import { activeChain } from "../config/chains";
 
 interface PlaceOrderParams {
   side: Side;
@@ -139,7 +140,11 @@ export function usePlaceOrder() {
           return result;
         }
       } catch (err) {
-        updateToast(toastId, "error", err instanceof Error ? err.message : "Transaction failed");
+        const txHash = (err as Error & { txHash?: string }).txHash;
+        const opts = txHash
+          ? { link: { label: "View failed tx on Subscan", href: `${activeChain.explorerUrl}/tx/${txHash}` }, sticky: true }
+          : undefined;
+        updateToast(toastId, "error", formatOrderError(err), opts);
         throw err;
       }
     },
@@ -151,4 +156,67 @@ export function usePlaceOrder() {
       queryClient.invalidateQueries({ queryKey: ["tokenAllowance"] });
     },
   });
+}
+
+/** Map raw contract errors to user-friendly messages */
+function formatOrderError(err: unknown): string {
+  let msg: string;
+  if (err instanceof Error) {
+    msg = err.message;
+  } else if (typeof err === "string") {
+    msg = err;
+  } else {
+    try {
+      msg = JSON.stringify(err);
+    } catch {
+      msg = String(err);
+    }
+  }
+  console.log("[formatOrderError] raw:", msg);
+
+  // Known DLOB revert reasons (match both name and selector)
+  if (msg.includes("SelfTrade") || msg.includes("0xd68a1e65"))
+    return "Cannot trade against your own order — use a different account than the one that placed the resting orders";
+  if (msg.includes("BelowMinSize")) return "Order amount is below the minimum size";
+  if (msg.includes("AboveMaxSize")) return "Order amount exceeds the maximum size";
+  if (msg.includes("PriceNotAligned")) return "Price must be a multiple of the tick size";
+  if (msg.includes("SlippageExceeded")) return "Price moved too far — try again";
+  if (msg.includes("InsufficientBalance") || msg.includes("BalanceLow"))
+    return "Insufficient token balance";
+  if (msg.includes("InsufficientAllowance") || msg.includes("allowance"))
+    return "Token approval failed — please try again";
+  if (msg.includes("User rejected") || msg.includes("user rejected"))
+    return "Transaction rejected by wallet";
+  // Map known DLOB error selectors to user-friendly messages.
+  // The RPC returns selectors as raw bytes garbled into UTF-8 (e.g. "֊\x1ee" for 0xd68a1e65).
+  // Convert each known selector to its garbled string for matching.
+  const knownSelectors: Array<[string, string]> = [
+    ["d68a1e65", "Cannot trade against your own order — use a different account"],
+    ["4ae094cb", "Order amount is below the minimum size"],
+    ["d3c5077b", "Order amount exceeds the maximum size"],
+    ["4851d385", "Price must be a multiple of the tick size"],
+    ["8199f5f3", "Price moved too far — try again (slippage exceeded)"],
+    ["2c5211c6", "Invalid order amount"],
+    ["00bfc921", "Invalid price"],
+    ["ab143c06", "Reentrancy detected — please try again"],
+  ];
+  for (const [sel, reason] of knownSelectors) {
+    // Match hex form (e.g. "0xd68a1e65" in a data field)
+    if (msg.includes("0x" + sel) || msg.includes("0x" + sel.toUpperCase())) return reason;
+    // Match garbled UTF-8 form: decode selector bytes as a string
+    try {
+      const bytes = new Uint8Array(sel.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
+      const garbled = new TextDecoder().decode(bytes);
+      if (msg.includes(garbled)) return reason;
+    } catch { /* skip */ }
+  }
+
+  if (msg.includes("execution reverted"))
+    return "Transaction reverted by the contract — check your order parameters";
+  if (msg.includes("Priority is too low") || msg.includes("Invalid Transaction"))
+    return "Transaction rejected — a previous transaction is still pending. Wait a moment and try again";
+
+  // Strip hex data noise for unknown errors
+  const clean = msg.replace(/0x[0-9a-fA-F]{8,}/g, "").replace(/\s+/g, " ").trim();
+  return clean.length > 120 ? clean.slice(0, 120) + "..." : clean || "Transaction failed";
 }

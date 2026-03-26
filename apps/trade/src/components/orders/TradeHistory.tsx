@@ -2,6 +2,7 @@ import { useTradeHistory } from "../../hooks/use-trade-history";
 import { useMarketStore } from "../../stores/market";
 import { formatTokenAmount, tickToDisplayDecimals } from "../../lib/format";
 import { Spinner } from "../ui/Spinner";
+import { activeChain } from "../../config/chains";
 
 export function TradeHistory() {
   const { data: trades, isLoading } = useTradeHistory();
@@ -24,8 +25,7 @@ export function TradeHistory() {
             <tr className="text-left text-text-muted">
               <th className="px-3 py-1 font-medium">Price</th>
               <th className="px-3 py-1 font-medium">Amount</th>
-              <th className="px-3 py-1 font-medium">Buy #</th>
-              <th className="px-3 py-1 font-medium">Sell #</th>
+              <th className="px-3 py-1 font-medium">Explorer</th>
             </tr>
           </thead>
           <tbody>
@@ -37,14 +37,22 @@ export function TradeHistory() {
                 <td className="px-3 py-1">
                   {formatTokenAmount(trade.amount, baseDecimals)}
                 </td>
-                <td className="px-3 py-1 text-buy">{trade.buyOrderId}</td>
-                <td className="px-3 py-1 text-sell">{trade.sellOrderId}</td>
+                <td className="px-3 py-1">
+                  <a
+                    href={`${activeChain.explorerUrl}/tx/${trade.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-text-secondary hover:text-text-primary underline decoration-dotted"
+                  >
+                    {trade.txHash.slice(0, 6)}...{trade.txHash.slice(-4)}
+                  </a>
+                </td>
               </tr>
             ))}
             {trades?.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={3}
                   className="px-3 py-4 text-center text-text-muted"
                 >
                   No recent trades
