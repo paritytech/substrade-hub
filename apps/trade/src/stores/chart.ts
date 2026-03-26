@@ -7,9 +7,10 @@ interface ChartState {
   setTimeRange: (range: TimeRange) => void;
 }
 
+// Asset Hub block time is ~12s
 export const RANGE_BLOCKS: Record<TimeRange, number> = {
-  "1H": 600, // ~1 hour at 6s blocks
-  "1D": 14400, // ~24 hours at 6s blocks
+  "1H": 300, // ~1 hour at 12s blocks
+  "1D": 7200, // ~24 hours at 12s blocks
 };
 
 export const RANGE_CANDLE_INTERVAL: Record<TimeRange, number> = {
@@ -18,6 +19,6 @@ export const RANGE_CANDLE_INTERVAL: Record<TimeRange, number> = {
 };
 
 export const useChartStore = create<ChartState>((set) => ({
-  timeRange: "1H",
+  timeRange: "1D",
   setTimeRange: (timeRange) => set({ timeRange }),
 }));

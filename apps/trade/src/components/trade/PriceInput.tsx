@@ -1,11 +1,13 @@
 import { useTradeFormStore } from "../../stores/trade-form";
 import { useMarketStore } from "../../stores/market";
-import { alignToTick } from "../../lib/format";
+import { alignToTick, tickToDisplayDecimals } from "../../lib/format";
 import { parseTokenAmount, formatTokenAmount } from "../../lib/format";
 
 export function PriceInput() {
   const { price, setPrice } = useTradeFormStore();
-  const tickSize = useMarketStore((s) => s.selectedMarket?.tickSize);
+  const market = useMarketStore((s) => s.selectedMarket);
+  const tickSize = market?.tickSize;
+  const priceDecimals = tickToDisplayDecimals(tickSize ?? 10n ** 18n);
 
   const handleBlur = () => {
     if (!price || !tickSize) return;
@@ -13,14 +15,13 @@ export function PriceInput() {
       const parsed = parseTokenAmount(price);
       const aligned = alignToTick(parsed, tickSize);
       if (aligned > 0n) {
-        setPrice(formatTokenAmount(aligned));
+        setPrice(formatTokenAmount(aligned, 18, priceDecimals));
       }
     } catch {
       // Invalid input, leave as-is for user to fix
     }
   };
 
-  const market = useMarketStore((s) => s.selectedMarket);
   const quoteSymbol = market?.quote.symbol ?? "";
 
   return (

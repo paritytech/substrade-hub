@@ -32,6 +32,7 @@ async function fetchTradeHistory(
       data: `0x${string}`;
       topics: `0x${string}`[];
       blockNumber: string;
+      transactionHash: string;
       transactionIndex: string;
       logIndex: string;
     }>;
@@ -82,6 +83,7 @@ async function fetchTradeHistory(
           trades.push({
             blockNumber: blockNum,
             txIndex: parseInt(log.transactionIndex, 16),
+            txHash: log.transactionHash,
             buyOrderId: args.buyOrderId,
             sellOrderId: args.sellOrderId,
             price: args.price,

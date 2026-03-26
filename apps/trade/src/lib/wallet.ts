@@ -114,7 +114,9 @@ export async function waitForReceipt(txHash: `0x${string}`): Promise<{ status: s
       if (receipt) {
         console.log(`[waitForReceipt] ${txHash} status: ${receipt.status}, block: ${receipt.blockNumber}`);
         if (receipt.status !== "0x1") {
-          throw new Error("Transaction reverted on chain");
+          const err = new Error("Transaction reverted on chain");
+          (err as Error & { txHash: string }).txHash = txHash;
+          throw err;
         }
         return receipt;
       }

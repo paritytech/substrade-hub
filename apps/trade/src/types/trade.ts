@@ -1,6 +1,7 @@
 export interface TradeEvent {
   blockNumber: number;
   txIndex: number;
+  txHash: string;
   buyOrderId: number;
   sellOrderId: number;
   price: bigint;

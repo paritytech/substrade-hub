@@ -5,7 +5,7 @@ import { useTradeFormStore } from "../../stores/trade-form";
 import { useWalletStore } from "../../stores/wallet";
 import { useMarketStore } from "../../stores/market";
 import { usePlaceOrder } from "../../hooks/use-place-order";
-import { parseTokenAmount, quoteAmountCeil, formatTokenAmount } from "../../lib/format";
+import { parseTokenAmount, quoteAmountCeil, formatTokenAmount, tickToDisplayDecimals } from "../../lib/format";
 import { Side } from "../../types/market";
 import { Spinner } from "../ui/Spinner";
 
@@ -28,12 +28,13 @@ export function TradeForm() {
   // Calculate estimated total for limit orders
   const baseDecimals = market?.base.decimals ?? 18;
   const quoteDecimals = market?.quote.decimals ?? 18;
+  const priceDecimals = tickToDisplayDecimals(market?.tickSize ?? 10n ** 18n);
   let estimatedTotal = "";
   if (orderType === "limit" && price && amount) {
     try {
       const p = parseTokenAmount(price);
       const a = parseTokenAmount(amount, baseDecimals);
-      estimatedTotal = formatTokenAmount(quoteAmountCeil(a, p), quoteDecimals);
+      estimatedTotal = formatTokenAmount(quoteAmountCeil(a, p), quoteDecimals, priceDecimals);
     } catch {
       // Invalid input
     }

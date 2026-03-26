@@ -153,63 +153,176 @@ const SEED_ASKS = [
 const BASE_UNIT = 10n ** BigInt(BASE_DECIMALS);
 const QUOTE_UNIT = 10n ** BigInt(QUOTE_DECIMALS);
 
-// Phase 4 script: Trader takes, Maker places bridge orders.
+// Phase 4: Trade history generation.
+//
 // Three accounts: Deployer (seeds in phase 3), Maker (bridges), Trader (takes).
 // Maker ≠ Deployer → no SelfTrade on bridges. Maker ≠ Trader → no SelfTrade on takes.
-// On a clean book, Maker bridges rest below remaining asks / above remaining bids.
-// Pattern: G G — R R G R R — G G
 //
-// Clean book: Bids 170(3)..174.50(3)=30  Asks 175.50(3)..180(3)=30
-const PHASE4_SCRIPT = [
-  // -- Green run: Trader eats seed asks 175.50→177 --
-  // Each trade must span 2+ levels for a colored (non-grey) candle.
-  { type: "trade", side: 0, amount: 7n },   //  1. BUY  7 → 175.50(3)+176(3)+176.50(1) → C=176.50 (green $1)
-  { type: "trade", side: 0, amount: 5n },   //  2. BUY  5 → 176.50(2)+177(3) → C=177 (green $0.50)
+// Instead of hand-coding every trade+bridge, we define a PRICE_PATH of target close
+// prices. The buildScript() function simulates the order book and generates the
+// exact sequence of bridge placements and trades needed to hit each target.
 
-  // Maker bids near 177 (remaining seed asks start at 177.50 → no cross)
-  { type: "bridge", side: 0, price: 177.00, amount: 3n },
-  { type: "bridge", side: 0, price: 176.50, amount: 3n },
-  { type: "bridge", side: 0, price: 176.00, amount: 3n },
-  { type: "bridge", side: 0, price: 175.50, amount: 3n },
-
-  // -- Doji + Red: Trader sells into Maker bids + seed bids --
-  { type: "trade", side: 1, amount: 1n },   //  3. SELL 1 → 1@177(maker) → C=177 (grey doji)
-  { type: "trade", side: 1, amount: 5n },   //  4. SELL 5 → 2@177+3@176.50(maker) → C=176.50 (red $0.50)
-  { type: "trade", side: 1, amount: 9n },   //  5. SELL 9 → 3@176+3@175.50(maker)+3@174.50(seed) → C=174.50 (red $2)
-
-  // Maker asks near 175 (remaining seed bids top at 174 → no cross)
-  { type: "bridge", side: 1, price: 175.00, amount: 3n },
-  { type: "bridge", side: 1, price: 175.50, amount: 3n },
-  { type: "bridge", side: 1, price: 176.00, amount: 3n },
-
-  // -- Green bounce: Trader buys Maker asks --
-  { type: "trade", side: 0, amount: 9n },   //  6. BUY  9 → 175(3)+175.50(3)+176(3)(maker) → C=176 (green $1.50)
-
-  // Maker bids near 176 for the big red run (remaining seed asks at 177.50+ → no cross)
-  { type: "bridge", side: 0, price: 176.00, amount: 3n },
-  { type: "bridge", side: 0, price: 175.50, amount: 3n },
-  { type: "bridge", side: 0, price: 175.00, amount: 3n },
-  { type: "bridge", side: 0, price: 174.50, amount: 3n },
-  { type: "bridge", side: 0, price: 174.00, amount: 3n },
-  { type: "bridge", side: 0, price: 173.50, amount: 3n },
-  { type: "bridge", side: 0, price: 173.00, amount: 3n },
-  { type: "bridge", side: 0, price: 172.50, amount: 3n },
-
-  // -- Red run --
-  { type: "trade", side: 1, amount: 5n },   //  7. SELL 5 → 3@176+2@175.50(maker) → C=175.50 (red $0.50)
-  { type: "trade", side: 1, amount: 19n },  //  8. SELL 19 → 1@175.50+3@175+3@174.50+3@174+3@173.50+3@173+3@172.50 → C=172.50 (red $3)
-
-  // Maker asks near 173 (remaining seed bids at 172 and below → no cross)
-  { type: "bridge", side: 1, price: 173.00, amount: 3n },
-  { type: "bridge", side: 1, price: 173.50, amount: 3n },
-  { type: "bridge", side: 1, price: 174.00, amount: 3n },
-  { type: "bridge", side: 1, price: 174.50, amount: 3n },
-
-  // -- Doji + Green finish: Trader buys Maker asks --
-  { type: "trade", side: 0, amount: 1n },   //  9. BUY  1 → 1@173(maker) → C=173 (grey doji)
-  { type: "trade", side: 0, amount: 5n },   // 10. BUY  5 → 2@173+3@173.50(maker) → C=173.50 (green $0.50)
-  { type: "trade", side: 0, amount: 6n },   // 11. BUY  6 → 3@174+3@174.50(maker) → C=174.50 (green $1)
+// Target close prices for each candle. Direction is inferred from consecutive prices.
+// Same price as previous = grey doji. Higher = green (buy). Lower = red (sell).
+const PRICE_PATH = [
+  // Wave 1: Rally
+  176.50, 177.00, 177.50, 178.00, 178.50,
+  // Doji + Pullback
+  178.50, 178.00, 177.00, 176.00,
+  // Wave 2: Bounce
+  177.00, 178.00, 179.00, 179.50,
+  // Doji + Correction
+  179.50, 179.00, 178.00, 177.00, 176.00, 175.00,
+  // Wave 3: Recovery rally
+  176.00, 177.00, 178.00, 179.00, 180.00,
+  // Pullback
+  179.00, 178.00, 177.50,
+  // Final push
+  178.50, 179.50,
+  // Fade
+  179.00, 178.00,
 ];
+
+// Units per bridge level (same density as seed orders)
+const BRIDGE_UNITS = 3n;
+// Tick step for bridge/book levels
+const LEVEL_STEP = 0.50;
+
+/**
+ * Build the phase 4 script from a price path.
+ * Simulates a simple order book to compute exact trade amounts and bridge placements.
+ * Each level holds BRIDGE_UNITS tokens at LEVEL_STEP intervals.
+ */
+function buildScript(seedBids, seedAsks, pricePath) {
+  const script = [];
+
+  // Simple book model: map of price → available units
+  const book = { bids: new Map(), asks: new Map() };
+  for (const { price, amount } of seedBids) book.bids.set(price, Number(amount));
+  for (const { price, amount } of seedAsks) book.asks.set(price, Number(amount));
+
+  const bestAsk = () => {
+    let min = Infinity;
+    for (const [p, a] of book.asks) if (a > 0 && p < min) min = p;
+    return min === Infinity ? null : min;
+  };
+  const bestBid = () => {
+    let max = -Infinity;
+    for (const [p, a] of book.bids) if (a > 0 && p > max) max = p;
+    return max === -Infinity ? null : max;
+  };
+
+  // Round to avoid floating point issues
+  const round = (n) => Math.round(n * 100) / 100;
+
+  let prevClose = null;
+  let prevDirection = null; // 0 = buy, 1 = sell
+
+  for (let i = 0; i < pricePath.length; i++) {
+    const target = pricePath[i];
+    let direction;
+
+    if (prevClose === null) {
+      direction = 0; // first candle is always a buy
+    } else if (target > prevClose) {
+      direction = 0; // green = buy
+    } else if (target < prevClose) {
+      direction = 1; // red = sell
+    } else {
+      direction = prevDirection ?? 0; // doji = same direction as previous
+    }
+
+    const isDoji = prevClose !== null && target === prevClose;
+
+    if (direction === 0) {
+      // BUY: need asks from current best ask up to target price
+      const ba = bestAsk();
+      if (ba === null || ba > target) {
+        // No asks available or all asks above target — need bridges
+        const from = prevClose != null ? round(prevClose - LEVEL_STEP) : round(target - 1);
+        const to = target;
+        for (let p = round(Math.max(from, 170)); p <= to; p = round(p + LEVEL_STEP)) {
+          if (!book.asks.has(p) || book.asks.get(p) <= 0) {
+            script.push({ type: "bridge", side: 1, price: p, amount: BRIDGE_UNITS });
+            book.asks.set(p, (book.asks.get(p) || 0) + Number(BRIDGE_UNITS));
+          }
+        }
+      }
+
+      if (isDoji) {
+        // Doji: buy 1 unit at current best ask
+        const askPrice = bestAsk();
+        if (askPrice !== null) {
+          script.push({ type: "trade", side: 0, amount: 1n, price: target });
+          book.asks.set(askPrice, book.asks.get(askPrice) - 1);
+        }
+      } else {
+        // Buy up to target: consume all ask levels from lowest to target
+        let amount = 0;
+        const ba2 = bestAsk();
+        if (ba2 !== null) {
+          for (let p = ba2; p <= target; p = round(p + LEVEL_STEP)) {
+            const avail = book.asks.get(p) || 0;
+            if (avail > 0) {
+              amount += avail;
+              book.asks.set(p, 0);
+            }
+          }
+        }
+        if (amount > 0) {
+          script.push({ type: "trade", side: 0, amount: BigInt(amount), price: target });
+        }
+      }
+
+    } else {
+      // SELL: need bids from current best bid down to target price
+      const bb = bestBid();
+      if (bb === null || bb < target) {
+        // No bids available or all bids below target — need bridges
+        const from = prevClose != null ? round(prevClose + LEVEL_STEP) : round(target + 1);
+        const to = target;
+        for (let p = round(Math.min(from, 180)); p >= to; p = round(p - LEVEL_STEP)) {
+          if (!book.bids.has(p) || book.bids.get(p) <= 0) {
+            script.push({ type: "bridge", side: 0, price: p, amount: BRIDGE_UNITS });
+            book.bids.set(p, (book.bids.get(p) || 0) + Number(BRIDGE_UNITS));
+          }
+        }
+      }
+
+      if (isDoji) {
+        // Doji: sell 1 unit at current best bid
+        const bidPrice = bestBid();
+        if (bidPrice !== null) {
+          script.push({ type: "trade", side: 1, amount: 1n, price: target });
+          book.bids.set(bidPrice, book.bids.get(bidPrice) - 1);
+        }
+      } else {
+        // Sell down to target: consume all bid levels from highest to target
+        let amount = 0;
+        const bb2 = bestBid();
+        if (bb2 !== null) {
+          for (let p = bb2; p >= target; p = round(p - LEVEL_STEP)) {
+            const avail = book.bids.get(p) || 0;
+            if (avail > 0) {
+              amount += avail;
+              book.bids.set(p, 0);
+            }
+          }
+        }
+        if (amount > 0) {
+          script.push({ type: "trade", side: 1, amount: BigInt(amount), price: target });
+        }
+      }
+    }
+
+    prevClose = target;
+    prevDirection = direction;
+  }
+
+  return script;
+}
+
+const PHASE4_SCRIPT = buildScript(SEED_BIDS, SEED_ASKS, PRICE_PATH);
 
 // Replenish: refill the full range so the book looks deep after trades
 const REPLENISH_BIDS = [
@@ -318,8 +431,7 @@ function traderQuoteNeeded() {
   let total = 0n;
   for (const s of PHASE4_SCRIPT) {
     if (s.type === "trade" && s.side === 0) {
-      // BUY escrow: worst case ~$180 per unit
-      total += s.amount * BASE_UNIT * priceToRaw(180.00) / PRECISION;
+      total += s.amount * BASE_UNIT * priceToRaw(s.price) / PRECISION;
     }
   }
   return total * 2n;
@@ -661,33 +773,42 @@ async function main() {
     needAssets();
     needMarket();
 
-    // -- Generate fresh Trader + Maker accounts --
-    const trader = generateWallet("Trader");
-    const maker = generateWallet("Maker");
+    // -- Generate fresh accounts --
+    // 4 single-side accounts to guarantee no SelfTrade:
+    //   Buyer:    places BUY trades only
+    //   Seller:   places SELL trades only
+    //   MakerBid: places bridge bids only
+    //   MakerAsk: places bridge asks only
+    const buyer = generateWallet("Buyer");
+    const seller = generateWallet("Seller");
+    const makerBid = generateWallet("MakerBid");
+    const makerAsk = generateWallet("MakerAsk");
 
-    // -- Fund both with PAS for gas --
-    console.log("\nFunding Trader + Maker with 10 PAS each...");
-    execSync(`cast send ${trader.h160} --rpc-url ${RPC_URL} --private-key ${DEPLOYER_KEY} --value 10000000000000000000`, { encoding: "utf8", timeout: 300_000 });
-    execSync(`cast send ${maker.h160} --rpc-url ${RPC_URL} --private-key ${DEPLOYER_KEY} --value 10000000000000000000`, { encoding: "utf8", timeout: 300_000 });
+    // -- Fund all with PAS for gas --
+    console.log("\nFunding 4 accounts with 10 PAS each...");
+    for (const w of [buyer, seller, makerBid, makerAsk]) {
+      execSync(`cast send ${w.h160} --rpc-url ${RPC_URL} --private-key ${DEPLOYER_KEY} --value 10000000000000000000`, { encoding: "utf8", timeout: 300_000 });
+    }
 
     // -- Transfer tokens --
-    const tQuote = traderQuoteNeeded();
-    const tBase = traderBaseNeeded();
-    const mQuote = makerQuoteNeeded();
-    const mBase = makerBaseNeeded();
+    const buyerQuote = traderQuoteNeeded();  // Buyer needs quote (tUSD) for BUY escrow
+    const sellerBase = traderBaseNeeded();   // Seller needs base (tNVDA) for SELL escrow
+    const mQuote = makerQuoteNeeded();       // MakerBid needs quote for bid escrow
+    const mBase = makerBaseNeeded();         // MakerAsk needs base for ask escrow
 
-    console.log(`Transferring tokens to Trader (${tQuote} tUSD, ${tBase} tNVDA)...`);
-    castSend(quoteErc20, "transfer(address,uint256)", `${trader.h160} ${tQuote}`, DEPLOYER_KEY);
-    castSend(baseErc20, "transfer(address,uint256)", `${trader.h160} ${tBase}`, DEPLOYER_KEY);
-    console.log(`Transferring tokens to Maker (${mQuote} tUSD, ${mBase} tNVDA)...`);
-    castSend(quoteErc20, "transfer(address,uint256)", `${maker.h160} ${mQuote}`, DEPLOYER_KEY);
-    castSend(baseErc20, "transfer(address,uint256)", `${maker.h160} ${mBase}`, DEPLOYER_KEY);
+    console.log(`Transferring ${buyerQuote} tUSD to Buyer...`);
+    castSend(quoteErc20, "transfer(address,uint256)", `${buyer.h160} ${buyerQuote}`, DEPLOYER_KEY);
+    console.log(`Transferring ${sellerBase} tNVDA to Seller...`);
+    castSend(baseErc20, "transfer(address,uint256)", `${seller.h160} ${sellerBase}`, DEPLOYER_KEY);
+    console.log(`Transferring ${mQuote} tUSD to MakerBid, ${mBase} tNVDA to MakerAsk...`);
+    castSend(quoteErc20, "transfer(address,uint256)", `${makerBid.h160} ${mQuote}`, DEPLOYER_KEY);
+    castSend(baseErc20, "transfer(address,uint256)", `${makerAsk.h160} ${mBase}`, DEPLOYER_KEY);
 
     // -- Approvals --
-    castSend(quoteErc20, "approve(address,uint256)", `${marketAddress} ${tQuote}`, trader.key);
-    castSend(baseErc20, "approve(address,uint256)", `${marketAddress} ${tBase}`, trader.key);
-    castSend(quoteErc20, "approve(address,uint256)", `${marketAddress} ${mQuote}`, maker.key);
-    castSend(baseErc20, "approve(address,uint256)", `${marketAddress} ${mBase}`, maker.key);
+    castSend(quoteErc20, "approve(address,uint256)", `${marketAddress} ${buyerQuote}`, buyer.key);
+    castSend(baseErc20, "approve(address,uint256)", `${marketAddress} ${sellerBase}`, seller.key);
+    castSend(quoteErc20, "approve(address,uint256)", `${marketAddress} ${mQuote}`, makerBid.key);
+    castSend(baseErc20, "approve(address,uint256)", `${marketAddress} ${mBase}`, makerAsk.key);
 
     const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
     const tradeCount = PHASE4_SCRIPT.filter((s) => s.type === "trade").length;
@@ -699,27 +820,29 @@ async function main() {
         const rawPrice = priceToRaw(step.price);
         const rawAmount = step.amount * BASE_UNIT;
         const sideLabel = step.side === 0 ? "BID" : "ASK";
+        // BID bridges go to MakerBid, ASK bridges go to MakerAsk — prevents self-trade
+        const bridgeKey = step.side === 0 ? makerBid.key : makerAsk.key;
         console.log(`  Bridge: ${sideLabel} ${step.amount} @ $${step.price}`);
         castSend(
           marketAddress,
           "placeLimitOrder(uint8,uint96,uint128,bytes32,bytes32,uint32,uint64)(uint32)",
           `${step.side} ${rawPrice} ${rawAmount} ${ZERO_BYTES32} ${ZERO_BYTES32} 0 0`,
-          maker.key
+          bridgeKey
         );
       } else {
         tradeNum++;
         const rawAmount = step.amount * BASE_UNIT;
         const sideLabel = step.side === 0 ? "BUY" : "SELL";
-        const aggressivePrice = step.side === 0
-          ? priceToRaw(200.00)
-          : priceToRaw(155.00);
+        const limitPrice = priceToRaw(step.price);
 
-        console.log(`  Trade ${tradeNum}/${tradeCount}: ${sideLabel} ${step.amount} tNVDA`);
+        // BUY trades go to Buyer, SELL trades go to Seller — prevents self-trade
+        const tradeKey = step.side === 0 ? buyer.key : seller.key;
+        console.log(`  Trade ${tradeNum}/${tradeCount}: ${sideLabel} ${step.amount} tNVDA @ $${step.price}`);
         castSend(
           marketAddress,
           "placeLimitOrder(uint8,uint96,uint128,bytes32,bytes32,uint32,uint64)(uint32)",
-          `${step.side} ${aggressivePrice} ${rawAmount} ${ZERO_BYTES32} ${ZERO_BYTES32} 0 0`,
-          trader.key
+          `${step.side} ${limitPrice} ${rawAmount} ${ZERO_BYTES32} ${ZERO_BYTES32} 0 0`,
+          tradeKey
         );
 
         if (tradeNum < tradeCount) {
