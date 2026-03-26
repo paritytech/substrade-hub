@@ -50,6 +50,19 @@ export function formatTokenAmount(
 }
 
 /**
+ * Extract pallet-assets asset ID from an ERC20 precompile address.
+ * Address format: 0x{assetId_be_4bytes}00000000000000000000000001200000
+ * Returns null if the address doesn't match the trust-backed asset pattern.
+ */
+export function erc20ToAssetId(addr: `0x${string}`): number | null {
+  const clean = addr.toLowerCase().replace("0x", "");
+  if (clean.length !== 40) return null;
+  if (!clean.endsWith("00000000000000000000000001200000")) return null;
+  const id = parseInt(clean.slice(0, 8), 16);
+  return isNaN(id) ? null : id;
+}
+
+/**
  * Parse a decimal string into a bigint with the given number of decimals.
  */
 export function parseTokenAmount(value: string, decimals: number = 18): bigint {
