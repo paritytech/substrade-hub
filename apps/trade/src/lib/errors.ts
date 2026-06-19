@@ -1,14 +1,16 @@
 import { decodeErrorResult, type Abi } from "viem";
+import { toHex } from "polkadot-api/utils";
 
 /**
  * Attempt to decode a Solidity revert reason from a dry-run result.
  */
 export function extractRevertReason(
-  result: { value?: { data?: { asHex?: () => string } } },
+  result: { value?: { data?: Uint8Array } },
   abi?: Abi,
 ): string {
   try {
-    const hex = result.value?.data?.asHex?.();
+    const data = result.value?.data;
+    const hex = data ? toHex(data) : undefined;
     if (!hex || hex === "0x") return "Transaction reverted without reason";
 
     // Try to decode as a known error from the ABI

@@ -483,7 +483,7 @@ fn query_get_market(factory: H160, base: H160, quote: H160) -> H160 {
 /// Derive the H160 address that pallet-revive assigns to a Substrate AccountId32.
 /// Formula: keccak_256(account_id)[12..]
 fn account_to_h160(account: &AccountId) -> H160 {
-    let hash = sp_core::hashing::keccak_256(account.as_ref());
+    let hash = sp_crypto_hashing::keccak_256(account.as_ref());
     H160::from_slice(&hash[12..])
 }
 
@@ -615,7 +615,7 @@ fn setup_pallet_asset_market() -> (
 
     // Register tGOLD as a foreign asset on PenpalA for cross-chain settlement
     PenpalA::execute_with(|| {
-        type ForeignAssets = <PenpalA as PenpalAPallet>::ForeignAssets;
+        type Assets = <PenpalA as PenpalAPallet>::Assets;
         let base_on_penpal = Location::new(
             1,
             [
@@ -624,7 +624,7 @@ fn setup_pallet_asset_market() -> (
                 GeneralIndex(BASE_ASSET_ID as u128),
             ],
         );
-        assert_ok!(ForeignAssets::force_create(
+        assert_ok!(Assets::force_create(
             <PenpalA as Chain>::RuntimeOrigin::root(),
             base_on_penpal,
             charlie.clone().into(),

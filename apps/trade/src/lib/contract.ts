@@ -5,7 +5,7 @@ import {
   type ContractFunctionName,
   type ContractFunctionArgs,
 } from "viem";
-import { Binary } from "polkadot-api";
+import { fromHex, toHex } from "polkadot-api/utils";
 import { getTypedApi } from "./client";
 import { extractRevertReason } from "./errors";
 import { sendTransaction, waitForReceipt } from "./wallet";
@@ -17,10 +17,10 @@ function buildEthTransactTx(
   value?: bigint,
 ) {
   return {
-    to: Binary.fromHex(contractAddress),
-    input: { data: Binary.fromHex(callData) },
+    to: contractAddress,
+    input: { data: fromHex(callData) },
     value: value != null ? toU256(value) : undefined,
-    from: from ? Binary.fromHex(from) : undefined,
+    from,
     authorization_list: [],
     blob_versioned_hashes: [],
     blobs: [],
@@ -61,7 +61,7 @@ export async function readContract<
   return decodeFunctionResult({
     abi,
     functionName,
-    data: result.value.data.asHex() as `0x${string}`,
+    data: toHex(result.value.data) as `0x${string}`,
   } as never);
 }
 

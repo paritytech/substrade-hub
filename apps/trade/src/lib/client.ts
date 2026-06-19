@@ -1,5 +1,5 @@
 import { createClient, type TypedApi } from "polkadot-api";
-import { getWsProvider } from "polkadot-api/ws-provider/web";
+import { getWsProvider } from "polkadot-api/ws";
 import { passet_hub } from "@polkadot-api/descriptors";
 import { activeChain } from "../config/chains";
 

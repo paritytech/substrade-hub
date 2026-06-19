@@ -12,7 +12,7 @@
     "e2e": "cd e2e && cargo test -- --nocapture"
   },
   "devDependencies": {
-    "turbo": "^2"
+    "turbo": "^2.9.18"
   },
   "packageManager": "pnpm@10.12.1",
   "engines": {
