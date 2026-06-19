@@ -164,8 +164,9 @@ library XcmBuilder {
             abi.encodePacked(ScaleCodec.encodeCompact(2), buyExecution, depositAsset);
 
         // Destination Location { parents: 1, interior: X1(Parachain(destParaId)) }
-        bytes memory parachainJunction =
-            ScaleCodec.encodeEnum(JUNCTION_PARACHAIN, ScaleCodec.encodeCompact(uint256(destParaId)));
+        bytes memory parachainJunction = ScaleCodec.encodeEnum(
+            JUNCTION_PARACHAIN, ScaleCodec.encodeCompact(uint256(destParaId))
+        );
         bytes memory destInterior = ScaleCodec.encodeEnum(1, parachainJunction);
         bytes memory dest = abi.encodePacked(uint8(1), destInterior);
 
