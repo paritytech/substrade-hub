@@ -29,8 +29,8 @@ async function fetchTokenInfo(addr: `0x${string}`): Promise<TokenInfo> {
     if (meta) {
       return {
         addr,
-        name: meta.name.asText(),
-        symbol: meta.symbol.asText(),
+        name: new TextDecoder().decode(meta.name),
+        symbol: new TextDecoder().decode(meta.symbol),
         decimals: meta.decimals,
       };
     }

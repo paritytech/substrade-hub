@@ -190,7 +190,7 @@ fn full_dlob_lifecycle() {
 
     // Verify base tokens arrived on PenpalA for Charlie
     PenpalA::execute_with(|| {
-        type ForeignAssets = <PenpalA as PenpalAPallet>::ForeignAssets;
+        type Assets = <PenpalA as PenpalAPallet>::Assets;
         let base_on_penpal = Location::new(
             1,
             [
@@ -199,7 +199,7 @@ fn full_dlob_lifecycle() {
                 GeneralIndex(BASE_ASSET_ID as u128),
             ],
         );
-        let charlie_base = <ForeignAssets as frame_support::traits::fungibles::Inspect<_>>::balance(
+        let charlie_base = <Assets as frame_support::traits::fungibles::Inspect<_>>::balance(
             base_on_penpal.clone(),
             &charlie,
         );

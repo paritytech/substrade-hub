@@ -36,3 +36,4 @@ e2e/.cache/
 # Build output
 dist/
 package-lock.json
+*.tsbuildinfo

@@ -906,8 +906,9 @@ contract DLOB {
             IXcm.Weight memory weight = xcmPrecompile.weighMessage(message);
 
             try xcmPrecompile.execute(message, weight) {
-                // Success
-            } catch {
+            // Success
+            }
+            catch {
                 // Restore fee reserve, create fallback claim
                 orderFeeReserve[orderId] += feePerSettle;
                 totalFeeReserveBalance += feePerSettle;
@@ -971,7 +972,12 @@ contract DLOB {
         }
     }
 
-    function _cancelOrderInternal(uint32 orderId, bytes32 /* originAccount */ ) internal {
+    function _cancelOrderInternal(
+        uint32 orderId,
+        bytes32 /* originAccount */
+    )
+        internal
+    {
         Order storage o = orders[orderId];
         o.status = OrderStatus.Cancelled;
         uint128 refundAmount = o.remainingAmount;

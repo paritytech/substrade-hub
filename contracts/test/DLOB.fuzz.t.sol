@@ -54,8 +54,11 @@ contract DLOBHandler is Test {
             uint128((uint256(amount) * uint256(price) + PRECISION - 1) / PRECISION);
 
         vm.prank(user);
-        try dlob.placeLimitOrder(DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0)
-        returns (uint32 id) {
+        try dlob.placeLimitOrder(
+            DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0
+        ) returns (
+            uint32 id
+        ) {
             orderIds.push(id);
             ghostTotalOrders++;
             ghostTotalActiveBuyEscrow += quoteAmount;
@@ -75,8 +78,11 @@ contract DLOBHandler is Test {
         address user = users[userSeed % users.length];
 
         vm.prank(user);
-        try dlob.placeLimitOrder(DLOB.Side.Sell, price, amount, bytes32(0), bytes32(0), 0, 0)
-        returns (uint32 id) {
+        try dlob.placeLimitOrder(
+            DLOB.Side.Sell, price, amount, bytes32(0), bytes32(0), 0, 0
+        ) returns (
+            uint32 id
+        ) {
             orderIds.push(id);
             ghostTotalOrders++;
             ghostTotalActiveSellEscrow += amount;
@@ -95,8 +101,9 @@ contract DLOBHandler is Test {
 
         // Update ghost variables before cancellation
         if (o.side == DLOB.Side.Buy) {
-            uint128 quoteAmount =
-                uint128((uint256(o.remainingAmount) * uint256(o.price) + PRECISION - 1) / PRECISION);
+            uint128 quoteAmount = uint128(
+                (uint256(o.remainingAmount) * uint256(o.price) + PRECISION - 1) / PRECISION
+            );
             if (ghostTotalActiveBuyEscrow >= quoteAmount) {
                 ghostTotalActiveBuyEscrow -= quoteAmount;
             }
@@ -314,8 +321,9 @@ contract DLOBFuzzTest is Test {
         uint96 price = 50 * TICK_SIZE;
 
         vm.prank(alice);
-        uint32 orderId =
-            dlob.placeLimitOrder(DLOB.Side.Buy, price, originalAmount, bytes32(0), bytes32(0), 0, 0);
+        uint32 orderId = dlob.placeLimitOrder(
+            DLOB.Side.Buy, price, originalAmount, bytes32(0), bytes32(0), 0, 0
+        );
 
         // Reduce order
         vm.prank(alice);
