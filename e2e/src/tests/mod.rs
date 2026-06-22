@@ -633,18 +633,6 @@ fn setup_pallet_asset_market() -> (
         ));
     });
 
-    // Map accounts in pallet_revive
-    AssetHubWestend::execute_with(|| {
-        type Revive = asset_hub_westend_runtime::Revive;
-        type RuntimeOrigin = asset_hub_westend_runtime::RuntimeOrigin;
-
-        assert_ok!(Revive::map_account(RuntimeOrigin::signed(alice.clone())));
-        assert_ok!(Revive::map_account(RuntimeOrigin::signed(bob.clone())));
-        assert_ok!(Revive::map_account(RuntimeOrigin::signed(dave.clone())));
-        assert_ok!(Revive::map_account(RuntimeOrigin::signed(sov_2000.clone())));
-        eprintln!("[setup] Accounts mapped in pallet_revive");
-    });
-
     // Deploy DLOB contracts on AH
     let state: TestState = AssetHubWestend::execute_with(|| {
         eprintln!("[setup] Deploying contracts...");
