@@ -30,6 +30,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `@polkadot-api/descriptors` (file:.papi/descriptors) is generated from the committed metadata
+      # (.papi/metadata/*.scale) and its output is gitignored, so it must be generated in CI before
+      # typecheck/build. Offline — uses the committed metadata, no chain connection.
+      - name: Generate PAPI descriptors
+        run: pnpm --filter @substrade-hub/trade exec papi generate
+
       - name: Lint
         run: pnpm --filter @substrade-hub/trade lint
 
