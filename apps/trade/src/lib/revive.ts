@@ -19,13 +19,31 @@ export function isRevert(flags: number): boolean {
   return (flags & 1) === 1;
 }
 
-/** Decode a Substrate dispatch error into a short human string. */
-export function formatDispatchError(err: unknown): string {
-  if (err && typeof err === "object") {
-    const e = err as { type?: string; value?: { type?: string } };
-    if (e.type) return `Transaction failed: ${e.type}${e.value?.type ? ` (${e.value.type})` : ""}`;
+/**
+ * Format a submission failure — a dispatch error (post-inclusion) OR a transaction-validity error
+ * (pre-inclusion, e.g. `BadProof`) — into a short, human message. Unwraps PAPI errors that carry the
+ * structured `{ type, value }` under `.error` or JSON-encode it in an Error message.
+ */
+export function formatSubmitError(err: unknown): string {
+  let e: unknown = err;
+  // Our own thrown Errors have plain messages; PAPI validity errors may JSON-encode the shape.
+  if (err instanceof Error) {
+    try {
+      e = JSON.parse(err.message);
+    } catch {
+      return err.message;
+    }
   }
-  return `Transaction failed: ${JSON.stringify(err)}`;
+  if (e && typeof e === "object" && "error" in e && (e as { error?: unknown }).error) {
+    e = (e as { error: unknown }).error;
+  }
+  const shape = e as { type?: string; value?: { type?: string } } | undefined;
+  const outer = shape?.type;
+  const inner = shape?.value?.type;
+  if (inner === "BadProof")
+    return "Chain rejected the signature (BadProof) — the signed payload didn't match what the runtime expected. This is a wallet/runtime signing incompatibility, not an insufficient-balance error.";
+  if (outer) return `Transaction failed: ${outer}${inner ? ` (${inner})` : ""}`;
+  return `Transaction failed: ${typeof err === "string" ? err : JSON.stringify(err)}`;
 }
 
 interface WatchEvent {
@@ -79,7 +97,7 @@ function signAndWatchInclusion(
           settled = true;
           clearTimeout(timer);
           stop();
-          if (ev.ok === false) reject(new Error(formatDispatchError(ev.dispatchError)));
+          if (ev.ok === false) reject(new Error(formatSubmitError(ev.dispatchError)));
           else resolve({ txHash: lastTxHash, blockHash: ev.block?.hash ?? "" });
         }
       },
@@ -87,15 +105,19 @@ function signAndWatchInclusion(
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        reject(err instanceof Error ? err : new Error(String(err)));
+        // Validity errors (e.g. BadProof) arrive here pre-inclusion — format them, don't dump raw JSON.
+        reject(new Error(formatSubmitError(err)));
       },
     });
   });
 }
 
 /**
- * Defensive probe: on Asset Hub accounts are auto-mapped (pallet-revive AutoMap=true), so this almost
- * always short-circuits. Retained for non-AutoMap runtimes / never-funded accounts. Idempotent.
+ * Probe whether the account is mapped and short-circuit if so. NOTE: live testing on Paseo AH shows
+ * `map_account` is a **no-op** on this runtime and cannot map an unmapped account — an account must
+ * already be mapped (auto-mapped at creation, or an EVM 0xEE account) or `Revive.call` reverts
+ * `AccountUnmapped`. So the `map_account` fallback below only helps on runtimes where it works;
+ * callers should surface an unmapped account to the user rather than assume this fixes it.
  */
 export async function ensureMapped(
   h160: `0x${string}`,
