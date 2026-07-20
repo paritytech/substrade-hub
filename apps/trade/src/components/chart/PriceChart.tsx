@@ -114,7 +114,8 @@ export function PriceChart() {
     const GREEN = "#22c55e";
     const RED = "#ef4444";
     const candleData: CandlestickData<Time>[] = candles.map((c) => {
-      let { open, close, high, low } = c;
+      const { close, high } = c;
+      let { open, low } = c;
       const minBody = open * 0.0005; // 0.05% of price — ~$0.09 at $175
       let color: string;
 

@@ -1,0 +1,43 @@
+name: Frontend
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck, test & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the pnpm version pinned by the root package.json `packageManager` field (10.12.1).
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter @substrade-hub/trade lint
+
+      - name: Typecheck
+        run: pnpm --filter @substrade-hub/trade typecheck
+
+      - name: Unit tests
+        run: pnpm --filter @substrade-hub/trade test
+
+      - name: Build
+        run: pnpm --filter @substrade-hub/trade build

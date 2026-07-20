@@ -1,4 +1,24 @@
 import { WAD } from "../config/constants";
+import { Side } from "../types/market";
+
+/**
+ * Approve amount for a MARKET order. A sell escrows exactly `amount` base tokens, so approve exactly
+ * that; a buy pays a fill-dependent amount of quote (no limit price), so approve the available quote
+ * balance until a slippage-bounded estimate is wired in. Prevents the previous full-balance approval
+ * for sells.
+ */
+export function marketApproveAmount(side: Side, amount: bigint, quoteBalance: bigint): bigint {
+  return side === Side.Sell ? amount : quoteBalance;
+}
+
+/**
+ * Native-balance threshold (in planck) below which to warn about insufficient fee funds — ~0.05 of the
+ * native token. Derived from the chain's `tokenDecimals` (read from the chain spec) so it is correct
+ * on any chain (Polkadot/Paseo = 10, Westend = 12), never hardcoded.
+ */
+export function feeWarningThreshold(decimals: number): bigint {
+  return BigInt(Math.round(0.05 * 10 ** decimals));
+}
 
 /**
  * Align price to the nearest tick multiple (rounds down).

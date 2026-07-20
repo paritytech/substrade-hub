@@ -66,7 +66,7 @@ pnpm typecheck          # tsc -b
 pnpm papi generate      # regenerate .papi descriptors after a polkadot-api bump (uses cached metadata)
 ```
 
-There is **no JS test suite, and `pnpm lint` is broken** (it calls eslint, which isn't installed). Frontend validation is `pnpm typecheck` + `pnpm build`.
+Frontend validation is `pnpm --filter @substrade-hub/trade` `lint` + `typecheck` + `test` + `build` (eslint flat config in `apps/trade/eslint.config.js`; vitest unit/integration tests as `src/**/*.test.ts`). The `Frontend` CI workflow runs all four.
 
 ## Contract architecture
 
