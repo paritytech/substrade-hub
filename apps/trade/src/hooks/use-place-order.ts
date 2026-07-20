@@ -5,7 +5,7 @@ import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
 import { useMarketStore } from "../stores/market";
 import { useToastStore } from "../stores/toast";
-import { quoteAmountCeil } from "../lib/format";
+import { quoteAmountCeil, marketApproveAmount } from "../lib/format";
 import { parseTokenAmount } from "../lib/format";
 import { Side } from "../types/market";
 import { activeChain } from "../config/chains";
@@ -95,12 +95,13 @@ export function usePlaceOrder() {
           const escrowToken =
             params.side === Side.Buy ? market.quote.addr : market.base.addr;
 
-          const balance = (await readContract(
-            erc20Abi,
-            "balanceOf",
-            [h160],
-            escrowToken,
-          )) as bigint;
+          // Sells escrow exactly `amount`; buys read the quote balance (fill-dependent). See
+          // marketApproveAmount for the exact-escrow rationale.
+          const quoteBalance =
+            params.side === Side.Buy
+              ? ((await readContract(erc20Abi, "balanceOf", [h160], escrowToken)) as bigint)
+              : 0n;
+          const approveAmount = marketApproveAmount(params.side, amount, quoteBalance);
 
           const currentAllowance = (await readContract(
             erc20Abi,
@@ -109,12 +110,12 @@ export function usePlaceOrder() {
             escrowToken,
           )) as bigint;
 
-          if (currentAllowance < balance) {
+          if (currentAllowance < approveAmount) {
             updateToast(toastId, "pending", "Approving token spend...");
             await writeContract(
               erc20Abi,
               "approve",
-              [market.address, balance],
+              [market.address, approveAmount],
               escrowToken,
               h160,
             );

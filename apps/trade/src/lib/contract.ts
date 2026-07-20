@@ -9,6 +9,8 @@ import { fromHex, toHex } from "polkadot-api/utils";
 import { getTypedApi } from "./client";
 import { extractRevertReason } from "./errors";
 import { sendTransaction, waitForReceipt } from "./wallet";
+import { useWalletStore } from "../stores/wallet";
+import { submitReviveCall, ensureMapped } from "./revive";
 
 function buildEthTransactTx(
   contractAddress: `0x${string}`,
@@ -78,9 +80,29 @@ export async function writeContract<
   contractAddress: `0x${string}`,
   from: `0x${string}`,
   options?: { value?: bigint },
-) {
+): Promise<{ txHash: string; status: "success" }> {
   const callData = encodeFunctionData({ abi, functionName, args } as never);
 
+  const { accountType, ss58, signer, mapped, h160, setMapped } = useWalletStore.getState();
+
+  // Substrate accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
+  if (accountType === "substrate" && ss58 && signer) {
+    if (!mapped && h160) {
+      await ensureMapped(h160, signer);
+      setMapped();
+    }
+    console.log(`[writeContract] ${String(functionName)} via pallet_revive.call (substrate)`);
+    return submitReviveCall({
+      abi: abi as Abi,
+      contractAddress,
+      callData,
+      originSs58: ss58,
+      signer,
+      value: options?.value,
+    });
+  }
+
+  // EVM path (unchanged behaviour): MetaMask eth_sendTransaction + receipt polling.
   const txHash = await sendTransaction({
     to: contractAddress,
     data: callData,
@@ -89,7 +111,8 @@ export async function writeContract<
   });
 
   console.log(`[writeContract] ${String(functionName)} tx: ${txHash}`);
-  return waitForReceipt(txHash);
+  await waitForReceipt(txHash); // throws on revert / timeout
+  return { txHash, status: "success" };
 }
 
 /**

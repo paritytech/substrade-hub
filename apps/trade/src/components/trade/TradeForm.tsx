@@ -5,16 +5,31 @@ import { useTradeFormStore } from "../../stores/trade-form";
 import { useWalletStore } from "../../stores/wallet";
 import { useMarketStore } from "../../stores/market";
 import { usePlaceOrder } from "../../hooks/use-place-order";
-import { parseTokenAmount, quoteAmountCeil, formatTokenAmount, tickToDisplayDecimals } from "../../lib/format";
+import { useNativeBalance } from "../../hooks/use-native-balance";
+import { useNativeToken } from "../../hooks/use-native-token";
+import {
+  parseTokenAmount,
+  quoteAmountCeil,
+  formatTokenAmount,
+  tickToDisplayDecimals,
+  feeWarningThreshold,
+} from "../../lib/format";
 import { Side } from "../../types/market";
 import { Spinner } from "../ui/Spinner";
 
 export function TradeForm() {
   const { side, orderType, setOrderType, price, amount, reset } =
     useTradeFormStore();
-  const { h160 } = useWalletStore();
+  const { h160, accountType } = useWalletStore();
   const market = useMarketStore((s) => s.selectedMarket);
   const placeOrder = usePlaceOrder();
+  const { data: nativeFree } = useNativeBalance();
+  const { data: nativeToken } = useNativeToken();
+  const lowDot =
+    accountType === "substrate" &&
+    nativeFree !== undefined &&
+    nativeToken !== undefined &&
+    nativeFree < feeWarningThreshold(nativeToken.decimals);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,6 +104,12 @@ export function TradeForm() {
               {estimatedTotal} {market?.quote.symbol}
             </span>
           </div>
+        </div>
+      )}
+
+      {lowDot && (
+        <div className="rounded border border-border bg-surface-overlay px-2 py-1.5 text-xs text-text-secondary">
+          Low {nativeToken?.symbol ?? "native"} balance — you may not have enough to cover network fees.
         </div>
       )}
 
