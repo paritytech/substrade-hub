@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import type { InjectedExtension, InjectedPolkadotAccount } from "polkadot-api/pjs-signer";
 import { isMetaMaskAvailable, connectMetaMask } from "../../lib/wallet";
 import { listSubstrateExtensions, connectExtension, watchAccounts } from "../../lib/substrate-wallet";
+import { ensureExtensionMetadata, MetadataError } from "../../lib/extension-metadata";
 import { accountToH160, ss58ToOriginAccount } from "../../lib/account";
 import { useWalletStore } from "../../stores/wallet";
 import { Spinner } from "../ui/Spinner";
@@ -54,12 +55,23 @@ export function WalletModal({ onClose }: WalletModalProps) {
           setConnecting(false);
           return;
         }
+        // Register this chain's custom signed extensions with the wallet, or its signer would drop
+        // them and produce BadProof on Asset Hub Next (see lib/extension-metadata). Prompts once.
+        await ensureExtensionMetadata(name);
         setExt(extension);
         setExtName(name);
         setAccounts(accs);
         setConnecting(false);
       } catch (e) {
-        setError(e instanceof Error ? e.message : `Failed to connect to ${extensionLabel(name)}`);
+        if (e instanceof MetadataError) {
+          setError(
+            e.code === "declined"
+              ? `Approve the network metadata update in ${extensionLabel(name)} to sign on this chain, then retry.`
+              : `${extensionLabel(name)} can't register this network's signing extensions, so it can't place orders here.`,
+          );
+        } else {
+          setError(e instanceof Error ? e.message : `Failed to connect to ${extensionLabel(name)}`);
+        }
         setConnecting(false);
       }
     },

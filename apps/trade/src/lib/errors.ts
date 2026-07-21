@@ -1,8 +1,71 @@
-import { decodeErrorResult, type Abi } from "viem";
+import { decodeErrorResult, toFunctionSelector, type Abi } from "viem";
 import { toHex } from "polkadot-api/utils";
+import { dlobAbi } from "../abi/dlob";
+import { erc20Abi } from "../abi/erc20";
+
+// Every custom-error fragment we might encounter, so a revert selector resolves regardless of which
+// call produced it (e.g. a DLOB order that reverts inside the ERC20 escrow, or vice versa).
+const KNOWN_ERROR_ABI: Abi = [...dlobAbi, ...erc20Abi].filter((f) => f.type === "error");
+
+// toFunctionSelector's public type is function-oriented, but it computes the 4-byte selector for any
+// named fragment (errors included) at runtime — the cast just gets us past the narrow signature.
+function fragSelector(frag: unknown): string {
+  return toFunctionSelector(frag as Parameters<typeof toFunctionSelector>[0]).toLowerCase();
+}
+
+// selector (0x + 8 hex) -> error name, so we can name an error from its 4 bytes alone — this works
+// even when the error carries args (whose bytes we don't need just to identify it).
+const SELECTOR_TO_NAME: Record<string, string> = {};
+for (const frag of KNOWN_ERROR_ABI) {
+  try {
+    SELECTOR_TO_NAME[fragSelector(frag)] = (frag as { name: string }).name;
+  } catch {
+    /* skip un-selectorable fragments */
+  }
+}
+
+// Friendly, user-facing text for the errors a trader can actually hit. Unlisted names fall back to
+// `ErrorName(args)`, still far better than "reverted without reason".
+const FRIENDLY: Record<string, string> = {
+  SelfTrade: "Cannot trade against your own resting order — use a different account",
+  NoLiquidity: "No liquidity available to fill this order right now",
+  BelowMinSize: "Order amount is below the market minimum",
+  AboveMaxSize: "Order amount exceeds the market maximum",
+  NotTickAligned: "Price must be a multiple of the market tick size",
+  SlippageExceeded: "Price moved too far before execution — try again",
+  ExceedsAvailable: "Order amount exceeds the available balance",
+  ZeroQuoteAmount: "Order value rounds to zero — increase the price or amount",
+  InsufficientFeeReserve: "Insufficient DOT fee reserve for cross-chain settlement",
+  LocalOrderWithValue: "A local (same-chain) order must not send a DOT fee reserve",
+  InvalidSettlementAccount: "Invalid settlement account for this order",
+  WrongOriginAccount: "Order origin account does not match the signer",
+  HasPendingClaims: "This order has pending settlement claims and can't be modified",
+  Reentrancy: "Reentrancy detected — please retry",
+  SafeERC20FailedOperation: "Token transfer failed — check your balance and allowance",
+  TransferFailed: "Token transfer failed — check your balance and allowance",
+  NotOrderOwner: "You do not own this order",
+  OrderNotActive: "That order is no longer active",
+};
+
+/** Resolve a selector to an error name using the known set plus any extra `abi` the caller passes. */
+function nameForSelector(selector: string, abi?: Abi): string | undefined {
+  if (SELECTOR_TO_NAME[selector]) return SELECTOR_TO_NAME[selector];
+  if (!abi) return undefined;
+  for (const frag of abi) {
+    if (frag.type !== "error") continue;
+    try {
+      if (fragSelector(frag) === selector) return frag.name;
+    } catch {
+      /* skip */
+    }
+  }
+  return undefined;
+}
 
 /**
- * Attempt to decode a Solidity revert reason from a dry-run result.
+ * Decode a Solidity revert from a dry-run / eth_transact result into a user-facing message. Identifies
+ * custom errors by their 4-byte selector (works even with args), maps recognised ones to friendly text,
+ * and handles the built-in `Error(string)` / `Panic(uint256)` selectors.
  */
 export function extractRevertReason(
   result: { value?: { data?: Uint8Array } },
@@ -11,41 +74,44 @@ export function extractRevertReason(
   try {
     const data = result.value?.data;
     const hex = data ? toHex(data) : undefined;
-    if (!hex || hex === "0x") return "Transaction reverted without reason";
+    if (!hex || hex === "0x")
+      return "Transaction reverted with no reason (commonly an insufficient token balance or allowance)";
 
-    // Try to decode as a known error from the ABI
-    if (abi) {
+    const selector = hex.slice(0, 10).toLowerCase();
+    const candidates: Abi = abi ? [...abi, ...KNOWN_ERROR_ABI] : KNOWN_ERROR_ABI;
+
+    // Standard string revert: `require(cond, "msg")` / `revert("msg")`.
+    if (selector === "0x08c379a0") {
       try {
-        const decoded = decodeErrorResult({ abi, data: hex as `0x${string}` });
-        return `${decoded.errorName}(${decoded.args?.join(", ") ?? ""})`;
+        const d = decodeErrorResult({ abi: candidates, data: hex as `0x${string}` });
+        if (typeof d.args?.[0] === "string") return d.args[0];
       } catch {
-        // fall through to generic decoding
+        /* fall through */
+      }
+    }
+    if (selector === "0x4e487b71") {
+      try {
+        const d = decodeErrorResult({ abi: candidates, data: hex as `0x${string}` });
+        return `Contract panic (code ${String(d.args?.[0] ?? "?")})`;
+      } catch {
+        return "Contract panic";
       }
     }
 
-    // Try to decode as Error(string) — selector 0x08c379a2
-    if (hex.startsWith("0x08c379a2")) {
-      const reason = hexToString(hex.slice(10));
-      if (reason) return reason;
+    const name = nameForSelector(selector, abi);
+    if (name) {
+      if (FRIENDLY[name]) return FRIENDLY[name];
+      // Recognised but not user-mapped: show name and args if the arg bytes decode.
+      try {
+        const d = decodeErrorResult({ abi: candidates, data: hex as `0x${string}` });
+        const args = d.args?.length ? d.args.map(String).join(", ") : "";
+        return `${name}(${args})`;
+      } catch {
+        return `${name}()`;
+      }
     }
-
-    return `Reverted with data: ${hex.slice(0, 66)}${hex.length > 66 ? "..." : ""}`;
+    return `Reverted with unknown error (selector ${selector})`;
   } catch {
     return "Transaction reverted (unable to decode reason)";
-  }
-}
-
-function hexToString(hex: string): string {
-  try {
-    // ABI-encoded string: offset (32 bytes) + length (32 bytes) + data
-    const lengthHex = hex.slice(64, 128);
-    const length = parseInt(lengthHex, 16);
-    const dataHex = hex.slice(128, 128 + length * 2);
-    const bytes = new Uint8Array(
-      dataHex.match(/.{2}/g)!.map((b) => parseInt(b, 16)),
-    );
-    return new TextDecoder().decode(bytes);
-  } catch {
-    return "";
   }
 }

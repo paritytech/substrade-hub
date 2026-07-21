@@ -24,6 +24,15 @@ describe("formatSubmitError", () => {
     expect(formatSubmitError({ type: "BadOrigin" })).toBe("Transaction failed: BadOrigin");
   });
 
+  it("walks a 3-level Module error down to the pallet error variant", () => {
+    expect(
+      formatSubmitError({
+        type: "Module",
+        value: { type: "Revive", value: { type: "StorageDepositLimitExhausted" } },
+      }),
+    ).toBe("Transaction failed: Module (Revive.StorageDepositLimitExhausted)");
+  });
+
   it("gives a signature-specific hint for BadProof (not a balance error)", () => {
     const msg = formatSubmitError({ type: "Invalid", value: { type: "BadProof" } });
     expect(msg).toMatch(/BadProof/);

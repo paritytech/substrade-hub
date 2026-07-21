@@ -37,12 +37,20 @@ export function formatSubmitError(err: unknown): string {
   if (e && typeof e === "object" && "error" in e && (e as { error?: unknown }).error) {
     e = (e as { error: unknown }).error;
   }
-  const shape = e as { type?: string; value?: { type?: string } } | undefined;
-  const outer = shape?.type;
-  const inner = shape?.value?.type;
-  if (inner === "BadProof")
+  // Walk the nested `{ type, value }` chain so we surface the full path, e.g. a Module error decodes to
+  // Module -> Revive -> StorageDepositLimitExhausted, not just "Module (Revive)".
+  const path: string[] = [];
+  let cur: unknown = e;
+  while (cur && typeof cur === "object" && typeof (cur as { type?: unknown }).type === "string") {
+    path.push((cur as { type: string }).type);
+    cur = (cur as { value?: unknown }).value;
+  }
+  if (path.includes("BadProof"))
     return "Chain rejected the signature (BadProof) — the signed payload didn't match what the runtime expected. This is a wallet/runtime signing incompatibility, not an insufficient-balance error.";
-  if (outer) return `Transaction failed: ${outer}${inner ? ` (${inner})` : ""}`;
+  if (path.length) {
+    const [outer, ...rest] = path;
+    return `Transaction failed: ${outer}${rest.length ? ` (${rest.join(".")})` : ""}`;
+  }
   return `Transaction failed: ${typeof err === "string" ? err : JSON.stringify(err)}`;
 }
 
