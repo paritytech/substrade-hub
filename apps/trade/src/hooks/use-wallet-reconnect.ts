@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { connectExtension, watchAccounts, isAccountPresent } from "../lib/substrate-wallet";
+import { ensureExtensionMetadata } from "../lib/extension-metadata";
 import { loadWalletHint, clearWalletHint } from "../lib/wallet-hint";
 import { useWalletStore } from "../stores/wallet";
 
@@ -25,6 +26,10 @@ export function useWalletReconnect(): void {
           clearWalletHint();
           return;
         }
+        // Re-register the chain's signed extensions so signing works this session too. Idempotent:
+        // no prompt if the wallet already has them (e.g. approved on the original connect).
+        await ensureExtensionMetadata(hint.extensionName);
+        if (cancelled) return;
         useWalletStore.getState().connectSubstrate({
           extensionName: hint.extensionName,
           ss58: hint.ss58,

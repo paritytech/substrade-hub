@@ -69,7 +69,9 @@ cd ../apps/trade
 pnpm dev
 ```
 
-The bootstrap script creates tUSD + tNVDA assets, a market at ~$175, seeds the order book ($170–$180), generates trades with a realistic candle pattern, and replenishes the book. Import the Deployer private key into MetaMask or Talisman to trade from the UI.
+The bootstrap script creates tUSD + tNVDA assets, a market at ~$175, seeds the order book ($170–$180), generates trades with a realistic candle pattern, and replenishes the book.
+
+To trade from the UI you can connect either an **EVM wallet** (import the Deployer EVM private key into MetaMask) or a **Substrate wallet** (SubWallet or polkadot-js). Supported wallets, the one-time network-metadata approval, and troubleshooting (stale sessions, reverts, market-order races) are documented in [`apps/trade/docs/wallets.md`](apps/trade/docs/wallets.md).
 
 To regenerate trade history on an existing market (sweeps stale orders, re-seeds, re-trades):
 
