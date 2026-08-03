@@ -11,9 +11,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "sync-abi": "node scripts/sync-abi.mjs"
+    "sync-abi": "node scripts/sync-abi.mjs",
+    "demo:host": "node scripts/demo-host.mjs"
   },
   "dependencies": {
+    "@parity/product-sdk-chain-client": "^0.9.2",
+    "@parity/product-sdk-host": "^0.15.0",
     "@polkadot-api/descriptors": "file:.papi/descriptors",
     "@tanstack/react-query": "^5.101.0",
     "@tanstack/react-virtual": "^3.14.3",
@@ -26,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@parity/host-api-test-sdk": "^0.11.0",
     "@polkadot-labs/hdkd": "^0.0.29",
     "@polkadot-labs/hdkd-helpers": "^0.0.31",
     "@tailwindcss/vite": "^4.3.1",
