@@ -10,6 +10,9 @@ The trading UI supports two account families against the same DLOB contracts on 
 Both drive the identical on-chain logic; only the signing path differs. This page covers the Substrate
 path, which has runtime-specific requirements, and the issues you may hit.
 
+A third mode, **host mode**, runs the app inside a Polkadot Triangle host (Polkadot Desktop / dot.li);
+see "Host / .dot mode" at the bottom.
+
 ## Supported Substrate wallets
 
 | Wallet | Status | Notes |
@@ -96,3 +99,37 @@ rm -rf apps/trade/node_modules/.vite   # drop the stale dependency pre-bundle
 - `src/lib/substrate-wallet.ts` — extension discovery, connect, account watching.
 - `src/lib/revive.ts` — dry-run, submit `Revive.call`, and format submission errors.
 - `src/lib/errors.ts` — decode contract reverts (by 4-byte selector) into readable messages.
+
+## Host / .dot mode (Polkadot Triangle)
+
+The app can run as a Polkadot Triangle ".dot" app inside a host container (Polkadot Desktop webview,
+dot.li iframe, or the local test harness). In host mode the app detects the container and routes chain
+access through the host instead of a browser wallet. **Chain reads work in host mode today; host-side transaction signing is not yet wired up.**
+
+- **Detection** (`src/lib/host/detect.ts`): `isInHost()` = `isInsideContainerSync()` from
+  `@parity/product-sdk-host`. `VITE_USE_HOST_API=false` forces standalone (handy for local dev in a
+  plain tab).
+- **Chain client** (`src/lib/client.ts`): in host mode reads go through the sanctioned, host-routed
+  `createChainClient` (`@parity/product-sdk-chain-client`) — **no RPC endpoint; the descriptor's genesis
+  selects the chain** — gated by `isChainSupported(genesis)` so an unsupported chain fails fast. It
+  reuses our full `passet_hub` descriptor, so `client.assetHub` is the same `TypedApi` the rest of the
+  app already uses (`ReviveApi.call`/`eth_transact` intact). Standalone connects directly by WS. Both
+  paths run once at boot via `initChainClient()`, gated by `ChainBoot` so data hooks wait for the
+  client. This mirrors the official `playground-app-template`.
+
+### Try it in one command (test harness)
+
+`@parity/host-api-test-sdk` provides a real host-protocol server that embeds the app and answers Host
+API calls with a funded dev account (alice) — no Desktop install, no deploy:
+
+```bash
+pnpm dev          # terminal 1: Vite on http://localhost:5173
+pnpm demo:host    # terminal 2: prints a URL — open it in any browser
+```
+
+The printed URL loads the app inside a host, reading the live order book. (The dev account holds no
+tUSD/tNVDA, so trading isn't exercised here — this mode is for chain reads.)
+
+### Try it in the real host
+
+Type `http://localhost:5173` into the **Polkadot Desktop** address bar — same code, real Host API.
