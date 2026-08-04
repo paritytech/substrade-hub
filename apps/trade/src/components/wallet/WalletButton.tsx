@@ -1,10 +1,19 @@
 import { useState } from "react";
 import { useWalletStore } from "../../stores/wallet";
+import { disconnectHost } from "../../lib/host/signer";
 import { WalletModal } from "./WalletModal";
 
 export function WalletButton() {
   const [showModal, setShowModal] = useState(false);
   const { h160, ss58, accountType, disconnect } = useWalletStore();
+
+  // A host account must end the SDK session too, otherwise the lifecycle subscription (useHostReconnect)
+  // sees it still connected and immediately re-adds it. disconnectHost() drives the SDK to disconnected,
+  // and the subscription then clears the store; clearing here as well keeps the UI instant.
+  const handleDisconnect = () => {
+    if (accountType === "host") disconnectHost();
+    disconnect();
+  };
 
   if (h160) {
     // Substrate + host accounts both sign via SS58; show the SS58 + its derived H160 (the "teaching
@@ -26,7 +35,7 @@ export function WalletButton() {
           {showSs58 && <span className="ml-2 text-xs text-text-muted">H160 {h160Short}</span>}
         </span>
         <button
-          onClick={disconnect}
+          onClick={handleDisconnect}
           className="rounded bg-surface-raised px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
         >
           Disconnect

@@ -5,6 +5,7 @@
  */
 import { SignerManager, type SignerAccount, type SignerState } from "@parity/product-sdk-signer";
 import type { PolkadotSigner } from "polkadot-api";
+import { provisionContractAllowance, resetContractAllowanceStatus } from "./allowances";
 
 let manager: SignerManager | null = null;
 
@@ -22,7 +23,18 @@ function getManager(): SignerManager {
   if (!manager) {
     const configured = (import.meta.env.VITE_PRODUCT_ACCOUNT_ID as string | undefined)?.trim();
     const identity = configured && configured.length > 0 ? configured : DEFAULT_PRODUCT_ID;
-    manager = new SignerManager({ ss58Prefix: 42, dappName: identity });
+    manager = new SignerManager({
+      ss58Prefix: 42,
+      dappName: identity,
+      // Fires on the initial connect AND after every SDK auto-reconnect / fresh host session, so the
+      // SmartContractAllowance + AutoSigning grants are (re-)provisioned whenever a session refreshes or
+      // an allocation expires — something the one-shot reconnect hook cannot do. Best-effort: the SDK
+      // logs a throw here and retries on the next reconnect. Already-granted resources come back
+      // "Allocated" with no prompt, so this is a no-op on a warm reload.
+      onConnect: async (_account, { requestResourceAllocation }) => {
+        await provisionContractAllowance(requestResourceAllocation);
+      },
+    });
   }
   return manager;
 }
@@ -59,5 +71,6 @@ export function getHostState(): SignerState {
 }
 
 export function disconnectHost(): void {
+  resetContractAllowanceStatus();
   getManager().disconnect();
 }

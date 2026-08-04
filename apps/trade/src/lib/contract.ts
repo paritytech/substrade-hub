@@ -11,6 +11,7 @@ import { extractRevertReason } from "./errors";
 import { sendTransaction, waitForReceipt } from "./wallet";
 import { useWalletStore } from "../stores/wallet";
 import { submitReviveCall, ensureMapped } from "./revive";
+import { awaitContractAllowance } from "./host/allowances";
 
 function buildEthTransactTx(
   contractAddress: `0x${string}`,
@@ -122,6 +123,10 @@ export async function writeContract<
   // Substrate and host accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
   // Host accounts are marked mapped (handled host-side), so they skip the ensureMapped probe.
   if ((accountType === "substrate" || accountType === "host") && ss58 && signer) {
+    // Host writes need the session allowance (PGAS + AutoSigning). onConnect provisions it, but the SDK
+    // reports "connected" before that finishes, so gate here: block until it is granted and surface a
+    // clear error if it was rejected, instead of letting the first Revive.call fail opaquely.
+    if (accountType === "host") await awaitContractAllowance();
     if (!mapped && h160) {
       await ensureMapped(h160, signer);
       setMapped();

@@ -10,8 +10,12 @@ vi.mock("./wallet", () => ({
   sendTransaction: vi.fn().mockResolvedValue("0xevmhash"),
   waitForReceipt: vi.fn().mockResolvedValue({ status: "0x1" }),
 }));
+vi.mock("./host/allowances", () => ({
+  awaitContractAllowance: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { writeContract } from "./contract";
+import { awaitContractAllowance } from "./host/allowances";
 import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
 import { submitReviveCall, ensureMapped } from "./revive";
@@ -75,6 +79,7 @@ describe("writeContract routing", () => {
       signer: SUB.signer,
     });
     const res = await writeContract(erc20Abi, "approve", args, TOKEN, SUB.h160);
+    expect(awaitContractAllowance).toHaveBeenCalledOnce();
     expect(ensureMapped).not.toHaveBeenCalled();
     expect(submitReviveCall).toHaveBeenCalledOnce();
     expect(sendTransaction).not.toHaveBeenCalled();
@@ -83,5 +88,21 @@ describe("writeContract routing", () => {
       signer: SUB.signer,
     });
     expect(res).toEqual({ txHash: "0xsubstrate", status: "success" });
+  });
+
+  it("host writes wait on the allowance gate and fail clearly if it was rejected", async () => {
+    useWalletStore.getState().connectHost({
+      ss58: SUB.ss58,
+      h160: SUB.h160,
+      originAccount: SUB.originAccount,
+      signer: SUB.signer,
+    });
+    vi.mocked(awaitContractAllowance).mockRejectedValueOnce(
+      new Error("The host did not grant the contract allowance (SmartContractAllowance: Rejected)"),
+    );
+    await expect(writeContract(erc20Abi, "approve", args, TOKEN, SUB.h160)).rejects.toThrow(
+      /did not grant/i,
+    );
+    expect(submitReviveCall).not.toHaveBeenCalled();
   });
 });

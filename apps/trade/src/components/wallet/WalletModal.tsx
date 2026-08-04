@@ -9,9 +9,10 @@ import {
   connectHostAccounts,
   selectHostAccount,
   getHostSigner,
+  disconnectHost,
   type SignerAccount,
 } from "../../lib/host/signer";
-import { ensureContractAllowance } from "../../lib/host/allowances";
+import { awaitContractAllowance } from "../../lib/host/allowances";
 import { useWalletStore } from "../../stores/wallet";
 import { Spinner } from "../ui/Spinner";
 
@@ -118,10 +119,13 @@ export function WalletModal({ onClose }: WalletModalProps) {
       setError(null);
       setConnecting(true);
       try {
+        // selectHostAccount drives the manager to connected+selected, which fires the SignerManager
+        // onConnect that provisions the allowance (PGAS / contract-call authorization). "connected" is
+        // emitted before onConnect finishes, so await the allowance gate here to surface a decline/
+        // failure in this modal instead of connecting a wallet whose first write would fail.
         selectHostAccount(acc.address);
         const signer = getHostSigner();
-        // Provision PGAS / authorize contract calls before the first Revive.call.
-        await ensureContractAllowance();
+        await awaitContractAllowance();
         connectHost({
           ss58: acc.address,
           h160: acc.h160Address as `0x${string}`,
@@ -130,6 +134,10 @@ export function WalletModal({ onClose }: WalletModalProps) {
         });
         onClose();
       } catch (e) {
+        // Tear down the half-open session (the lifecycle subscription may have connected the store on
+        // the "connected" emission) so we do not leave an unauthorized wallet behind.
+        disconnectHost();
+        useWalletStore.getState().disconnect();
         setError(e instanceof Error ? e.message : "Failed to connect the host account");
         setConnecting(false);
       }
