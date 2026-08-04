@@ -59,8 +59,9 @@ export function TradeForm() {
   }
 
   const isBuy = side === Side.Buy;
-  // A market order fills against the opposite side of the book. If that side is empty, the order
-  // wouldn't revert — it would silently fill nothing and still burn gas — so block it up front.
+  // Cheap UX hint: a market order fills against the opposite side, so disable submit when that side is
+  // visibly empty. This uses cached best prices and does NOT account for lazily-expired orders; the
+  // authoritative expiry-aware check is a pre-submit simulation in usePlaceOrder.
   const noLiquidity =
     orderType === "market" &&
     bestPrices !== undefined &&

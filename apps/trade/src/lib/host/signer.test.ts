@@ -12,6 +12,7 @@ vi.mock("@parity/product-sdk-signer", () => ({
 }));
 
 import { connectHostAccounts, selectHostAccount, getHostSigner } from "./signer";
+import { SignerManager } from "@parity/product-sdk-signer";
 
 beforeEach(() => {
   manager.connect.mockReset();
@@ -54,5 +55,18 @@ describe("getHostSigner", () => {
     const signer = { sentinel: true };
     manager.getSigner.mockReturnValue(signer);
     expect(getHostSigner()).toBe(signer);
+  });
+});
+
+describe("product identity", () => {
+  it("defaults the SignerManager dappName to the registered .dot product id", async () => {
+    // Regression: window.location.host is substrade-hub.dot.li, which the SDK turns into
+    // substrade-hub.dot.li.dot and then resolves zero accounts. The default must already end in .dot.
+    manager.connect.mockResolvedValue({ ok: true, value: [] });
+    await connectHostAccounts(); // triggers lazy getManager()
+    expect(vi.mocked(SignerManager)).toHaveBeenCalled();
+    expect(vi.mocked(SignerManager).mock.calls[0]![0]).toMatchObject({
+      dappName: "substrade-hub.dot",
+    });
   });
 });
