@@ -5,6 +5,7 @@ import { useTradeFormStore } from "../../stores/trade-form";
 import { useWalletStore } from "../../stores/wallet";
 import { useMarketStore } from "../../stores/market";
 import { usePlaceOrder } from "../../hooks/use-place-order";
+import { useBestPrices } from "../../hooks/use-best-prices";
 import { useNativeBalance } from "../../hooks/use-native-balance";
 import { useNativeToken } from "../../hooks/use-native-token";
 import {
@@ -13,6 +14,7 @@ import {
   formatTokenAmount,
   tickToDisplayDecimals,
   feeWarningThreshold,
+  hasMarketLiquidity,
 } from "../../lib/format";
 import { Side } from "../../types/market";
 import { Spinner } from "../ui/Spinner";
@@ -23,6 +25,7 @@ export function TradeForm() {
   const { h160, accountType } = useWalletStore();
   const market = useMarketStore((s) => s.selectedMarket);
   const placeOrder = usePlaceOrder();
+  const { data: bestPrices } = useBestPrices();
   const { data: nativeFree } = useNativeBalance();
   const { data: nativeToken } = useNativeToken();
   const lowDot =
@@ -56,6 +59,13 @@ export function TradeForm() {
   }
 
   const isBuy = side === Side.Buy;
+  // Cheap UX hint: a market order fills against the opposite side, so disable submit when that side is
+  // visibly empty. This uses cached best prices and does NOT account for lazily-expired orders; the
+  // authoritative expiry-aware check is a pre-submit simulation in usePlaceOrder.
+  const noLiquidity =
+    orderType === "market" &&
+    bestPrices !== undefined &&
+    !hasMarketLiquidity(side, bestPrices.bestBid, bestPrices.bestAsk);
   const buttonColor = isBuy
     ? "bg-buy hover:bg-buy/80"
     : "bg-sell hover:bg-sell/80";
@@ -107,6 +117,13 @@ export function TradeForm() {
         </div>
       )}
 
+      {noLiquidity && (
+        <div className="rounded border border-border bg-surface-overlay px-2 py-1.5 text-xs text-text-secondary">
+          No {isBuy ? "sell-side" : "buy-side"} liquidity to fill a market {isBuy ? "buy" : "sell"} right
+          now — place a limit order instead.
+        </div>
+      )}
+
       {lowDot && (
         <div className="rounded border border-border bg-surface-overlay px-2 py-1.5 text-xs text-text-secondary">
           Low {nativeToken?.symbol ?? "native"} balance — you may not have enough to cover network fees.
@@ -121,7 +138,7 @@ export function TradeForm() {
 
       <button
         type="submit"
-        disabled={!h160 || !amount}
+        disabled={!h160 || !amount || noLiquidity}
         className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium text-white disabled:opacity-60 ${buttonColor}`}
       >
         {placeOrder.isPending && <Spinner className="h-4 w-4" />}

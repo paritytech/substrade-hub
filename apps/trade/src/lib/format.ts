@@ -12,6 +12,16 @@ export function marketApproveAmount(side: Side, amount: bigint, quoteBalance: bi
 }
 
 /**
+ * Whether a MARKET order can fill against the book. A market order matches the opposite side (a buy
+ * takes asks, a sell takes bids); if that side is empty the contract fills nothing (no revert) yet
+ * still costs gas, so callers should block the order. `bestBid`/`bestAsk` are 0n when that side is
+ * empty (see `getBestPrices`).
+ */
+export function hasMarketLiquidity(side: Side, bestBid: bigint, bestAsk: bigint): boolean {
+  return side === Side.Buy ? bestAsk > 0n : bestBid > 0n;
+}
+
+/**
  * Native-balance threshold (in planck) below which to warn about insufficient fee funds — ~0.05 of the
  * native token. Derived from the chain's `tokenDecimals` (read from the chain spec) so it is correct
  * on any chain (Polkadot/Paseo = 10, Westend = 12), never hardcoded.

@@ -2,5 +2,8 @@ packages:
   - apps/*
   - contracts
 
+allowBuilds:
+  esbuild: true
+
 patchedDependencies:
   '@polkadot-api/pjs-signer@0.7.3': patches/@polkadot-api__pjs-signer@0.7.3.patch

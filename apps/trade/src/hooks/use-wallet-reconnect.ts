@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { connectExtension, watchAccounts, isAccountPresent } from "../lib/substrate-wallet";
 import { ensureExtensionMetadata } from "../lib/extension-metadata";
 import { loadWalletHint, clearWalletHint } from "../lib/wallet-hint";
+import { isInHost } from "../lib/host/detect";
 import { useWalletStore } from "../stores/wallet";
 
 /**
@@ -11,6 +12,10 @@ import { useWalletStore } from "../stores/wallet";
  */
 export function useWalletReconnect(): void {
   useEffect(() => {
+    // In a host, useHostReconnect owns the wallet. Both hooks pass the initial `!accountType` check,
+    // so if a stale extension hint is present inside a host they would race and the slower one would
+    // overwrite the host connection. Browser reconnect stands down in host mode.
+    if (isInHost()) return;
     const hint = loadWalletHint();
     if (!hint) return;
     if (useWalletStore.getState().accountType) return; // already connected this session

@@ -60,22 +60,30 @@ describe("initChainClient", () => {
     expect(getClient()).toBe(RAW);
   });
 
-  it("host + chain unsupported: falls back to WS (no host client built)", async () => {
+  it("host + chain unsupported: fails fast (rejects), builds no client — no WS fallback", async () => {
     vi.mocked(isInHost).mockReturnValue(true);
     vi.mocked(isChainSupported).mockResolvedValue({ ok: true, value: false } as never);
-    await initChainClient();
+    await expect(initChainClient()).rejects.toThrow(/does not serve/i);
     expect(createChainClient).not.toHaveBeenCalled();
-    expect(createClient).toHaveBeenCalledOnce();
-    expect(getTypedApi()).toBe(WS_API);
+    expect(createClient).not.toHaveBeenCalled();
   });
 
-  it("host + createChainClient throws: falls back to WS", async () => {
+  it("host + support check errors (ok:false): fails fast, builds no client", async () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    vi.mocked(isChainSupported).mockResolvedValue({
+      ok: false,
+      error: { message: "host down" },
+    } as never);
+    await expect(initChainClient()).rejects.toThrow(/could not verify|host down/i);
+    expect(createChainClient).not.toHaveBeenCalled();
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("host + createChainClient throws: fails fast, no WS fallback", async () => {
     vi.mocked(isInHost).mockReturnValue(true);
     vi.mocked(createChainClient).mockRejectedValue(new Error("no host provider"));
-    await initChainClient();
-    expect(createChainClient).toHaveBeenCalledOnce();
-    expect(createClient).toHaveBeenCalledOnce();
-    expect(getTypedApi()).toBe(WS_API);
+    await expect(initChainClient()).rejects.toThrow(/no host provider/i);
+    expect(createClient).not.toHaveBeenCalled();
   });
 
   it("is idempotent: a second call does not rebuild the client", async () => {
@@ -84,11 +92,36 @@ describe("initChainClient", () => {
     await initChainClient();
     expect(createChainClient).toHaveBeenCalledOnce();
   });
+
+  it("concurrent init builds only one client (StrictMode double-mount safe)", async () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    // Hold createChainClient pending so both init calls overlap before it settles.
+    let resolveCc: (v: unknown) => void = () => {};
+    vi.mocked(createChainClient).mockReturnValue(
+      new Promise((r) => {
+        resolveCc = r;
+      }) as never,
+    );
+    const p1 = initChainClient();
+    const p2 = initChainClient();
+    resolveCc({ assetHub: HOST_API, raw: { assetHub: RAW }, destroy: vi.fn() });
+    await Promise.all([p1, p2]);
+    expect(isChainSupported).toHaveBeenCalledOnce();
+    expect(createChainClient).toHaveBeenCalledOnce();
+    expect(getTypedApi()).toBe(HOST_API);
+  });
 });
 
 describe("getTypedApi (pre-init safety net)", () => {
-  it("builds a WS client on first use if initChainClient hasn't run", () => {
+  it("standalone: builds a WS client on first use if initChainClient hasn't run", () => {
+    vi.mocked(isInHost).mockReturnValue(false);
     expect(getTypedApi()).toBe(WS_API);
     expect(createClient).toHaveBeenCalledOnce();
+  });
+
+  it("host mode: throws instead of opening a direct WS when uninitialized", () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    expect(() => getTypedApi()).toThrow(/not initialized|unavailable/i);
+    expect(createClient).not.toHaveBeenCalled();
   });
 });

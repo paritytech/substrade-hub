@@ -67,6 +67,16 @@ a signing problem, and it affects the EVM path identically.
 - Prefer a **limit order that rests** (a sell priced above the best bid, a buy priced below the best
   ask). A resting order does not match against the other side, so it has no race and no self-trade risk.
 
+### "No sell-side liquidity to fill this market order" (or "buy-side")
+
+A market order fills against the **opposite** side of the book — a market buy takes asks, a market sell
+takes bids. If that side is empty there is nothing to match: the contract fills nothing but **does not
+revert**, so a naive submit would silently spend gas on a no-op. The app blocks this up front — the
+order button is disabled with this message, and the place-order hook refuses to submit (a backstop if
+the button is bypassed). **Place a limit order instead**: it rests on the book and becomes the
+liquidity a later market order can take. The check reads the live best bid/ask (`getBestPrices`), so it
+clears as soon as the other side has a resting order.
+
 ### "Cannot trade against your own resting order"
 
 Self-trade prevention: your incoming order would match an order you already have resting on the book.
@@ -104,7 +114,8 @@ rm -rf apps/trade/node_modules/.vite   # drop the stale dependency pre-bundle
 
 The app can run as a Polkadot Triangle ".dot" app inside a host container (Polkadot Desktop webview,
 dot.li iframe, or the local test harness). In host mode the app detects the container and routes chain
-access through the host instead of a browser wallet. **Chain reads work in host mode today; host-side transaction signing is not yet wired up.**
+access through the host instead of a browser wallet, and orders are signed by the host — no browser
+extension involved.
 
 - **Detection** (`src/lib/host/detect.ts`): `isInHost()` = `isInsideContainerSync()` from
   `@parity/product-sdk-host`. `VITE_USE_HOST_API=false` forces standalone (handy for local dev in a
@@ -116,6 +127,15 @@ access through the host instead of a browser wallet. **Chain reads work in host 
   app already uses (`ReviveApi.call`/`eth_transact` intact). Standalone connects directly by WS. Both
   paths run once at boot via `initChainClient()`, gated by `ChainBoot` so data hooks wait for the
   client. This mirrors the official `playground-app-template`.
+- **Signing** (`src/lib/host/signer.ts`, `allowances.ts`): in host mode "Connect Wallet" offers
+  **"Connect Polkadot account"** — a `SignerManager` (`@parity/product-sdk-signer`) resolves the app's
+  product account, and `getSigner()` hands back a PAPI `PolkadotSigner`. That signer is stored in the
+  wallet store and drives the **same** `writeContract` -> `submitReviveCall` path as the browser
+  Substrate flow (no browser extension, no `metadata.provide`/ExtDef — the host builds and signs the
+  extrinsic). On connect the app requests a `SmartContractAllowance` (+ `AutoSigning`) via
+  `requestResourceAllocation`, which provisions **PGAS** (the host's gas token) and authorizes contract
+  calls; without it the first `Revive.call` is rejected. Mapping is handled host-side, so the host path
+  skips `ensureMapped`. Reconnect is automatic on load (`use-host-reconnect`).
 
 ### Try it in one command (test harness)
 
@@ -127,8 +147,8 @@ pnpm dev          # terminal 1: Vite on http://localhost:5173
 pnpm demo:host    # terminal 2: prints a URL — open it in any browser
 ```
 
-The printed URL loads the app inside a host, reading the live order book. (The dev account holds no
-tUSD/tNVDA, so trading isn't exercised here — this mode is for chain reads.)
+The printed URL loads the app inside a host, reading the live order book and signing via the host
+account. (The dev account holds no tUSD/tNVDA, so a full order needs funding first.)
 
 ### Try it in the real host
 

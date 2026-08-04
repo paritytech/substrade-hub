@@ -11,6 +11,7 @@ import { extractRevertReason } from "./errors";
 import { sendTransaction, waitForReceipt } from "./wallet";
 import { useWalletStore } from "../stores/wallet";
 import { submitReviveCall, ensureMapped } from "./revive";
+import { awaitContractAllowance } from "./host/allowances";
 
 function buildEthTransactTx(
   contractAddress: `0x${string}`,
@@ -68,6 +69,40 @@ export async function readContract<
 }
 
 /**
+ * Simulate a state-changing contract call (an `eth_transact` dry-run) and return its decoded return
+ * value, without submitting. Node-side, so it is account-type-agnostic. A contract revert surfaces via
+ * `extractRevertReason`. Unlike a cached view (e.g. `getBestPrices`), this runs the call for real, so
+ * it reflects execution-time effects like lazy order expiry during matching.
+ */
+export async function simulateContract<
+  TAbi extends Abi,
+  TFn extends ContractFunctionName<TAbi, "nonpayable" | "payable">,
+>(
+  abi: TAbi,
+  functionName: TFn,
+  args: ContractFunctionArgs<TAbi, "nonpayable" | "payable", TFn>,
+  contractAddress: `0x${string}`,
+  from: `0x${string}`,
+  options?: { value?: bigint },
+) {
+  const api = getTypedApi();
+  const callData = encodeFunctionData({ abi, functionName, args } as never);
+  const tx = buildEthTransactTx(contractAddress, callData, from, options?.value);
+
+  const result = await api.apis.ReviveApi.eth_transact(tx, { at: "best" });
+
+  if (!result.success) {
+    throw new Error(extractRevertReason(result as never, abi));
+  }
+
+  return decodeFunctionResult({
+    abi,
+    functionName,
+    data: toHex(result.value.data) as `0x${string}`,
+  } as never);
+}
+
+/**
  * Write to a contract via MetaMask (eth_sendTransaction through eth-rpc proxy).
  */
 export async function writeContract<
@@ -85,13 +120,18 @@ export async function writeContract<
 
   const { accountType, ss58, signer, mapped, h160, setMapped } = useWalletStore.getState();
 
-  // Substrate accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
-  if (accountType === "substrate" && ss58 && signer) {
+  // Substrate and host accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
+  // Host accounts are marked mapped (handled host-side), so they skip the ensureMapped probe.
+  if ((accountType === "substrate" || accountType === "host") && ss58 && signer) {
+    // Host writes need the session allowance (PGAS + AutoSigning). onConnect provisions it, but the SDK
+    // reports "connected" before that finishes, so gate here: block until it is granted and surface a
+    // clear error if it was rejected, instead of letting the first Revive.call fail opaquely.
+    if (accountType === "host") await awaitContractAllowance();
     if (!mapped && h160) {
       await ensureMapped(h160, signer);
       setMapped();
     }
-    console.log(`[writeContract] ${String(functionName)} via pallet_revive.call (substrate)`);
+    console.log(`[writeContract] ${String(functionName)} via pallet_revive.call (${accountType})`);
     return submitReviveCall({
       abi: abi as Abi,
       contractAddress,

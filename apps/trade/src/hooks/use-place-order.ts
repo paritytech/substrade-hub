@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { writeContract, readContract } from "../lib/contract";
+import { writeContract, readContract, simulateContract } from "../lib/contract";
 import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
@@ -121,18 +121,45 @@ export function usePlaceOrder() {
             );
           }
 
+          const marketArgs = [
+            params.side,
+            amount,
+            0n,
+            originAccount,
+            ZERO_BYTES32,
+            destParaId,
+          ] as const;
+
+          // Authoritative liquidity check: simulate the order and require a non-zero fill. A market
+          // order matches the opposite side; if nothing there is fillable it silently fills 0 (no
+          // revert) and still burns gas. `getBestPrices` can't catch this because it returns cached
+          // tree prices that still list lazily-expired orders — so an all-expired opposite side would
+          // pass. The simulation runs matching for real (skipping expired makers), and runs after the
+          // approve so a buy's quote transfer / a sell's base escrow succeed in the sim.
+          // Ordering note: it MUST run after approve (a pre-approve sim would revert on the transfer),
+          // so in the rare all-expired case an approve is already on-chain when we block here. The
+          // common empty-book case never reaches this — the form disables submit pre-approve via
+          // getBestPrices — so only that edge spends an approve; the sim still saves the no-op fill gas.
+          updateToast(toastId, "pending", "Checking market liquidity...");
+          const filled = (await simulateContract(
+            dlobAbi,
+            "placeMarketOrder",
+            marketArgs,
+            market.address,
+            h160,
+            { value },
+          )) as bigint;
+          if (filled === 0n) {
+            throw new Error(
+              `No ${params.side === Side.Buy ? "sell-side" : "buy-side"} liquidity to fill this market order right now. Place a limit order instead.`,
+            );
+          }
+
           updateToast(toastId, "pending", `Placing market ${sideLabel.toLowerCase()} order...`);
           const result = await writeContract(
             dlobAbi,
             "placeMarketOrder",
-            [
-              params.side,
-              amount,
-              0n,
-              originAccount,
-              ZERO_BYTES32,
-              destParaId,
-            ],
+            marketArgs,
             market.address,
             h160,
             { value },
