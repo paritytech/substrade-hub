@@ -4,7 +4,7 @@ import { h160ToOriginAccount } from "../lib/account";
 import { stopWatchingAccounts } from "../lib/substrate-wallet";
 import { saveWalletHint, clearWalletHint } from "../lib/wallet-hint";
 
-export type AccountType = "evm" | "substrate";
+export type AccountType = "evm" | "substrate" | "host";
 
 interface WalletState {
   // Flat fields kept for existing consumers (usePlaceOrder, use-token-*, WalletButton) which read
@@ -21,6 +21,14 @@ interface WalletState {
   connectEvm: (address: `0x${string}`) => void;
   connectSubstrate: (a: {
     extensionName: string;
+    ss58: string;
+    h160: `0x${string}`;
+    originAccount: `0x${string}`;
+    signer: PolkadotSigner;
+  }) => void;
+  // Host (Polkadot Triangle) product account: same Substrate signing shape, but the signer comes from
+  // the host (`@parity/product-sdk-signer`) and mapping is handled host-side.
+  connectHost: (a: {
     ss58: string;
     h160: `0x${string}`;
     originAccount: `0x${string}`;
@@ -71,6 +79,19 @@ export const useWalletStore = create<WalletState>((set) => ({
       ss58: a.ss58,
       signer: a.signer,
       mapped: false, // confirmed by ensureMapped (a near no-op on Asset Hub's AutoMap)
+      isConnecting: false,
+    });
+  },
+
+  connectHost: (a) => {
+    clearWalletHint(); // the host session owns reconnect; no localStorage hint needed
+    set({
+      accountType: "host",
+      h160: a.h160,
+      originAccount: a.originAccount,
+      ss58: a.ss58,
+      signer: a.signer,
+      mapped: true, // the host / Devnet handles account mapping — skip the map_account probe
       isConnecting: false,
     });
   },

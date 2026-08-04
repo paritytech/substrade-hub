@@ -7,21 +7,23 @@ export function WalletButton() {
   const { h160, ss58, accountType, disconnect } = useWalletStore();
 
   if (h160) {
-    const isSubstrate = accountType === "substrate" && ss58;
-    // Show the account type and the address mapping (SS58 and its derived H160) — the "teaching moment".
-    const primary = isSubstrate ? `${ss58.slice(0, 6)}...${ss58.slice(-4)}` : `${h160.slice(0, 6)}...${h160.slice(-4)}`;
+    // Substrate + host accounts both sign via SS58; show the SS58 + its derived H160 (the "teaching
+    // moment"). EVM shows the H160 only.
+    const showSs58 = (accountType === "substrate" || accountType === "host") && ss58;
+    const badge = accountType === "host" ? "Host" : accountType === "substrate" ? "Substrate" : "EVM";
+    const primary = showSs58 ? `${ss58.slice(0, 6)}...${ss58.slice(-4)}` : `${h160.slice(0, 6)}...${h160.slice(-4)}`;
     const h160Short = `${h160.slice(0, 6)}...${h160.slice(-4)}`;
     return (
       <div className="flex items-center gap-2">
         <span className="rounded bg-surface-overlay px-2 py-1.5 text-xs uppercase text-text-secondary">
-          {isSubstrate ? "Substrate" : "EVM"}
+          {badge}
         </span>
         <span
           className="rounded bg-surface-raised px-3 py-1.5 text-sm text-text-secondary"
-          title={isSubstrate ? `${ss58}\nH160: ${h160}` : h160}
+          title={showSs58 ? `${ss58}\nH160: ${h160}` : h160}
         >
           {primary}
-          {isSubstrate && <span className="ml-2 text-xs text-text-muted">H160 {h160Short}</span>}
+          {showSs58 && <span className="ml-2 text-xs text-text-muted">H160 {h160Short}</span>}
         </span>
         <button
           onClick={disconnect}

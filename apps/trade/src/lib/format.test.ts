@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { marketApproveAmount, feeWarningThreshold } from "./format";
+import { marketApproveAmount, feeWarningThreshold, hasMarketLiquidity } from "./format";
 import { Side } from "../types/market";
 
 describe("feeWarningThreshold (chain-derived, not hardcoded)", () => {
@@ -24,5 +24,23 @@ describe("marketApproveAmount (exact-escrow guard)", () => {
   it("never returns the whole balance for a sell (regression: no full-balance approval)", () => {
     const balance = 1_000_000n;
     expect(marketApproveAmount(Side.Sell, 42n, balance)).not.toBe(balance);
+  });
+});
+
+describe("hasMarketLiquidity (market-order fill guard)", () => {
+  it("a buy needs asks: false when the ask side is empty", () => {
+    expect(hasMarketLiquidity(Side.Buy, 100n, 0n)).toBe(false);
+  });
+
+  it("a buy can fill when there is an ask, regardless of bids", () => {
+    expect(hasMarketLiquidity(Side.Buy, 0n, 50n)).toBe(true);
+  });
+
+  it("a sell needs bids: false when the bid side is empty", () => {
+    expect(hasMarketLiquidity(Side.Sell, 0n, 100n)).toBe(false);
+  });
+
+  it("a sell can fill when there is a bid, regardless of asks", () => {
+    expect(hasMarketLiquidity(Side.Sell, 50n, 0n)).toBe(true);
   });
 });

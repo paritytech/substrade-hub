@@ -85,13 +85,14 @@ export async function writeContract<
 
   const { accountType, ss58, signer, mapped, h160, setMapped } = useWalletStore.getState();
 
-  // Substrate accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
-  if (accountType === "substrate" && ss58 && signer) {
+  // Substrate and host accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
+  // Host accounts are marked mapped (handled host-side), so they skip the ensureMapped probe.
+  if ((accountType === "substrate" || accountType === "host") && ss58 && signer) {
     if (!mapped && h160) {
       await ensureMapped(h160, signer);
       setMapped();
     }
-    console.log(`[writeContract] ${String(functionName)} via pallet_revive.call (substrate)`);
+    console.log(`[writeContract] ${String(functionName)} via pallet_revive.call (${accountType})`);
     return submitReviveCall({
       abi: abi as Abi,
       contractAddress,

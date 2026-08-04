@@ -36,6 +36,18 @@ describe("wallet store", () => {
     expect(s.mapped).toBe(false);
   });
 
+  it("connectHost stores the host signer + derived fields, mapped=true (host maps)", () => {
+    const HOST = { ss58: SUB.ss58, h160: SUB.h160, originAccount: SUB.originAccount, signer: SUB.signer };
+    useWalletStore.getState().connectHost(HOST);
+    const s = useWalletStore.getState();
+    expect(s.accountType).toBe("host");
+    expect(s.ss58).toBe(HOST.ss58);
+    expect(s.h160).toBe(HOST.h160);
+    expect(s.originAccount).toBe(HOST.originAccount);
+    expect(s.signer).toBe(HOST.signer);
+    expect(s.mapped).toBe(true);
+  });
+
   it("setMapped flips the mapped flag", () => {
     useWalletStore.getState().connectSubstrate(SUB);
     useWalletStore.getState().setMapped();

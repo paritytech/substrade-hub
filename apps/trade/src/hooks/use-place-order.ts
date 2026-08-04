@@ -5,7 +5,7 @@ import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
 import { useMarketStore } from "../stores/market";
 import { useToastStore } from "../stores/toast";
-import { quoteAmountCeil, marketApproveAmount } from "../lib/format";
+import { quoteAmountCeil, marketApproveAmount, hasMarketLiquidity } from "../lib/format";
 import { parseTokenAmount } from "../lib/format";
 import { Side } from "../types/market";
 import { activeChain } from "../config/chains";
@@ -92,6 +92,21 @@ export function usePlaceOrder() {
           updateToast(toastId, "success", `${sideLabel} order placed!`);
           return result;
         } else {
+          // A market order fills against the opposite side of the book. If that side is empty the
+          // contract fills nothing (no revert) yet still costs gas, so fail fast with a clear reason.
+          // The form disables submit in this case too; this is the belt-and-braces backstop.
+          const [bestBid, bestAsk] = (await readContract(
+            dlobAbi,
+            "getBestPrices",
+            [],
+            market.address,
+          )) as [bigint, bigint];
+          if (!hasMarketLiquidity(params.side, bestBid, bestAsk)) {
+            throw new Error(
+              `No ${params.side === Side.Buy ? "sell-side" : "buy-side"} liquidity to fill this market order. Place a limit order instead.`,
+            );
+          }
+
           const escrowToken =
             params.side === Side.Buy ? market.quote.addr : market.base.addr;
 

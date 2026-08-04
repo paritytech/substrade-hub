@@ -12,7 +12,7 @@ SubsTrade Hub is a fully on-chain **Decentralized Limit Order Book (DLOB)** for 
 | `apps/trade/` | React + Vite + TypeScript | Trading UI; talks to Asset Hub via `polkadot-api` (papi) + `viem` |
 | `e2e/` | Rust | Integration tests using polkadot-sdk's `xcm-emulator` (in-process Westend relay + Asset Hub + PenpalA; no external node) |
 
-The JS side is a pnpm + Turborepo workspace pinned to `pnpm@10.12.1` (`packageManager` field). Node 26 dropped bundled corepack, so if `pnpm` is missing, install it with `npm install -g pnpm@10.12.1` rather than relying on corepack.
+The JS side is a pnpm + Turborepo workspace pinned to `pnpm@11.20.0` (`packageManager` field). Node 26 dropped bundled corepack, so if `pnpm` is missing, install it with `npm install -g pnpm@11.20.0` rather than relying on corepack.
 
 The docs are thorough and worth reading before deep work: `contracts/docs/{how-it-works,deployment,configuration,testing}.md` and `e2e/README.md`.
 
