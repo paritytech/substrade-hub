@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#17171A"/>
+  <!-- order-book candlesticks: a sell (pink) and a buy (teal) -->
+  <g stroke-linecap="round">
+    <!-- sell candle -->
+    <line x1="188" y1="112" x2="188" y2="400" stroke="#E6007A" stroke-width="20"/>
+    <rect x="156" y="176" width="64" height="150" rx="14" fill="#E6007A"/>
+    <!-- buy candle -->
+    <line x1="324" y1="128" x2="324" y2="416" stroke="#22C7A9" stroke-width="20"/>
+    <rect x="292" y="220" width="64" height="150" rx="14" fill="#22C7A9"/>
+  </g>
+</svg>

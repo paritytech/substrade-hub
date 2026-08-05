@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "sync-abi": "node scripts/sync-abi.mjs",
-    "demo:host": "node scripts/demo-host.mjs"
+    "demo:host": "node scripts/demo-host.mjs",
+    "deploy:dot": "pad ./dist substrade-hub.dot --env devnet"
   },
   "dependencies": {
     "@parity/product-sdk-address": "^0.1.1",
