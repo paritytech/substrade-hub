@@ -1,0 +1,14 @@
+{
+  "name": "SubsTrade Hub",
+  "short_name": "SubsTrade",
+  "description": "Fully on-chain order-book DEX on Asset Hub.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#17171A",
+  "theme_color": "#17171A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

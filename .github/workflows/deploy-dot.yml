@@ -1,0 +1,85 @@
+name: Deploy .dot app
+
+# Builds the trading UI and publishes it to the Bulletin chain, pointing the registered DotNS name
+# substrade-hub.dot at the new bundle. Manual by default; also runs on a `dot-v*` tag.
+#
+# Target: the Polkadot Products Devnet (env `devnet`, gateway `substrade-hub.dev-dot.li`). This is the
+# intended showcase network, not a production deploy. See apps/trade/docs/deploy.md ("Scope").
+#
+# Requires the secret DOTNS_MNEMONIC (scoped to the `devnet-deploy` environment): the mnemonic of the
+# account that OWNS substrade-hub.dot, funded on Devnet Asset Hub, EVM-mapped, and Bulletin-authorized.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "App version MAJOR.MINOR.PATCH (published as appVersion)"
+        required: true
+  push:
+    tags: ["dot-v*"]
+
+concurrency:
+  group: deploy-dot
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build & publish substrade-hub.dot
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Protected environment: gate DOTNS_MNEMONIC behind required reviewers / branch rules in repo settings.
+    environment: devnet-deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Descriptors are generated from committed metadata (gitignored output), same as the Frontend job.
+      - name: Generate PAPI descriptors
+        run: pnpm --filter @substrade-hub/trade exec papi generate
+
+      # Version comes from the tag (dot-v1.2.3 -> 1.2.3) or the workflow_dispatch input. Validate here so
+      # a malformed value fails before we publish.
+      - name: Resolve app version
+        id: ver
+        # Never interpolate the untrusted input into the script body. Pass it via env, then validate
+        # before use. GITHUB_EVENT_NAME / GITHUB_REF_NAME are trusted runner defaults.
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            V="${GITHUB_REF_NAME#dot-v}"
+          else
+            V="$INPUT_VERSION"
+          fi
+          if ! printf '%s' "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version '$V' is not MAJOR.MINOR.PATCH"; exit 1
+          fi
+          echo "app_version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: pnpm --filter @substrade-hub/trade build
+
+      - name: Publish to Bulletin and point substrade-hub.dot at it
+        working-directory: apps/trade
+        env:
+          DOTNS_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
+          APP_VERSION: ${{ steps.ver.outputs.app_version }}
+        run: |
+          if [ -z "$DOTNS_MNEMONIC" ]; then
+            echo "::error::DOTNS_MNEMONIC secret is not set"; exit 1
+          fi
+          # Pinned CLI version (not @latest): the step handles the deploy mnemonic, so the code that runs
+          # must be a reviewed release. Bump deliberately. No --publish (registry listing needs personhood).
+          npx -y -p @polkadot-community-foundation/polkadot-app-deploy@0.13.1 \
+            pad ./dist substrade-hub.dot --env devnet --mnemonic "$DOTNS_MNEMONIC"
