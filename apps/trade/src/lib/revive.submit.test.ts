@@ -60,8 +60,8 @@ describe("submitReviveCall", () => {
 
     expect(res).toEqual({ txHash: "0xhash", status: "success" });
     const arg = mockApi.tx.Revive.call.mock.calls[0][0];
-    expect(arg.weight_limit).toEqual({ ref_time: 2000n, proof_size: 4000n });
-    expect(arg.storage_deposit_limit).toBe(1000n); // 500n * 2 buffer
+    expect(arg.weight_limit).toEqual({ ref_time: 2000n, proof_size: 4000n }); // 2x weight buffer
+    expect(arg.storage_deposit_limit).toBe(5000n); // 500n * 10 storage buffer
     expect(arg.value).toBe(0n);
   });
 
@@ -110,6 +110,16 @@ describe("submitReviveCall", () => {
     await expect(
       submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer }),
     ).rejects.toThrow("decoded-revert-reason");
+    expect(mockApi.tx.Revive.call).not.toHaveBeenCalled();
+  });
+
+  it("throws 'No contract code' and never submits when the dry-run requires zero weight (empty address)", async () => {
+    // A successful, non-revert dry-run that needs zero weight = the destination has no contract code,
+    // so the call would be a silent no-op that pallet-revive reports as success. Fail loudly instead.
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry({ weight_required: weight(0n, 0n) }));
+    await expect(
+      submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer }),
+    ).rejects.toThrow(/No contract code/i);
     expect(mockApi.tx.Revive.call).not.toHaveBeenCalled();
   });
 

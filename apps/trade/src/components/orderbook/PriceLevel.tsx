@@ -23,7 +23,7 @@ export function PriceLevel({ level, side, maxTotal, baseDecimals, priceDecimals 
   return (
     <button
       onClick={() => setPrice(formatTokenAmount(level.price, 18, priceDecimals))}
-      className="relative grid w-full grid-cols-2 gap-1 px-3 text-xs hover:bg-surface-overlay"
+      className="relative grid w-full grid-cols-2 gap-1 px-3 text-left text-xs hover:bg-surface-overlay"
     >
       {/* Depth bar */}
       <div

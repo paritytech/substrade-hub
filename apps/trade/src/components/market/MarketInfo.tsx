@@ -1,6 +1,4 @@
-import { useBestPrices } from "../../hooks/use-best-prices";
 import { useMarketStore } from "../../stores/market";
-import { NumberDisplay } from "../ui/NumberDisplay";
 import { erc20ToAssetId } from "../../lib/format";
 import { activeChain } from "../../config/chains";
 
@@ -21,9 +19,8 @@ function AssetLink({ symbol, addr }: { symbol: string; addr: `0x${string}` }) {
 
 export function MarketInfo() {
   const market = useMarketStore((s) => s.selectedMarket);
-  const { data: prices } = useBestPrices();
 
-  if (!market || !prices) return null;
+  if (!market) return null;
 
   return (
     <div className="flex items-center gap-4 text-sm">
@@ -31,18 +28,6 @@ export function MarketInfo() {
         <AssetLink symbol={market.base.symbol} addr={market.base.addr} />
         <span className="text-text-muted">/</span>
         <AssetLink symbol={market.quote.symbol} addr={market.quote.addr} />
-      </div>
-      <div>
-        <span className="text-text-muted">Bid </span>
-        <NumberDisplay value={prices.bestBid} className="text-buy" />
-      </div>
-      <div>
-        <span className="text-text-muted">Ask </span>
-        <NumberDisplay value={prices.bestAsk} className="text-sell" />
-      </div>
-      <div>
-        <span className="text-text-muted">Spread </span>
-        <NumberDisplay value={prices.spread} className="text-text-secondary" />
       </div>
       <a
         href={`${activeChain.explorerUrl}/account/${market.address}`}

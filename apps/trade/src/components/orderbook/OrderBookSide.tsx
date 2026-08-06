@@ -9,22 +9,31 @@ interface OrderBookSideProps {
   maxTotal: bigint;
   baseDecimals: number;
   priceDecimals: number;
+  /** Which edge the rows stick to when there are too few to fill the area — "bottom" makes asks
+   *  hug the spread (best/lowest ask nearest it), "top" makes bids hug it. */
+  anchor?: "top" | "bottom";
 }
 
-export function OrderBookSide({ levels, side, maxTotal, baseDecimals, priceDecimals }: OrderBookSideProps) {
+export function OrderBookSide({ levels, side, maxTotal, baseDecimals, priceDecimals, anchor = "top" }: OrderBookSideProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
     count: levels.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 22,
+    estimateSize: () => 24,
     overscan: 5,
   });
 
   return (
-    <div ref={parentRef} className="h-full overflow-y-auto">
+    <div
+      ref={parentRef}
+      // Reserve the 6px scrollbar gutter on both sides whether or not they scroll, so the right-aligned
+      // Volume column always lines up with the header (which mirrors the same inset). Without it, an
+      // overflowing side would shift 6px left of a non-overflowing one.
+      className={`flex max-h-72 flex-col overflow-y-auto [scrollbar-gutter:stable] ${anchor === "bottom" ? "justify-end" : ""}`}
+    >
       <div
-        className="relative w-full"
+        className="relative w-full shrink-0"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
       >
         {virtualizer.getVirtualItems().map((virtualRow) => {

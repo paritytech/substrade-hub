@@ -4,8 +4,13 @@ import type { Abi } from "viem";
 import { getTypedApi } from "./client";
 import { extractRevertReason } from "./errors";
 
-/** Buffer applied to dry-run weights / storage deposit for headroom. */
-const GAS_BUFFER = 2n;
+// Headroom over the dry-run estimates. Weight (ref_time/proof_size) is PoV-sensitive and counts against
+// block limits, so keep its buffer modest. Storage deposit does NOT affect block/PoV limits and the
+// dry-run under-estimates it badly on storage-churning paths (e.g. a fill that removes a price level via
+// the RedBlackTree delegatecall), so give it a generous buffer — otherwise those trades revert on
+// execution while passing the dry-run. Verified: this order needed >3x storage; 2x weight was ample.
+const WEIGHT_BUFFER = 2n;
+const STORAGE_BUFFER = 10n;
 
 /**
  * Reject a submission that is never included, so the UI can't hang forever on a dropped tx.
@@ -189,16 +194,28 @@ export async function submitReviveCall(
     // extractRevertReason reads `.value.data`, so wrap the ExecReturnValue accordingly
     throw new Error(extractRevertReason({ value: dry.result.value }, params.abi));
   }
+  // A function call that requires ZERO weight means the destination has no contract code: the call is a
+  // silent no-op that pallet-revive still reports as success (this is what a mis-recorded/undeployed
+  // contract address looks like). Fail loudly instead of letting the UI toast a fake success.
+  if (
+    data.length > 0 &&
+    dry.weight_required.ref_time === 0n &&
+    dry.weight_required.proof_size === 0n
+  ) {
+    throw new Error(
+      `No contract code at ${params.contractAddress}. The call would do nothing — check the deployed address.`,
+    );
+  }
 
   const depositLimit =
-    dry.storage_deposit.type === "Charge" ? dry.storage_deposit.value * GAS_BUFFER : 0n;
+    dry.storage_deposit.type === "Charge" ? dry.storage_deposit.value * STORAGE_BUFFER : 0n;
 
   const tx = api.tx.Revive.call({
     dest,
     value,
     weight_limit: {
-      ref_time: dry.weight_required.ref_time * GAS_BUFFER,
-      proof_size: dry.weight_required.proof_size * GAS_BUFFER,
+      ref_time: dry.weight_required.ref_time * WEIGHT_BUFFER,
+      proof_size: dry.weight_required.proof_size * WEIGHT_BUFFER,
     },
     storage_deposit_limit: depositLimit,
     data,

@@ -1,23 +1,39 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand: #e6007a;
-  --color-brand-light: #ff4da6;
-  --color-buy: #00c853;
-  --color-buy-dim: rgba(0, 200, 83, 0.35);
-  --color-sell: #ff1744;
-  --color-sell-dim: rgba(255, 23, 68, 0.35);
-  --color-surface: #0a0e17;
-  --color-surface-raised: #111827;
-  --color-surface-overlay: #1a2332;
-  --color-border: #1f2937;
-  --color-text-primary: #f3f4f6;
-  --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
+  /* Polkadot brand (docs.polkadot.com): Polkadot Pink + neutral "Storm" greys on near-black. */
+  --color-brand: #ff2670; /* Polkadot Pink */
+  --color-brand-light: #ff5c94;
+  /* Buy/sell stay semantic (green/red); Polkadot Pink is reserved for brand/accent, not "sell". */
+  --color-buy: #00b26d;
+  --color-buy-dim: rgba(0, 178, 109, 0.35);
+  --color-sell: #f6465b;
+  --color-sell-dim: rgba(246, 70, 91, 0.35);
+  --color-surface: #0a0a0a; /* near-black */
+  --color-surface-raised: #141414;
+  --color-surface-overlay: #1c1c22;
+  --color-border: #2a2a32;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #aeb7cb; /* Storm 400 */
+  --color-text-muted: #6e7391; /* Storm 700 */
+
+  /* Brand typography: Unbounded (display) + Manrope (body), self-hosted via @fontsource. */
+  --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Unbounded Variable", "Manrope Variable", ui-sans-serif, sans-serif;
+
+  /* Type scale — one notch above Tailwind's default, applied to every text-xs/sm/base/lg utility. */
+  --text-xs: 0.8125rem; /* 13px */
+  --text-xs--line-height: 1.15rem;
+  --text-sm: 0.9375rem; /* 15px */
+  --text-sm--line-height: 1.4rem;
+  --text-base: 1.0625rem; /* 17px */
+  --text-base--line-height: 1.6rem;
+  --text-lg: 1.1875rem; /* 19px */
+  --text-lg--line-height: 1.75rem;
 }
 
 body {
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Scrollbar */

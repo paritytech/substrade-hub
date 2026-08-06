@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { ChainBoot } from "./components/ChainBoot";
+import "@fontsource-variable/unbounded";
+import "@fontsource-variable/manrope";
 import "./app.css";
 
 const queryClient = new QueryClient({
