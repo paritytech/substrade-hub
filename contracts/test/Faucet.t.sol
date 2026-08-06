@@ -32,7 +32,9 @@ contract FaucetTest is Test {
     function testCooldownBlocksImmediateSecondClaim() public {
         vm.startPrank(alice);
         faucet.claim();
-        vm.expectRevert(abi.encodeWithSelector(Faucet.CooldownActive.selector, block.timestamp + COOLDOWN));
+        vm.expectRevert(
+            abi.encodeWithSelector(Faucet.CooldownActive.selector, block.timestamp + COOLDOWN)
+        );
         faucet.claim();
         vm.stopPrank();
     }
