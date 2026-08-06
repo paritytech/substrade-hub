@@ -3,7 +3,7 @@ import { useWalletStore } from "../../stores/wallet";
 import { useMarketStore } from "../../stores/market";
 import { useTokenBalance } from "../../hooks/use-token-balance";
 import { Side } from "../../types/market";
-import { formatTokenAmount } from "../../lib/format";
+import { Amount } from "../ui/Amount";
 
 export function AmountInput() {
   const { amount, setAmount, side } = useTradeFormStore();
@@ -20,13 +20,6 @@ export function AmountInput() {
 
   const { data: balance } = useTokenBalance(spendToken?.addr, h160 ?? undefined);
 
-  const handleMax = () => {
-    if (balance != null) {
-      // Show full precision for the spend token when setting max
-      setAmount(formatTokenAmount(balance, baseDecimals, baseDecimals));
-    }
-  };
-
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
@@ -35,7 +28,7 @@ export function AmountInput() {
         </label>
         {balance != null && spendToken && (
           <span className="text-xs text-text-muted">
-            Bal: {formatTokenAmount(balance, spendDecimals, 2)} {spendToken.symbol}
+            Bal: <Amount value={balance} decimals={spendDecimals} /> {spendToken.symbol}
           </span>
         )}
       </div>
@@ -46,17 +39,11 @@ export function AmountInput() {
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           placeholder="0.00"
-          className="w-full rounded-lg border border-border bg-surface-overlay px-3 py-2 pr-20 text-sm text-text-primary outline-none focus:border-brand"
+          className="w-full rounded-lg border border-border bg-surface-overlay px-3 py-2 pr-14 text-sm text-text-primary outline-none focus:border-brand"
         />
-        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
-          <button
-            onClick={handleMax}
-            className="rounded bg-surface px-2 py-0.5 text-[10px] font-medium text-brand hover:text-brand-light"
-          >
-            MAX
-          </button>
-          <span className="text-xs font-medium text-text-primary">{baseSymbol}</span>
-        </div>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-text-primary">
+          {baseSymbol}
+        </span>
       </div>
     </div>
   );

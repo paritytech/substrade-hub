@@ -16,26 +16,29 @@ export function TradingGrid() {
     );
   }
 
+  // Mobile: a single scrollable column (chart, then buy/sell, then order book, then orders/history) so
+  // nothing is hidden. lg+: the fixed three-pane trading grid. Source order is mobile-friendly; explicit
+  // lg grid positions keep the desktop layout regardless of source order.
   return (
-    <div className="grid flex-1 grid-cols-[1fr_320px_300px] grid-rows-[1fr_240px] gap-px overflow-hidden bg-border">
+    <div className="flex flex-1 flex-col gap-px overflow-y-auto bg-border lg:grid lg:grid-cols-[1fr_320px_300px] lg:grid-rows-[1fr_240px] lg:overflow-hidden">
       {/* Price Chart */}
-      <div className="overflow-hidden bg-surface">
+      <div className="h-72 shrink-0 overflow-hidden bg-surface lg:col-start-1 lg:row-start-1 lg:h-auto">
         <PriceChart />
       </div>
 
-      {/* Order Book */}
-      <div className="row-span-2 overflow-hidden bg-surface">
-        <OrderBook />
-      </div>
-
-      {/* Trade Form */}
-      <div className="row-span-2 overflow-y-auto bg-surface">
+      {/* Trade Form (buy/sell) — kept high on mobile so it's reachable without hunting */}
+      <div className="shrink-0 overflow-y-auto bg-surface lg:col-start-3 lg:row-span-2 lg:row-start-1">
         <TradeForm />
       </div>
 
-      {/* Bottom panel: Orders + Trade History */}
-      <div className="flex bg-surface">
-        <div className="flex-1 overflow-hidden border-r border-border">
+      {/* Order Book */}
+      <div className="h-80 shrink-0 overflow-hidden bg-surface lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-auto">
+        <OrderBook />
+      </div>
+
+      {/* Bottom panel: Orders + Trade History (stacked on mobile, side-by-side on sm+) */}
+      <div className="flex h-96 shrink-0 flex-col bg-surface sm:h-64 sm:flex-row lg:col-start-1 lg:row-start-2 lg:h-auto">
+        <div className="flex-1 overflow-hidden border-b border-border sm:border-b-0 sm:border-r">
           <OpenOrders />
         </div>
         <div className="flex-1 overflow-hidden">

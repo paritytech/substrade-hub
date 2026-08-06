@@ -4,6 +4,7 @@ import { dlobAbi } from "../abi/dlob";
 import { useMarketStore } from "../stores/market";
 import { useWalletStore } from "../stores/wallet";
 import { POLL_INTERVAL_MS } from "../config/constants";
+import { isOpenOrder } from "../lib/orders";
 import { type Order } from "../types/order";
 import { Side } from "../types/market";
 
@@ -47,11 +48,8 @@ async function fetchUserOrders(
       const raw = results[i] as RawOrder | null;
       if (!raw) continue;
 
-      const isActive = raw.status === 0; // OrderStatus.Active = 0
-      if (
-        isActive &&
-        raw.originAccount.toLowerCase() === originAccount.toLowerCase()
-      ) {
+      // Open = Active AND not fully filled (the DLOB doesn't flip status to Filled on a full fill).
+      if (isOpenOrder(raw, originAccount)) {
         orders.push({
           orderId: start + i,
           side: raw.side as Side,

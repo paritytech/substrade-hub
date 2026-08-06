@@ -16,6 +16,8 @@
     "deploy:dot": "pad ./dist substrade-hub.dot --env devnet"
   },
   "dependencies": {
+    "@fontsource-variable/manrope": "^5.3.0",
+    "@fontsource-variable/unbounded": "^5.3.0",
     "@parity/product-sdk-address": "^0.1.1",
     "@parity/product-sdk-chain-client": "^0.9.2",
     "@parity/product-sdk-host": "^0.15.0",

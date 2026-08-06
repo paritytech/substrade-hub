@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { marketApproveAmount, feeWarningThreshold, hasMarketLiquidity } from "./format";
+import { marketApproveAmount, feeWarningThreshold, hasMarketLiquidity, groupThousands } from "./format";
 import { Side } from "../types/market";
 
 describe("feeWarningThreshold (chain-derived, not hardcoded)", () => {
@@ -42,5 +42,18 @@ describe("hasMarketLiquidity (market-order fill guard)", () => {
 
   it("a sell can fill when there is a bid, regardless of asks", () => {
     expect(hasMarketLiquidity(Side.Sell, 50n, 0n)).toBe(true);
+  });
+});
+
+describe("groupThousands (apostrophe separators)", () => {
+  it("groups the integer part and preserves the fraction", () => {
+    expect(groupThousands("10000.00")).toBe("10'000.00");
+    expect(groupThousands("10981.00")).toBe("10'981.00");
+    expect(groupThousands("1000000")).toBe("1'000'000");
+  });
+
+  it("leaves short numbers unchanged", () => {
+    expect(groupThousands("865.00")).toBe("865.00");
+    expect(groupThousands("0.00")).toBe("0.00");
   });
 });

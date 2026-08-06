@@ -6,6 +6,7 @@ import { useWalletStore } from "../../stores/wallet";
 import { useMarketStore } from "../../stores/market";
 import { usePlaceOrder } from "../../hooks/use-place-order";
 import { useBestPrices } from "../../hooks/use-best-prices";
+import { useTokenBalance } from "../../hooks/use-token-balance";
 import { useNativeBalance } from "../../hooks/use-native-balance";
 import { useNativeToken } from "../../hooks/use-native-token";
 import {
@@ -18,6 +19,7 @@ import {
 } from "../../lib/format";
 import { Side } from "../../types/market";
 import { Spinner } from "../ui/Spinner";
+import { Amount } from "../ui/Amount";
 
 export function TradeForm() {
   const { side, orderType, setOrderType, price, amount, reset } =
@@ -26,6 +28,8 @@ export function TradeForm() {
   const market = useMarketStore((s) => s.selectedMarket);
   const placeOrder = usePlaceOrder();
   const { data: bestPrices } = useBestPrices();
+  const { data: quoteBalance } = useTokenBalance(market?.quote.addr, h160 ?? undefined);
+  const { data: baseBalance } = useTokenBalance(market?.base.addr, h160 ?? undefined);
   const { data: nativeFree } = useNativeBalance();
   const { data: nativeToken } = useNativeToken();
   const lowDot =
@@ -100,6 +104,26 @@ export function TradeForm() {
           Market
         </button>
       </div>
+
+      {h160 && market && (
+        <div className="rounded-lg bg-surface-overlay px-3 py-2">
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
+            Available
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-text-secondary">{market.quote.symbol}</span>
+            <span className="text-lg font-semibold text-text-primary">
+              {quoteBalance !== undefined ? <Amount value={quoteBalance} decimals={quoteDecimals} /> : "—"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-text-secondary">{market.base.symbol}</span>
+            <span className="text-lg font-semibold text-text-primary">
+              {baseBalance !== undefined ? <Amount value={baseBalance} decimals={baseDecimals} /> : "—"}
+            </span>
+          </div>
+        </div>
+      )}
 
       {orderType === "limit" && <PriceInput />}
       <AmountInput />

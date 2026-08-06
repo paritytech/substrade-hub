@@ -5,6 +5,7 @@ import { dlobFactoryAbi } from "../abi/dlob-factory";
 import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
 import { activeChain } from "../config/chains";
+import { filterKnownQuoteMarkets } from "../lib/markets";
 import type { MarketInfo, TokenInfo } from "../types/market";
 
 /**
@@ -93,7 +94,7 @@ async function fetchMarkets(): Promise<MarketInfo[]> {
     });
   }
 
-  return markets;
+  return filterKnownQuoteMarkets(markets, activeChain.knownQuote.addr);
 }
 
 export function useMarkets() {

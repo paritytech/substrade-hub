@@ -39,12 +39,12 @@ export function TradeHistory() {
                 </td>
                 <td className="px-3 py-1">
                   <a
-                    href={`${activeChain.explorerUrl}/tx/${trade.txHash}`}
+                    href={`${activeChain.explorerUrl}/extrinsic/${trade.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-text-secondary hover:text-text-primary underline decoration-dotted"
                   >
-                    {trade.txHash.slice(0, 6)}...{trade.txHash.slice(-4)}
+                    {trade.txHash}
                   </a>
                 </td>
               </tr>

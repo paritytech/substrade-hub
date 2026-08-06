@@ -79,6 +79,17 @@ export function formatTokenAmount(
   return `${whole}.${fracStr}`;
 }
 
+/** Insert apostrophe thousands separators into a formatted number string ("10981.00" -> "10'981.00"). */
+export function groupThousands(value: string): string {
+  const neg = value.startsWith("-");
+  const s = neg ? value.slice(1) : value;
+  const dot = s.indexOf(".");
+  const intPart = dot === -1 ? s : s.slice(0, dot);
+  const rest = dot === -1 ? "" : s.slice(dot);
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return (neg ? "-" : "") + grouped + rest;
+}
+
 /**
  * Extract pallet-assets asset ID from an ERC20 precompile address.
  * Address format: 0x{assetId_be_4bytes}00000000000000000000000001200000
