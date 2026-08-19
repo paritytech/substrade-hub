@@ -25,7 +25,7 @@ export function PriceChart() {
   const candleLabel = RANGE_CANDLE_INTERVAL[timeRange] < 60
     ? `${RANGE_CANDLE_INTERVAL[timeRange]}s`
     : `${RANGE_CANDLE_INTERVAL[timeRange] / 60}m`;
-  const ranges: TimeRange[] = ["1D", "1H"];
+  const ranges: TimeRange[] = ["1H", "1D"];
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -145,7 +145,7 @@ export function PriceChart() {
     candleSeriesRef.current.setData(candleData);
 
     // Compute price range: fit all candles, centered on mid-spread,
-    // with a minimum of 5% of mid-spread (never less than $10).
+    // with a minimum of 0.5% of price (never less than $2) so candles fill the pane.
     const bid = bestPrices ? Number(bestPrices.bestBid) / 1e18 : 0;
     const ask = bestPrices ? Number(bestPrices.bestAsk) / 1e18 : 0;
     const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask || 175;
@@ -153,7 +153,7 @@ export function PriceChart() {
     const allPrices = candleData.flatMap((c) => [c.high, c.low]);
     const dataMin = Math.min(...allPrices);
     const dataMax = Math.max(...allPrices);
-    const minRange = Math.max(10, mid * 0.05); // 5% of spread center, at least $10
+    const minRange = Math.max(2, mid * 0.005); // 0.5% of price, at least $2 — hug the candles rather than a wide fixed band
     const padding = 0.5; // $0.50 breathing room above/below candles
 
     // Start with range that fits all candles

@@ -38,13 +38,21 @@ export function TradeHistory() {
                   {formatTokenAmount(trade.amount, baseDecimals)}
                 </td>
                 <td className="px-3 py-1">
+                  {/* EVM trades carry a real tx hash (link to /tx/); host-signed trades use a
+                      block-index extrinsic id (link to /extrinsic/). */}
                   <a
-                    href={`${activeChain.explorerUrl}/extrinsic/${trade.txHash}`}
+                    href={
+                      trade.txHash.startsWith("0x")
+                        ? `${activeChain.explorerUrl}/tx/${trade.txHash}`
+                        : `${activeChain.explorerUrl}/extrinsic/${trade.txHash}`
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-text-secondary hover:text-text-primary underline decoration-dotted"
                   >
-                    {trade.txHash}
+                    {trade.txHash.startsWith("0x")
+                      ? `${trade.txHash.slice(0, 10)}...`
+                      : trade.txHash}
                   </a>
                 </td>
               </tr>

@@ -3,8 +3,9 @@
 // Adapted from bootstrap-nvda.mjs. Two differences:
 //   1. REUSES the existing tUSD (asset 50000698) as the quote — it does NOT create a new tUSD, so the
 //      market matches the faucet's token and passes the app's known-tUSD filter. It only creates tMU
-//      (Micron, ~$865) as the new base, and tops up the deployer's tUSD to cover seeding.
-//   2. All prices are re-centered on ~865 (mid), bids 860.00–864.50 / asks 865.50–870.00.
+//      (Micron, ~$940) as the new base, and tops up the deployer's tUSD to cover seeding.
+//   2. All prices are centered on ~940 (mid), bids 935.00 to 939.50 / asks 940.50 to 945.00, with
+//      sizes tapered so depth concentrates near the spread.
 //
 // Requires in scripts/.env:
 //   WSS_URL, RPC_URL, ALICE_SEED, DEPLOYER_PRIVATE_KEY, DLOB_FACTORY_ADDRESS
@@ -108,7 +109,7 @@ const QUOTE_DECIMALS = 6;
 const KNOWN_TUSD_ASSET_ID = Number(optionalEnv("MU_QUOTE_ASSET_ID") || 50000698);
 const QUOTE_TOPUP = 1_000_000_000_000n; // 1M tUSD minted to the deployer to cover seeding/replenish
 
-// Base: tMU (Micron), ~$865. Decimals MUST match the quote (tUSD = 6): the DLOB computes
+// Base: tMU (Micron), ~$940. Decimals MUST match the quote (tUSD = 6): the DLOB computes
 // quoteAmount = baseAmount * price / 1e18 with no cross-decimal scaling, so base_dp != quote_dp
 // would misprice by 10^(quote_dp - base_dp).
 const BASE_NAME = "Test Micron";
@@ -122,68 +123,69 @@ const TICK_SIZE = 10_000_000_000_000_000n; // 1e16 = 0.01
 const MIN_ORDER_SIZE = 1_000_000n; // 1e6 = 1 token at 6 decimals
 const MAX_ORDER_SIZE = 1_000_000_000_000n; // 1e12 = 1M tokens
 
-// Book/price geometry, centered on the ~865 mid.
-const RANGE_LOW = 860.0;   // no bridge/bid below this
-const RANGE_HIGH = 870.0;  // no bridge/ask above this
+// Book/price geometry, centered on the ~940 mid (Micron).
+const RANGE_LOW = 935.0;   // no bridge/bid below this
+const RANGE_HIGH = 945.0;  // no bridge/ask above this
 const LEVEL_STEP = 0.5;
-const SWEEP_BUY_PRICE = 1000.0; // far above all asks — sweeps the ask side clean
-const SWEEP_SELL_PRICE = 500.0; // far below all bids — sweeps the bid side clean
+const SWEEP_BUY_PRICE = 1100.0; // far above all asks, sweeps the ask side clean
+const SWEEP_SELL_PRICE = 800.0; // far below all bids, sweeps the bid side clean
 
-// Convert a decimal price (e.g. 865.50) to 18-decimal fixed-point BigInt.
+// Convert a decimal price (e.g. 940.50) to 18-decimal fixed-point BigInt.
 function priceToRaw(price) {
   const cents = Math.round(price * 100);
   return BigInt(cents) * (PRECISION / 100n);
 }
 
-// Seed orders: 10 bids + 10 asks spanning $860–$870, thin (3 units each) so trades punch through
-// multiple levels creating $0.50–$2 candles around the $865 mid.
+// Seed orders: 10 bids + 10 asks spanning $935 to $945, tapered so depth concentrates near the spread
+// (deep at the best bid/ask, thin at the edges) rather than a flat 3 units at every level. Thin edges
+// still let trades punch through multiple levels for $0.50 to $2 candles around the $940 mid.
 const SEED_BIDS = [
-  { price: 860.0, amount: 3n },
-  { price: 860.5, amount: 3n },
-  { price: 861.0, amount: 3n },
-  { price: 861.5, amount: 3n },
-  { price: 862.0, amount: 3n },
-  { price: 862.5, amount: 3n },
-  { price: 863.0, amount: 3n },
-  { price: 863.5, amount: 3n },
-  { price: 864.0, amount: 3n },
-  { price: 864.5, amount: 3n },
+  { price: 935.0, amount: 1n },
+  { price: 935.5, amount: 2n },
+  { price: 936.0, amount: 2n },
+  { price: 936.5, amount: 3n },
+  { price: 937.0, amount: 4n },
+  { price: 937.5, amount: 5n },
+  { price: 938.0, amount: 6n },
+  { price: 938.5, amount: 7n },
+  { price: 939.0, amount: 9n },
+  { price: 939.5, amount: 12n },
 ];
 const SEED_ASKS = [
-  { price: 865.5, amount: 3n },
-  { price: 866.0, amount: 3n },
-  { price: 866.5, amount: 3n },
-  { price: 867.0, amount: 3n },
-  { price: 867.5, amount: 3n },
-  { price: 868.0, amount: 3n },
-  { price: 868.5, amount: 3n },
-  { price: 869.0, amount: 3n },
-  { price: 869.5, amount: 3n },
-  { price: 870.0, amount: 3n },
+  { price: 940.5, amount: 12n },
+  { price: 941.0, amount: 9n },
+  { price: 941.5, amount: 7n },
+  { price: 942.0, amount: 6n },
+  { price: 942.5, amount: 5n },
+  { price: 943.0, amount: 4n },
+  { price: 943.5, amount: 3n },
+  { price: 944.0, amount: 2n },
+  { price: 944.5, amount: 2n },
+  { price: 945.0, amount: 1n },
 ];
 
 const BASE_UNIT = 10n ** BigInt(BASE_DECIMALS);
 const QUOTE_UNIT = 10n ** BigInt(QUOTE_DECIMALS);
 
-// Phase 4: Trade history generation. Same engine as the tNVDA script — a PRICE_PATH of target closes,
-// with buildScript() simulating the book to produce the exact bridges + trades. Path re-centered on 865.
+// Phase 4: Trade history generation. Same engine as the tNVDA script, a PRICE_PATH of target closes,
+// with buildScript() simulating the book to produce the exact bridges + trades. Path centered on 940.
 const PRICE_PATH = [
   // Wave 1: Rally
-  866.5, 867.0, 867.5, 868.0, 868.5,
+  941.5, 942.0, 942.5, 943.0, 943.5,
   // Doji + Pullback
-  868.5, 868.0, 867.0, 866.0,
+  943.5, 943.0, 942.0, 941.0,
   // Wave 2: Bounce
-  867.0, 868.0, 869.0, 869.5,
+  942.0, 943.0, 944.0, 944.5,
   // Doji + Correction
-  869.5, 869.0, 868.0, 867.0, 866.0, 865.0,
+  944.5, 944.0, 943.0, 942.0, 941.0, 940.0,
   // Wave 3: Recovery rally
-  866.0, 867.0, 868.0, 869.0, 870.0,
+  941.0, 942.0, 943.0, 944.0, 945.0,
   // Pullback
-  869.0, 868.0, 867.5,
+  944.0, 943.0, 942.5,
   // Final push
-  868.5, 869.5,
+  943.5, 944.5,
   // Fade
-  869.0, 868.0,
+  944.0, 943.0,
 ];
 
 const BRIDGE_UNITS = 3n;
