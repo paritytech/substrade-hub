@@ -19,6 +19,6 @@ export const RANGE_CANDLE_INTERVAL: Record<TimeRange, number> = {
 };
 
 export const useChartStore = create<ChartState>((set) => ({
-  timeRange: "1D",
+  timeRange: "1H",
   setTimeRange: (timeRange) => set({ timeRange }),
 }));

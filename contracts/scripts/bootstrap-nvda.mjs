@@ -1,7 +1,7 @@
 // Bootstrap tUSD/tNVDA market with realistic trade history.
 //
 // Reuses the existing DLOBFactory deployment. Creates new assets (tUSD, tNVDA),
-// a new market at ~$175, seeds the order book, then generates ~11 matched trades
+// a new market at ~$220, seeds the order book, then generates ~11 matched trades
 // with 15-second spacing to produce visible green/red candles on the chart.
 //
 // Requires in scripts/.env:
@@ -14,7 +14,7 @@
 //   node scripts/bootstrap-nvda.mjs --from 4 --to 5  # run phases 4 and 5
 //
 // When resuming, supply previously-created values via env or .env:
-//   NVDA_QUOTE_ASSET_ID, NVDA_BASE_ASSET_ID, NVDA_MARKET_ADDRESS
+//   NVDA_BASE_ASSET_ID, NVDA_MARKET_ADDRESS   (quote is fixed to the known tUSD)
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { execSync } from "child_process";
@@ -54,7 +54,7 @@ function parseArgs() {
       console.log(`Usage: node scripts/bootstrap-nvda.mjs [--from N] [--to N] [--only N]
 
 Phases:
-  1  Create Assets        (Substrate: tUSD + tNVDA)
+  1  Create Asset         (Substrate: create tNVDA, reuse + top up tUSD)
   2  Create Market        (EVM: factory.createMarket)
   3  Seed Order Book      (EVM: Deployer places resting orders)
   4  Generate Trades      (EVM: Trader matches against book)
@@ -63,8 +63,7 @@ Phases:
   7  Summary              (read-only checks)
 
 When resuming from phase 2+, set in .env:
-  NVDA_QUOTE_ASSET_ID=...
-  NVDA_BASE_ASSET_ID=...
+  NVDA_BASE_ASSET_ID=...   (quote is the fixed known tUSD)
 
 When resuming from phase 3+, also set:
   NVDA_MARKET_ADDRESS=...`);
@@ -100,10 +99,12 @@ const DEPLOYER_KEY = requireEnv("DEPLOYER_PRIVATE_KEY");
 const FACTORY_ADDRESS = requireEnv("DLOB_FACTORY_ADDRESS");
 
 // Token config
-const QUOTE_NAME = "Test USD";
 const QUOTE_SYMBOL = "tUSD";
 const QUOTE_DECIMALS = 6;
-const QUOTE_SUPPLY = 10_000_000_000_000n; // 10M
+// Reuse the tUSD we control (asset 50000698), same as bootstrap-mu, so the tNVDA market passes the
+// app's known-tUSD filter and faucet tokens can trade it. Never create a new tUSD.
+const KNOWN_TUSD_ASSET_ID = Number(optionalEnv("NVDA_QUOTE_ASSET_ID") || 50000698);
+const QUOTE_TOPUP = 1_000_000_000_000n; // 1M tUSD minted to the deployer to cover seeding/replenish
 
 const BASE_NAME = "Test NVIDIA";
 const BASE_SYMBOL = "tNVDA";
@@ -116,38 +117,39 @@ const TICK_SIZE = 10_000_000_000_000_000n; // 1e16 = 0.01
 const MIN_ORDER_SIZE = 1_000_000n; // 1e6 = 1 token at 6 decimals
 const MAX_ORDER_SIZE = 1_000_000_000_000n; // 1e12 = 1M tokens
 
-// Convert a decimal price (e.g. 175.50) to 18-decimal fixed-point BigInt.
-// 175.50 → 17550 cents → 17550 * 1e16 = 175500000000000000000
+// Convert a decimal price (e.g. 220.50) to 18-decimal fixed-point BigInt.
+// 220.50 -> 22050 cents -> 22050 * 1e16 = 220500000000000000000
 function priceToRaw(price) {
   const cents = Math.round(price * 100);
   return BigInt(cents) * (PRECISION / 100n);
 }
 
-// Seed orders: 10 bids + 10 asks spanning $170–$180, thin (3 units each)
-// so trades punch through multiple levels creating $1–$2 candles.
+// Seed orders: 10 bids + 10 asks spanning $215.50 to $225.50, tapered so depth concentrates near the
+// spread (deep at the best bid/ask, thin at the edges). Thin edges still let trades punch through
+// multiple levels for $1 to $2 candles around the $220.50 mid.
 const SEED_BIDS = [
-  { price: 170.00, amount: 3n },
-  { price: 170.50, amount: 3n },
-  { price: 171.00, amount: 3n },
-  { price: 171.50, amount: 3n },
-  { price: 172.00, amount: 3n },
-  { price: 172.50, amount: 3n },
-  { price: 173.00, amount: 3n },
-  { price: 173.50, amount: 3n },
-  { price: 174.00, amount: 3n },
-  { price: 174.50, amount: 3n },
+  { price: 215.50, amount: 1n },
+  { price: 216.00, amount: 2n },
+  { price: 216.50, amount: 2n },
+  { price: 217.00, amount: 3n },
+  { price: 217.50, amount: 4n },
+  { price: 218.00, amount: 5n },
+  { price: 218.50, amount: 6n },
+  { price: 219.00, amount: 7n },
+  { price: 219.50, amount: 9n },
+  { price: 220.00, amount: 12n },
 ];
 const SEED_ASKS = [
-  { price: 175.50, amount: 3n },
-  { price: 176.00, amount: 3n },
-  { price: 176.50, amount: 3n },
-  { price: 177.00, amount: 3n },
-  { price: 177.50, amount: 3n },
-  { price: 178.00, amount: 3n },
-  { price: 178.50, amount: 3n },
-  { price: 179.00, amount: 3n },
-  { price: 179.50, amount: 3n },
-  { price: 180.00, amount: 3n },
+  { price: 221.00, amount: 12n },
+  { price: 221.50, amount: 9n },
+  { price: 222.00, amount: 7n },
+  { price: 222.50, amount: 6n },
+  { price: 223.00, amount: 5n },
+  { price: 223.50, amount: 4n },
+  { price: 224.00, amount: 3n },
+  { price: 224.50, amount: 2n },
+  { price: 225.00, amount: 2n },
+  { price: 225.50, amount: 1n },
 ];
 
 const BASE_UNIT = 10n ** BigInt(BASE_DECIMALS);
@@ -156,7 +158,7 @@ const QUOTE_UNIT = 10n ** BigInt(QUOTE_DECIMALS);
 // Phase 4: Trade history generation.
 //
 // Three accounts: Deployer (seeds in phase 3), Maker (bridges), Trader (takes).
-// Maker ≠ Deployer → no SelfTrade on bridges. Maker ≠ Trader → no SelfTrade on takes.
+// Maker != Deployer -> no SelfTrade on bridges. Maker != Trader -> no SelfTrade on takes.
 //
 // Instead of hand-coding every trade+bridge, we define a PRICE_PATH of target close
 // prices. The buildScript() function simulates the order book and generates the
@@ -166,21 +168,21 @@ const QUOTE_UNIT = 10n ** BigInt(QUOTE_DECIMALS);
 // Same price as previous = grey doji. Higher = green (buy). Lower = red (sell).
 const PRICE_PATH = [
   // Wave 1: Rally
-  176.50, 177.00, 177.50, 178.00, 178.50,
+  222.00, 222.50, 223.00, 223.50, 224.00,
   // Doji + Pullback
-  178.50, 178.00, 177.00, 176.00,
+  224.00, 223.50, 222.50, 221.50,
   // Wave 2: Bounce
-  177.00, 178.00, 179.00, 179.50,
+  222.50, 223.50, 224.50, 225.00,
   // Doji + Correction
-  179.50, 179.00, 178.00, 177.00, 176.00, 175.00,
+  225.00, 224.50, 223.50, 222.50, 221.50, 220.50,
   // Wave 3: Recovery rally
-  176.00, 177.00, 178.00, 179.00, 180.00,
+  221.50, 222.50, 223.50, 224.50, 225.50,
   // Pullback
-  179.00, 178.00, 177.50,
+  224.50, 223.50, 223.00,
   // Final push
-  178.50, 179.50,
+  224.00, 225.00,
   // Fade
-  179.00, 178.00,
+  224.50, 223.50,
 ];
 
 // Units per bridge level (same density as seed orders)
@@ -196,7 +198,7 @@ const LEVEL_STEP = 0.50;
 function buildScript(seedBids, seedAsks, pricePath) {
   const script = [];
 
-  // Simple book model: map of price → available units
+  // Simple book model: map of price -> available units
   const book = { bids: new Map(), asks: new Map() };
   for (const { price, amount } of seedBids) book.bids.set(price, Number(amount));
   for (const { price, amount } of seedAsks) book.asks.set(price, Number(amount));
@@ -241,7 +243,7 @@ function buildScript(seedBids, seedAsks, pricePath) {
         // No asks available or all asks above target — need bridges
         const from = prevClose != null ? round(prevClose - LEVEL_STEP) : round(target - 1);
         const to = target;
-        for (let p = round(Math.max(from, 170)); p <= to; p = round(p + LEVEL_STEP)) {
+        for (let p = round(Math.max(from, 215.5)); p <= to; p = round(p + LEVEL_STEP)) {
           if (!book.asks.has(p) || book.asks.get(p) <= 0) {
             script.push({ type: "bridge", side: 1, price: p, amount: BRIDGE_UNITS });
             book.asks.set(p, (book.asks.get(p) || 0) + Number(BRIDGE_UNITS));
@@ -281,7 +283,7 @@ function buildScript(seedBids, seedAsks, pricePath) {
         // No bids available or all bids below target — need bridges
         const from = prevClose != null ? round(prevClose + LEVEL_STEP) : round(target + 1);
         const to = target;
-        for (let p = round(Math.min(from, 180)); p >= to; p = round(p - LEVEL_STEP)) {
+        for (let p = round(Math.min(from, 225.5)); p >= to; p = round(p - LEVEL_STEP)) {
           if (!book.bids.has(p) || book.bids.get(p) <= 0) {
             script.push({ type: "bridge", side: 0, price: p, amount: BRIDGE_UNITS });
             book.bids.set(p, (book.bids.get(p) || 0) + Number(BRIDGE_UNITS));
@@ -324,30 +326,30 @@ function buildScript(seedBids, seedAsks, pricePath) {
 
 const PHASE4_SCRIPT = buildScript(SEED_BIDS, SEED_ASKS, PRICE_PATH);
 
-// Replenish: refill the full range so the book looks deep after trades
+// Replenish: refill the full range (same tapered depth as the seed) so the book looks deep after trades
 const REPLENISH_BIDS = [
-  { price: 170.00, amount: 3n },
-  { price: 170.50, amount: 3n },
-  { price: 171.00, amount: 3n },
-  { price: 171.50, amount: 3n },
-  { price: 172.00, amount: 3n },
-  { price: 172.50, amount: 3n },
-  { price: 173.00, amount: 3n },
-  { price: 173.50, amount: 3n },
-  { price: 174.00, amount: 3n },
-  { price: 174.50, amount: 3n },
+  { price: 215.50, amount: 1n },
+  { price: 216.00, amount: 2n },
+  { price: 216.50, amount: 2n },
+  { price: 217.00, amount: 3n },
+  { price: 217.50, amount: 4n },
+  { price: 218.00, amount: 5n },
+  { price: 218.50, amount: 6n },
+  { price: 219.00, amount: 7n },
+  { price: 219.50, amount: 9n },
+  { price: 220.00, amount: 12n },
 ];
 const REPLENISH_ASKS = [
-  { price: 175.50, amount: 3n },
-  { price: 176.00, amount: 3n },
-  { price: 176.50, amount: 3n },
-  { price: 177.00, amount: 3n },
-  { price: 177.50, amount: 3n },
-  { price: 178.00, amount: 3n },
-  { price: 178.50, amount: 3n },
-  { price: 179.00, amount: 3n },
-  { price: 179.50, amount: 3n },
-  { price: 180.00, amount: 3n },
+  { price: 221.00, amount: 12n },
+  { price: 221.50, amount: 9n },
+  { price: 222.00, amount: 7n },
+  { price: 222.50, amount: 6n },
+  { price: 223.00, amount: 5n },
+  { price: 223.50, amount: 4n },
+  { price: 224.00, amount: 3n },
+  { price: 224.50, amount: 2n },
+  { price: 225.00, amount: 2n },
+  { price: 225.50, amount: 1n },
 ];
 
 // ──────────────────────── Helpers ───────────────────────────
@@ -513,16 +515,16 @@ async function main() {
     return { h160: addr[1], key: key[1] };
   }
 
-  // State that flows between phases
-  let quoteId = optionalEnv("NVDA_QUOTE_ASSET_ID") ? Number(optionalEnv("NVDA_QUOTE_ASSET_ID")) : null;
+  // State that flows between phases. Quote is fixed to the reused tUSD; only the base (tNVDA) is created.
+  const quoteId = KNOWN_TUSD_ASSET_ID;
+  const quoteErc20 = assetIdToErc20(quoteId);
   let baseId = optionalEnv("NVDA_BASE_ASSET_ID") ? Number(optionalEnv("NVDA_BASE_ASSET_ID")) : null;
-  let quoteErc20 = quoteId != null ? assetIdToErc20(quoteId) : null;
   let baseErc20 = baseId != null ? assetIdToErc20(baseId) : null;
   let marketAddress = optionalEnv("NVDA_MARKET_ADDRESS") || null;
 
   function needAssets() {
-    if (quoteId == null || baseId == null) {
-      throw new Error("Resuming requires NVDA_QUOTE_ASSET_ID and NVDA_BASE_ASSET_ID in .env");
+    if (baseId == null) {
+      throw new Error("Resuming requires NVDA_BASE_ASSET_ID in .env");
     }
   }
   function needMarket() {
@@ -552,37 +554,31 @@ async function main() {
   console.log(`Alice SS58:             ${alice.address}`);
   console.log(`Deployer H160:          ${deployerH160}`);
   console.log(`Factory:                ${FACTORY_ADDRESS}`);
+  console.log(`Reusing ${QUOTE_SYMBOL}:          asset ${quoteId} -> ${quoteErc20}`);
 
-  // ─── Phase 1: Create Assets ─────────────────────────────
+  // ─── Phase 1: Create tNVDA (reuse + top up tUSD) ────────
   if (shouldRun(1)) {
-    console.log("\n=== Phase 1: Create Assets (tUSD + tNVDA) ===\n");
+    console.log(`\n=== Phase 1: Create Asset (tNVDA) + top up ${QUOTE_SYMBOL} ===\n`);
     const sub = await connectSubstrate();
 
-    const nextId = (await sub.query.assets.nextAssetId()).unwrap().toNumber();
-    quoteId = nextId;
-    baseId = nextId + 1;
-    quoteErc20 = assetIdToErc20(quoteId);
+    baseId = (await sub.query.assets.nextAssetId()).unwrap().toNumber();
     baseErc20 = assetIdToErc20(baseId);
-    console.log(`Creating ${QUOTE_SYMBOL} (asset ${quoteId}) and ${BASE_SYMBOL} (asset ${baseId})...`);
+    console.log(`Creating ${BASE_SYMBOL} (asset ${baseId}); reusing ${QUOTE_SYMBOL} (asset ${quoteId})...`);
 
-    // Mint everything to Deployer's EVM-mapped Substrate address.
-    // Trader + UI trader will be funded later via ERC20 transfer from Deployer.
+    // Reuse tUSD: no create/setMetadata, just top up the deployer so it can escrow bids. Create tNVDA.
+    // (ALICE must be the admin of the tUSD asset for the top-up mint to succeed.)
     const txs = [
-      sub.tx.assets.create(quoteId, alice.address, 1),
-      sub.tx.assets.setMetadata(quoteId, QUOTE_NAME, QUOTE_SYMBOL, QUOTE_DECIMALS),
-      sub.tx.assets.mint(quoteId, deployerSubstrate, QUOTE_SUPPLY.toString()),
+      sub.tx.assets.mint(quoteId, deployerSubstrate, QUOTE_TOPUP.toString()),
       sub.tx.assets.create(baseId, alice.address, 1),
       sub.tx.assets.setMetadata(baseId, BASE_NAME, BASE_SYMBOL, BASE_DECIMALS),
       sub.tx.assets.mint(baseId, deployerSubstrate, BASE_SUPPLY.toString()),
     ];
 
     const batch = sub.tx.utility.batchAll(txs);
-    await sendAndWait(batch, alice, "Create assets batch");
+    await sendAndWait(batch, alice, "Create tNVDA + top up tUSD");
 
-    console.log(`\n  ${QUOTE_SYMBOL}: asset ${quoteId} → ${quoteErc20}`);
-    console.log(`  ${BASE_SYMBOL}: asset ${baseId} → ${baseErc20}`);
-    console.log(`\n  Add to .env for resuming:`);
-    console.log(`  NVDA_QUOTE_ASSET_ID=${quoteId}`);
+    console.log(`\n  ${BASE_SYMBOL}: asset ${baseId} -> ${baseErc20}`);
+    console.log(`  Add to .env for resuming:`);
     console.log(`  NVDA_BASE_ASSET_ID=${baseId}`);
   }
 
@@ -953,7 +949,7 @@ async function main() {
     console.log("\n════════════════════════════════════════════");
     console.log("    tNVDA/tUSD MARKET BOOTSTRAP COMPLETE    ");
     console.log("════════════════════════════════════════════\n");
-    console.log(`  ${QUOTE_SYMBOL} Asset ID:     ${quoteId}`);
+    console.log(`  ${QUOTE_SYMBOL} Asset ID (reused): ${quoteId}`);
     console.log(`  ${QUOTE_SYMBOL} ERC20:        ${quoteErc20}`);
     console.log(`  ${BASE_SYMBOL} Asset ID:    ${baseId}`);
     console.log(`  ${BASE_SYMBOL} ERC20:       ${baseErc20}`);
@@ -961,8 +957,7 @@ async function main() {
     console.log(`  Market:              ${marketAddress}`);
     console.log(`  Trades executed:     ${PHASE4_SCRIPT.filter((s) => s.type === "trade").length}`);
 
-    console.log("\n--- .env additions for resuming ---");
-    console.log(`  NVDA_QUOTE_ASSET_ID=${quoteId}`);
+    console.log("\n--- .env additions for resuming (quote is the fixed known tUSD) ---");
     console.log(`  NVDA_BASE_ASSET_ID=${baseId}`);
     console.log(`  NVDA_MARKET_ADDRESS=${marketAddress}`);
 
