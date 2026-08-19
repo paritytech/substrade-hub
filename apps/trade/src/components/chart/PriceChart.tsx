@@ -25,7 +25,7 @@ export function PriceChart() {
   const candleLabel = RANGE_CANDLE_INTERVAL[timeRange] < 60
     ? `${RANGE_CANDLE_INTERVAL[timeRange]}s`
     : `${RANGE_CANDLE_INTERVAL[timeRange] / 60}m`;
-  const ranges: TimeRange[] = ["1H", "1D"];
+  const ranges: TimeRange[] = ["1H", "12H"];
 
   useEffect(() => {
     if (!containerRef.current) return;
