@@ -2,14 +2,14 @@ import { createClient, type TypedApi, type PolkadotClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { createChainClient } from "@parity/product-sdk-chain-client";
 import { isChainSupported } from "@parity/product-sdk-host";
-import { passet_hub } from "@polkadot-api/descriptors";
+import { ah_previewnet } from "@polkadot-api/descriptors";
 import { activeChain } from "../config/chains";
 import { isInHost } from "./host/detect";
 
-type PaseoAssetHubApi = TypedApi<typeof passet_hub>;
+type AssetHubApi = TypedApi<typeof ah_previewnet>;
 
 let rawClient: PolkadotClient | undefined;
-let typedApi: PaseoAssetHubApi | undefined;
+let typedApi: AssetHubApi | undefined;
 let teardown: (() => void) | undefined;
 let initPromise: Promise<void> | undefined;
 
@@ -21,7 +21,7 @@ let initPromise: Promise<void> | undefined;
  *   unsupported chain, a failed support check, or an unavailable host client is a **fatal** condition
  *   that rejects (surfaced by `ChainBoot`), never silently worked around.
  * - **Standalone**: a direct WS client.
- * Both yield a `TypedApi<passet_hub>`, so all downstream call sites are identical.
+ * Both yield a `TypedApi<ah_previewnet>`, so all downstream call sites are identical.
  *
  * Concurrency-safe: the in-flight init promise is cached, so overlapping calls (e.g. React StrictMode
  * mounting `ChainBoot` twice) share one initialization and never build two clients. A failed init
@@ -49,19 +49,19 @@ async function doInitChainClient(): Promise<void> {
     if (!supported.value) {
       throw new Error(`host does not serve ${activeChain.name} (genesis ${activeChain.genesis})`);
     }
-    const cc = await createChainClient({ chains: { assetHub: passet_hub } });
+    const cc = await createChainClient({ chains: { assetHub: ah_previewnet } });
     typedApi = cc.assetHub;
     rawClient = cc.raw.assetHub;
     teardown = cc.destroy;
     return;
   }
   const client = createClient(getWsProvider(activeChain.wsEndpoint));
-  typedApi = client.getTypedApi(passet_hub);
+  typedApi = client.getTypedApi(ah_previewnet);
   rawClient = client;
   teardown = () => client.destroy();
 }
 
-export function getTypedApi(): PaseoAssetHubApi {
+export function getTypedApi(): AssetHubApi {
   if (!typedApi) {
     // In host mode we must never open a direct WS: that is the very policy bypass the host gate exists
     // to prevent. If typedApi is unset here, host init failed or never ran, so this is a hard error.
@@ -70,7 +70,7 @@ export function getTypedApi(): PaseoAssetHubApi {
       throw new Error("chain client is not initialized: the host chain is unavailable");
     }
     const client = createClient(getWsProvider(activeChain.wsEndpoint));
-    typedApi = client.getTypedApi(passet_hub);
+    typedApi = client.getTypedApi(ah_previewnet);
     rawClient = client;
     teardown = () => client.destroy();
   }

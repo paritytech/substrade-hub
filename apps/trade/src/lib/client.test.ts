@@ -11,7 +11,7 @@ vi.mock("polkadot-api", () => ({
   createClient: vi.fn(() => ({ getTypedApi: () => WS_API, destroy: vi.fn() })),
 }));
 vi.mock("polkadot-api/ws", () => ({ getWsProvider: vi.fn(() => "ws-provider") }));
-vi.mock("@polkadot-api/descriptors", () => ({ passet_hub: { genesis: "0xtest" } }));
+vi.mock("@polkadot-api/descriptors", () => ({ ah_previewnet: { genesis: "0xtest" } }));
 vi.mock("@parity/product-sdk-chain-client", () => ({ createChainClient: vi.fn() }));
 vi.mock("@parity/product-sdk-host", () => ({ isChainSupported: vi.fn() }));
 vi.mock("./host/detect", () => ({ isInHost: vi.fn() }));
