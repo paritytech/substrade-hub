@@ -8,8 +8,12 @@
     "chainId": 420420417,
     "dotnsName": "substrade-hub.testnet",
     "explorerUrl": null,
-    "factoryAddress": "0x0000000000000000000000000000000000000000",
-    "faucetAddress": "0x0000000000000000000000000000000000000000",
-    "knownQuote": { "addr": "0x0000000000000000000000000000000000000000", "symbol": "tUSD", "decimals": 6 }
+    "factoryAddress": "0x13034846f0bff137b69954dc2cb63324db608eda",
+    "faucetAddress": "0x33aa6ed0f9d147308a6e7b1d67b3c265c5b4251a",
+    "knownQuote": {
+      "addr": "0x02faf33a00000000000000000000000001200000",
+      "symbol": "tUSD",
+      "decimals": 6
+    }
   }
 }
