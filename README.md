@@ -101,4 +101,4 @@ See the [e2e README](e2e/README.md) for test scenarios.
 
 ## License
 
-GPL-3.0-only. See [LICENSE](LICENSE) for details.
+Licensed under the MIT License. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE). The polkadot-sdk precompile interfaces under `contracts/src/interfaces/` retain their upstream licence (the SPDX header in each file is authoritative).
