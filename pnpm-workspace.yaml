@@ -5,5 +5,12 @@ packages:
 allowBuilds:
   esbuild: true
 
+# Security fixes for transitive dependencies whose parents' ranges exclude the patched release.
+overrides:
+  # GHSA-ggr8-5vv4-36mx: fixed only in deepmerge-ts 8. write-package (via @polkadot-api/cli) still asks for
+  # ^7 and only calls deepmerge() on package.json objects, which 8's breaking changes (Map merging, type
+  # renames) do not touch.
+  write-package>deepmerge-ts: ^8.0.2
+
 patchedDependencies:
   '@polkadot-api/pjs-signer@0.7.3': patches/@polkadot-api__pjs-signer@0.7.3.patch
