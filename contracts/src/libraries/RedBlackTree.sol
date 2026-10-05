@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 pragma solidity ^0.8.20;
 
 /// @title RedBlackTree — Deployed library for on-chain red-black tree operations.
 /// @notice Public functions are called via delegatecall; private helpers are inlined.
+/// @dev Follows the red-black tree algorithms of Cormen et al., Introduction to Algorithms (3rd ed.), ch. 13.
 library RedBlackTree {
     enum Color {
         Red,

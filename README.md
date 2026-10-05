@@ -1,3 +1,11 @@
+> [!WARNING]
+> This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk and obtain legal advice as appropriate - DYOR.
+>
+> Parity doesn’t deploy the code but may update it based on community feedback.
+>
+> If you experience problems with any product or service that was built on or deployed from this code, you should contact the third party who deployed the code in its amended form, not Parity.
+
+
 # SubsTrade Hub
 
 A fully on-chain **Decentralized Limit Order Book** for [Polkadot Asset Hub](https://docs.polkadot.com/smart-contracts/), built with Solidity on [pallet-revive](https://docs.polkadot.com/polkadot-protocol/smart-contract-basics/). Natively multi-chain, traders on any Polkadot parachain can place and settle orders via [XCM](https://docs.polkadot.com/parachains/interoperability/get-started/) in a single extrinsic, without bridging tokens manually or managing accounts on Asset Hub.
@@ -99,6 +107,17 @@ cd e2e && cargo test -- --nocapture
 
 See the [e2e README](e2e/README.md) for test scenarios.
 
+## Security
+
+Before deploying it for real use cases, you are responsible for:
+
+- Reviewing the code yourself, we publish a reference, not a hardened production build
+- Checking that the dependencies are up to date and free of known vulnerabilities
+- Securing your own fork or deployment environment (keys, secrets, network configuration)
+- Tracking the latest tagged release/commits for security fixes; older releases are not backported (exceptions might apply)
+
+For Parity's security disclosure process, and Bug Bounty program, feel free to visit:  https://parity.io/bug-bounty
+
 ## License
 
-GPL-3.0-only. See [LICENSE](LICENSE) for details.
+Licensed under the MIT License. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE). The polkadot-sdk precompile interfaces under `contracts/src/interfaces/` retain their upstream licence (the SPDX header in each file is authoritative).

@@ -2,6 +2,7 @@
 name = "substrade-hub-e2e"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3", features = ["derive"] }

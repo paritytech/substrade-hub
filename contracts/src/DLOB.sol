@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";

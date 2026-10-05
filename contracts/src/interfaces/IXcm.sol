@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: MIT
 // Copied from polkadot-sdk: polkadot/xcm/pallet-xcm/precompiles/src/interface/IXcm.sol
 pragma solidity ^0.8.20;
 
