@@ -1,0 +1,14 @@
+{
+  "previewnet": {
+    "name": "Paseo Asset Hub Previewnet",
+    "papiEntry": "ah_previewnet",
+    "genesis": "0xbac97e23fc8f4bccae72a98f8aeb2bcab20bf755862304e4b46ad6473456e896",
+    "wsEndpoint": "wss://previewnet.substrate.dev/asset-hub",
+    "rpcUrl": "https://previewnet.substrate.dev/eth-rpc",
+    "chainId": 420420417,
+    "explorerUrl": null,
+    "factoryAddress": "0x0000000000000000000000000000000000000000",
+    "faucetAddress": "0x0000000000000000000000000000000000000000",
+    "knownQuote": { "addr": "0x0000000000000000000000000000000000000000", "symbol": "tUSD", "decimals": 6 }
+  }
+}
