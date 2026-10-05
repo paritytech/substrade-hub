@@ -10,6 +10,7 @@ const valid = {
   wsEndpoint: "wss://test.example/asset-hub",
   rpcUrl: "https://test.example/eth-rpc",
   chainId: 420420417,
+  dotnsName: "app.testnet",
   explorerUrl: null,
   factoryAddress: ZERO,
   faucetAddress: ZERO,
@@ -39,6 +40,7 @@ describe("parseNetwork", () => {
     expect(() => parseNetwork("test", { ...valid, wsEndpoint: "https://x" })).toThrow(/wsEndpoint/);
     expect(() => parseNetwork("test", { ...valid, factoryAddress: "0x12" })).toThrow(/factoryAddress/);
     expect(() => parseNetwork("test", { ...valid, chainId: 0 })).toThrow(/chainId/);
+    expect(() => parseNetwork("test", { ...valid, dotnsName: "app" })).toThrow(/dotnsName/);
     expect(() => parseNetwork("test", { ...valid, knownQuote: { ...valid.knownQuote, decimals: -1 } })).toThrow(
       /decimals/,
     );

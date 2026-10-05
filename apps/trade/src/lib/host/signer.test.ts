@@ -5,6 +5,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const { manager } = vi.hoisted(() => ({
   manager: { connect: vi.fn(), selectAccount: vi.fn(), getSigner: vi.fn() },
 }));
+vi.mock("../../config/chains", () => ({ activeChain: { dotnsName: "substrade-hub.testnet" } }));
 vi.mock("@parity/product-sdk-signer", () => ({
   SignerManager: vi.fn(function () {
     return manager;
@@ -59,14 +60,12 @@ describe("getHostSigner", () => {
 });
 
 describe("product identity", () => {
-  it("defaults the SignerManager dappName to the registered .dot product id", async () => {
-    // Regression: window.location.host is substrade-hub.dot.li, which the SDK turns into
-    // substrade-hub.dot.li.dot and then resolves zero accounts. The default must already end in .dot.
+  it("uses the network's dotNS name as the SignerManager dappName", async () => {
     manager.connect.mockResolvedValue({ ok: true, value: [] });
     await connectHostAccounts(); // triggers lazy getManager()
     expect(vi.mocked(SignerManager)).toHaveBeenCalled();
     expect(vi.mocked(SignerManager).mock.calls[0]![0]).toMatchObject({
-      dappName: "substrade-hub.dot",
+      dappName: "substrade-hub.testnet",
     });
   });
 });

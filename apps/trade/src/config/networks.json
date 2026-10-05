@@ -6,6 +6,7 @@
     "wsEndpoint": "wss://previewnet.substrate.dev/asset-hub",
     "rpcUrl": "https://previewnet.substrate.dev/eth-rpc",
     "chainId": 420420417,
+    "dotnsName": "substrade-hub.testnet",
     "explorerUrl": null,
     "factoryAddress": "0x0000000000000000000000000000000000000000",
     "faucetAddress": "0x0000000000000000000000000000000000000000",

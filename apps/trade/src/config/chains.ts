@@ -15,6 +15,11 @@ export interface ChainConfig {
   wsEndpoint: string;
   rpcUrl: string;
   chainId: number;
+  /**
+   * The app's dotNS name on this network. It is the host product identity (the product account is
+   * derived from it), so it must equal the name the build is published under or signing is refused.
+   */
+  dotnsName: string;
   /** Subscan-style explorer base URL; `null` when the network has none (explorer links are hidden). */
   explorerUrl: string | null;
   factoryAddress: `0x${string}`;
@@ -29,6 +34,7 @@ export interface ChainConfig {
 
 const HASH = /^0x[0-9a-f]{64}$/i;
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
+const DOTNS_NAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 const FIELDS = [
   "name",
   "papiEntry",
@@ -36,6 +42,7 @@ const FIELDS = [
   "wsEndpoint",
   "rpcUrl",
   "chainId",
+  "dotnsName",
   "explorerUrl",
   "factoryAddress",
   "faucetAddress",
@@ -76,6 +83,9 @@ export function parseNetwork(network: string, raw: unknown): ChainConfig {
   if (typeof r.chainId !== "number" || !Number.isSafeInteger(r.chainId) || r.chainId <= 0) {
     fail(network, "chainId must be a positive integer");
   }
+  if (typeof r.dotnsName !== "string" || !DOTNS_NAME.test(r.dotnsName)) {
+    fail(network, "dotnsName must be a qualified dotNS name such as app.testnet");
+  }
   const q = r.knownQuote as Record<string, unknown> | null;
   if (typeof q !== "object" || q === null) fail(network, "knownQuote must be an object");
   if (typeof q.symbol !== "string" || !q.symbol) fail(network, "knownQuote.symbol must be a non-empty string");
@@ -90,6 +100,7 @@ export function parseNetwork(network: string, raw: unknown): ChainConfig {
     wsEndpoint: url(network, "wsEndpoint", r.wsEndpoint, ["wss:", "ws:"]),
     rpcUrl: url(network, "rpcUrl", r.rpcUrl, ["https:", "http:"]),
     chainId: r.chainId,
+    dotnsName: r.dotnsName,
     explorerUrl: r.explorerUrl === null ? null : url(network, "explorerUrl", r.explorerUrl, ["https:"]),
     factoryAddress: address(network, "factoryAddress", r.factoryAddress),
     faucetAddress: address(network, "faucetAddress", r.faucetAddress),
