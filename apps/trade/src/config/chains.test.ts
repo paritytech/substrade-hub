@@ -11,6 +11,7 @@ const valid = {
   rpcUrl: "https://test.example/eth-rpc",
   chainId: 420420417,
   dotnsName: "app.testnet",
+  bulletinDeployEnv: "preview",
   explorerUrl: null,
   factoryAddress: ZERO,
   faucetAddress: ZERO,
@@ -41,6 +42,7 @@ describe("parseNetwork", () => {
     expect(() => parseNetwork("test", { ...valid, factoryAddress: "0x12" })).toThrow(/factoryAddress/);
     expect(() => parseNetwork("test", { ...valid, chainId: 0 })).toThrow(/chainId/);
     expect(() => parseNetwork("test", { ...valid, dotnsName: "app" })).toThrow(/dotnsName/);
+    expect(() => parseNetwork("test", { ...valid, bulletinDeployEnv: "" })).toThrow(/bulletinDeployEnv/);
     expect(() => parseNetwork("test", { ...valid, knownQuote: { ...valid.knownQuote, decimals: -1 } })).toThrow(
       /decimals/,
     );
