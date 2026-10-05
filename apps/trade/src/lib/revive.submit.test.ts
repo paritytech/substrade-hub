@@ -30,15 +30,20 @@ const okDry = (over: Record<string, any> = {}) => ({
   ...over,
 });
 
-// A fake `signSubmitAndWatch` observable that synchronously emits the given PAPI-shaped events.
-const watch = (events: Record<string, any>[]) => ({
+// A fake `signSubmitAndWatch` observable that synchronously emits the given PAPI-shaped events, then
+// optionally fails the subscription.
+const watch = (events: Record<string, any>[], fail?: unknown) => ({
   signSubmitAndWatch: () => ({
     subscribe: (o: { next: (e: any) => void; error: (e: any) => void }) => {
       for (const e of events) o.next(e);
+      if (fail !== undefined) o.error(fail);
       return { unsubscribe: () => {} };
     },
   }),
 });
+
+const submit = () =>
+  submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer });
 
 describe("submitReviveCall", () => {
   it("submits Revive.call with 2x-buffered weight and storage deposit on a clean dry-run", async () => {
@@ -46,7 +51,7 @@ describe("submitReviveCall", () => {
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
         { type: "signed", txHash: "0xhash" },
-        { type: "txBestBlocksState", found: true, ok: true, block: { hash: "0xblk" } },
+        { type: "txBestBlocksState", txHash: "0xhash", found: true, ok: true, block: { hash: "0xblk" }, events: [] },
       ]),
     );
 
@@ -70,7 +75,7 @@ describe("submitReviveCall", () => {
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
         { type: "signed", txHash: "0xh" },
-        { type: "txBestBlocksState", found: true, ok: true, block: { hash: "0xb" } },
+        { type: "txBestBlocksState", txHash: "0xh", found: true, ok: true, block: { hash: "0xb" }, events: [] },
       ]),
     );
     await submitReviveCall({
@@ -149,6 +154,22 @@ describe("submitReviveCall", () => {
     await expect(
       submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer }),
     ).rejects.toThrow("Transaction failed: Token (FundsUnavailable)");
+  });
+
+  it("explains a BadProof validity error raised before inclusion", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    const invalid = Object.assign(new Error("Invalid"), {
+      name: "InvalidTxError",
+      error: { type: "Invalid", value: { type: "BadProof" } },
+    });
+    mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "signed", txHash: "0xh" }], invalid));
+    await expect(submit()).rejects.toThrow(/BadProof/);
+  });
+
+  it("reports a rejected signing request as cancelled", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    mockApi.tx.Revive.call.mockReturnValue(watch([], new Error("User rejected the request")));
+    await expect(submit()).rejects.toThrow("Signing was cancelled.");
   });
 });
 
