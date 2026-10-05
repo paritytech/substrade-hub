@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "sync-abi": "node scripts/sync-abi.mjs",
     "demo:host": "node scripts/demo-host.mjs",
-    "deploy:dot": "pad ./dist substrade-hub.dot --env devnet"
+    "deploy:dot": "node scripts/deploy-dot.mjs"
   },
   "dependencies": {
     "@fontsource-variable/manrope": "^5.3.0",

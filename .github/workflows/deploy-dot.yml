@@ -1,17 +1,23 @@
 name: Deploy .dot app
 
-# Builds the trading UI and publishes it to the Bulletin chain, pointing the registered DotNS name
-# substrade-hub.dot at the new bundle. Manual by default; also runs on a `dot-v*` tag.
+# Builds the trading UI for one network and publishes it to that network's Bulletin chain, pointing the
+# network's dotNS name (apps/trade/src/config/networks.json `dotnsName`) at the new bundle and
+# registering the name when it is free. Manual by default; a `dot-v*` tag publishes to previewnet.
+# After a testnet reset, rerun it by hand to restore the name. See apps/trade/docs/deploy.md.
 #
-# Target: the Polkadot Products Devnet (env `devnet`, gateway `substrade-hub.dev-dot.li`). This is the
-# intended showcase network, not a production deploy. See apps/trade/docs/deploy.md ("Scope").
-#
-# Requires the secret DOTNS_MNEMONIC (scoped to the `devnet-deploy` environment): the mnemonic of the
-# account that OWNS substrade-hub.dot, funded on Devnet Asset Hub, EVM-mapped, and Bulletin-authorized.
+# Each network deploys from its own GitHub environment, `<network>-deploy`, which holds the secret
+# DOTNS_MNEMONIC (the mnemonic of the account that owns, or will register, the name, funded on that
+# network's Asset Hub) and the variable DOTNS_OWNER (that account's SS58 address). The publish refuses to
+# run unless the mnemonic derives DOTNS_OWNER.
 
 on:
   workflow_dispatch:
     inputs:
+      network:
+        description: "Network to publish to (a key of apps/trade/src/config/networks.json)"
+        type: choice
+        options: [previewnet]
+        default: previewnet
       version:
         description: "App version MAJOR.MINOR.PATCH (published as appVersion)"
         required: true
@@ -19,16 +25,18 @@ on:
     tags: ["dot-v*"]
 
 concurrency:
-  group: deploy-dot
+  group: deploy-dot-${{ github.event.inputs.network || 'previewnet' }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Build & publish substrade-hub.dot
+    name: Build & publish (${{ github.event.inputs.network || 'previewnet' }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # Protected environment: gate DOTNS_MNEMONIC behind required reviewers / branch rules in repo settings.
-    environment: devnet-deploy
+    timeout-minutes: 20
+    # Protected environment: gates DOTNS_MNEMONIC behind the branch rules set in repo settings.
+    environment: ${{ github.event.inputs.network || 'previewnet' }}-deploy
+    env:
+      VITE_NETWORK: ${{ github.event.inputs.network || 'previewnet' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -70,16 +78,17 @@ jobs:
       - name: Build
         run: pnpm --filter @substrade-hub/trade build
 
-      - name: Publish to Bulletin and point substrade-hub.dot at it
+      - name: Publish to Bulletin and point the dotNS name at it
         working-directory: apps/trade
         env:
-          DOTNS_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
+          MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
+          DOTNS_OWNER: ${{ vars.DOTNS_OWNER }}
           APP_VERSION: ${{ steps.ver.outputs.app_version }}
         run: |
-          if [ -z "$DOTNS_MNEMONIC" ]; then
-            echo "::error::DOTNS_MNEMONIC secret is not set"; exit 1
+          if [ -z "$MNEMONIC" ]; then
+            echo "::error::DOTNS_MNEMONIC secret is not set in the $VITE_NETWORK-deploy environment"; exit 1
           fi
-          # Pinned CLI version (not @latest): the step handles the deploy mnemonic, so the code that runs
-          # must be a reviewed release. Bump deliberately. No --publish (registry listing needs personhood).
-          npx -y -p @polkadot-community-foundation/polkadot-app-deploy@0.13.1 \
-            pad ./dist substrade-hub.dot --env devnet --mnemonic "$DOTNS_MNEMONIC"
+          if [ -z "$DOTNS_OWNER" ]; then
+            echo "::error::DOTNS_OWNER variable is not set in the $VITE_NETWORK-deploy environment"; exit 1
+          fi
+          node scripts/deploy-dot.mjs

@@ -7,6 +7,7 @@
     "rpcUrl": "https://previewnet.substrate.dev/eth-rpc",
     "chainId": 420420417,
     "dotnsName": "substrade-hub.testnet",
+    "bulletinDeployEnv": "preview",
     "explorerUrl": null,
     "factoryAddress": "0x13034846f0bff137b69954dc2cb63324db608eda",
     "faucetAddress": "0x33aa6ed0f9d147308a6e7b1d67b3c265c5b4251a",

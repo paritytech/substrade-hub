@@ -20,6 +20,8 @@ export interface ChainConfig {
    * derived from it), so it must equal the name the build is published under or signing is refused.
    */
   dotnsName: string;
+  /** The `bulletin-deploy --env` preset that publishes to this network (see scripts/deploy-dot.mjs). */
+  bulletinDeployEnv: string;
   /** Subscan-style explorer base URL; `null` when the network has none (explorer links are hidden). */
   explorerUrl: string | null;
   factoryAddress: `0x${string}`;
@@ -43,6 +45,7 @@ const FIELDS = [
   "rpcUrl",
   "chainId",
   "dotnsName",
+  "bulletinDeployEnv",
   "explorerUrl",
   "factoryAddress",
   "faucetAddress",
@@ -86,6 +89,9 @@ export function parseNetwork(network: string, raw: unknown): ChainConfig {
   if (typeof r.dotnsName !== "string" || !DOTNS_NAME.test(r.dotnsName)) {
     fail(network, "dotnsName must be a qualified dotNS name such as app.testnet");
   }
+  if (typeof r.bulletinDeployEnv !== "string" || !r.bulletinDeployEnv) {
+    fail(network, "bulletinDeployEnv must be a non-empty string");
+  }
   const q = r.knownQuote as Record<string, unknown> | null;
   if (typeof q !== "object" || q === null) fail(network, "knownQuote must be an object");
   if (typeof q.symbol !== "string" || !q.symbol) fail(network, "knownQuote.symbol must be a non-empty string");
@@ -101,6 +107,7 @@ export function parseNetwork(network: string, raw: unknown): ChainConfig {
     rpcUrl: url(network, "rpcUrl", r.rpcUrl, ["https:", "http:"]),
     chainId: r.chainId,
     dotnsName: r.dotnsName,
+    bulletinDeployEnv: r.bulletinDeployEnv,
     explorerUrl: r.explorerUrl === null ? null : url(network, "explorerUrl", r.explorerUrl, ["https:"]),
     factoryAddress: address(network, "factoryAddress", r.factoryAddress),
     faucetAddress: address(network, "faucetAddress", r.faucetAddress),
