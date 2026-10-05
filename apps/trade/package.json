@@ -34,9 +34,12 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@parity/host-api-test-sdk": "^0.15.0",
+    "@polkadot-api/metadata-builders": "0.14.3",
+    "@polkadot-api/substrate-bindings": "0.20.3",
     "@polkadot-labs/hdkd": "^0.0.29",
     "@polkadot-labs/hdkd-helpers": "^0.0.31",
     "@tailwindcss/vite": "^4.3.1",
+    "@types/node": "^26.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",

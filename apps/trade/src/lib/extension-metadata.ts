@@ -4,22 +4,23 @@ import { getClient } from "./client";
 type ExtDef = Record<string, { extrinsic: Record<string, string>; payload: Record<string, string> }>;
 
 /**
- * The custom signed extensions on Paseo Asset Hub Next (verified live, spec 2004001). A browser
+ * The custom signed extensions on the Asset Hub Next runtime (`next-asset-hub-paseo`). A browser
  * extension's `@polkadot/types` registry SILENTLY DROPS signed-extension names it doesn't recognise
  * (`expandExtensionTypes` filters unknowns), so it re-encodes a too-short payload and the signature
  * fails on-chain with `BadProof`. Declaring them here (pushed to the wallet via `metadata.provide`)
  * stops the drop. Every value defaults to None/false/empty, matching the bytes the chain and PAPI's
- * native signer produce (all five Option/bool custom extensions encode to `0x00`; the rest to empty).
+ * native signer produce (each Option/bool custom extension encodes to `0x00`; the rest to empty).
  *
- * If a runtime upgrade changes this set, refresh it (and the cached `.papi` metadata). The `Option<...>`
+ * `extension-metadata.test.ts` checks this table against the committed `.papi` metadata, so a runtime
+ * upgrade that changes the set fails the tests once the descriptors are regenerated. The `Option<...>`
  * inner types are irrelevant while the value is None (`0x00` regardless), so `Option<Null>` suffices
  * for the enum-valued ones — we never send `Some`.
  */
-const USER_EXTENSIONS: ExtDef = {
-  AuthorizeValueTransfer: { extrinsic: { authorizeValueTransfer: "Option<[u8;64]>" }, payload: {} },
+export const USER_EXTENSIONS: ExtDef = {
+  UnitTransactionExtension: { extrinsic: {}, payload: {} },
+  AsScarcity: { extrinsic: { asScarcity: "Option<Null>" }, payload: {} },
   AuthorizeCall: { extrinsic: {}, payload: {} },
   AsPgas: { extrinsic: { asPgas: "Option<Null>" }, payload: {} },
-  AsRingAlias: { extrinsic: { asRingAlias: "Option<Null>" }, payload: {} },
   AsDotnsGateway: { extrinsic: { asDotnsGateway: "Option<Null>" }, payload: {} },
   RestrictOrigins: { extrinsic: { restrictOrigins: "bool" }, payload: {} },
   EthSetOrigin: { extrinsic: {}, payload: {} },
