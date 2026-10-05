@@ -21,10 +21,10 @@ import type {
 
 /**
  * The product account's derivation index (matches `getProductAccount(dappName, 0)`). `DerivationIndex`
- * is a tagged union in the host codec: `{ tag: "Left", value: number }` for a plain index. A bare `0`
+ * is a tagged union in the host codec: `{ tag: "Index", value: number }` for a plain index. A bare `0`
  * makes the TruAPI encoder throw (`inner[tag] is not a function`), so it must be built explicitly.
  */
-const PRODUCT_ACCOUNT_INDEX: DerivationIndex = { tag: "Left", value: 0 };
+const PRODUCT_ACCOUNT_INDEX: DerivationIndex = { tag: "Index", value: 0 };
 
 /** The resources the contract flow needs, granted together once per host session. */
 export const CONTRACT_ALLOWANCE_RESOURCES: AllocatableResource[] = [

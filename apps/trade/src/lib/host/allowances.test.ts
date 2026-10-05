@@ -15,10 +15,10 @@ describe("CONTRACT_ALLOWANCE_RESOURCES", () => {
     expect(tags).toEqual(["SmartContractAllowance", "AutoSigning"]);
   });
 
-  it("encodes the derivation index as the tagged-union { tag: 'Left', value: 0 }, not a bare 0", () => {
+  it("encodes the derivation index as the tagged-union { tag: 'Index', value: 0 }, not a bare 0", () => {
     // Regression: a bare `0` makes the TruAPI encoder throw `inner[tag] is not a function`.
     const alloc = CONTRACT_ALLOWANCE_RESOURCES.find((r) => r.tag === "SmartContractAllowance")!;
-    expect(alloc.value).toEqual({ tag: "Left", value: 0 });
+    expect(alloc.value).toEqual({ tag: "Index", value: 0 });
   });
 });
 
