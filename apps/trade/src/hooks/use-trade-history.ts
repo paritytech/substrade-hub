@@ -26,6 +26,32 @@ const BATCH = 20;
 
 // ---- Source 1: EVM logs (indexed, deep history) -----------------------------------
 
+/** Assumed block time when fewer than two blocks have a known timestamp. */
+const DEFAULT_BLOCK_SECONDS = 2;
+
+/**
+ * Timestamps (seconds) for `blocks`: the known one where available, otherwise extrapolated from the
+ * nearest known block at the block rate measured across the known blocks. Empty when nothing is known.
+ */
+export function estimateTimestamps(blocks: number[], known: Map<number, number>): Map<number, number> {
+  const anchors = [...known].sort(([a], [b]) => a - b);
+  const out = new Map<number, number>();
+  if (anchors.length === 0) return out;
+  const [firstBn, firstTs] = anchors[0]!;
+  const [lastBn, lastTs] = anchors[anchors.length - 1]!;
+  const rate = lastBn > firstBn ? (lastTs - firstTs) / (lastBn - firstBn) : DEFAULT_BLOCK_SECONDS;
+  for (const bn of blocks) {
+    const exact = known.get(bn);
+    if (exact !== undefined) {
+      out.set(bn, exact);
+      continue;
+    }
+    const [anchorBn, anchorTs] = anchors.reduce((best, a) => (Math.abs(a[0] - bn) < Math.abs(best[0] - bn) ? a : best));
+    out.set(bn, Math.round(anchorTs + (bn - anchorBn) * rate));
+  }
+  return out;
+}
+
 async function ethRpc(method: string, params: unknown[] = []): Promise<unknown> {
   const res = await fetch(activeChain.rpcUrl, {
     method: "POST",
@@ -59,16 +85,21 @@ async function fetchEvmTrades(
     transactionIndex: string;
   }>;
 
-  // Batch the unique block timestamps (seconds) so candles bucket on wall-clock time.
+  // Batch the unique block timestamps (seconds) so candles bucket on wall-clock time. Pruned nodes
+  // cannot answer for old blocks, so those are estimated from the blocks that did answer.
   const uniqueBlocks = [...new Set(logs.map((l) => l.blockNumber))];
-  const ts = new Map<string, number>();
+  const known = new Map<number, number>();
   await Promise.all(
-    uniqueBlocks.map(async (bn) => {
+    [...uniqueBlocks, blockHex].map(async (bn) => {
       const block = (await ethRpc("eth_getBlockByNumber", [bn, false]).catch(() => null)) as
         | { timestamp?: string }
         | null;
-      if (block?.timestamp) ts.set(bn, parseInt(block.timestamp, 16));
+      if (block?.timestamp) known.set(parseInt(bn, 16), parseInt(block.timestamp, 16));
     }),
+  );
+  const ts = estimateTimestamps(
+    uniqueBlocks.map((bn) => parseInt(bn, 16)),
+    known,
   );
 
   const out: TradeEvent[] = [];
@@ -90,7 +121,7 @@ async function fetchEvmTrades(
         sellOrderId: Number(a.sellOrderId),
         price: a.price,
         amount: a.amount,
-        timestamp: ts.get(log.blockNumber) ?? bn,
+        timestamp: ts.get(bn) ?? bn,
       });
     } catch {
       /* not a decodable Trade — skip */
@@ -101,19 +132,25 @@ async function fetchEvmTrades(
 
 // ---- Source 2: substrate ContractEmitted scan (host-signed trades) -----------------
 
-/** A ContractEmitted payload as bytes-carrying values (Binary in the typed API). */
+/**
+ * A ContractEmitted payload. polkadot-api v2 hands fixed-size byte fields (the H160 contract, H256
+ * topics) over as hex strings and variable-length bytes (`data`) as a Uint8Array.
+ */
 interface ContractLog {
-  contract: { asHex(): string };
-  topics: { asHex(): string }[];
-  data: { asHex(): string };
+  contract: unknown;
+  topics: unknown[];
+  data: unknown;
 }
 
-function toHexData(d: { asHex(): string }): `0x${string}` {
-  if (typeof d?.asHex === "function") return d.asHex() as `0x${string}`;
-  return toHex(Uint8Array.from(Object.values(d as unknown as Record<string, number>)));
+/** Hex for a byte field in any shape polkadot-api returns it: hex string, Uint8Array or Binary-like. */
+function bytesToHex(v: unknown): `0x${string}` {
+  if (typeof v === "string") return v as `0x${string}`;
+  if (v instanceof Uint8Array) return toHex(v);
+  if (typeof (v as { asHex?: unknown })?.asHex === "function") return (v as { asHex(): `0x${string}` }).asHex();
+  throw new Error(`unexpected byte field: ${String(v)}`);
 }
 
-function decodeTradesInBlock(
+export function decodeTradesInBlock(
   events: ReadonlyArray<{ event: { type: string; value: { type: string; value: unknown } }; phase: { type: string; value?: number } }>,
   marketLower: string,
   blockNumber: number,
@@ -122,14 +159,14 @@ function decodeTradesInBlock(
   for (const e of events) {
     if (e.event.type !== "Revive" || e.event.value?.type !== "ContractEmitted") continue;
     const log = e.event.value.value as ContractLog;
-    if (log.contract.asHex().toLowerCase() !== marketLower) continue;
-    const topics = log.topics.map((t) => t.asHex() as `0x${string}`);
+    if (bytesToHex(log.contract).toLowerCase() !== marketLower) continue;
+    const topics = log.topics.map(bytesToHex);
     if ((topics[0] ?? "").toLowerCase() !== TRADE_TOPIC) continue;
     try {
       const dec = decodeEventLog({
         abi: dlobAbi,
         topics: topics as [`0x${string}`, ...`0x${string}`[]],
-        data: toHexData(log.data),
+        data: bytesToHex(log.data),
       });
       if (dec.eventName !== "Trade") continue;
       const a = dec.args as { buyOrderId: number; sellOrderId: number; price: bigint; amount: bigint };
