@@ -169,7 +169,7 @@ export function usePlaceOrder() {
         }
       } catch (err) {
         const txHash = (err as Error & { txHash?: string }).txHash;
-        const opts = txHash
+        const opts = txHash && activeChain.explorerUrl
           ? { link: { label: "View failed tx on Subscan", href: `${activeChain.explorerUrl}/tx/${txHash}` }, sticky: true }
           : undefined;
         updateToast(toastId, "error", formatOrderError(err), opts);

@@ -6,5 +6,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // `config/chains` resolves the network at import time; tests run against previewnet's entry.
+    env: { VITE_NETWORK: "previewnet" },
   },
 });

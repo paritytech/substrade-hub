@@ -48,36 +48,42 @@ curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads
 foundryup
 ```
 
-Get testnet PAS tokens from the [Paseo faucet](https://faucet.polkadot.io/) to pay for gas on Paseo Asset Hub.
-
 ## Quick Start
+
+The app targets one network at a time, picked by `VITE_NETWORK` from
+[`apps/trade/src/config/networks.json`](apps/trade/src/config/networks.json). That file holds each
+network's genesis, endpoints, dotNS name and contract addresses.
 
 ```bash
 pnpm install
 
-# Set up environment
-cd contracts
-cp scripts/.env.example scripts/.env
-# Edit scripts/.env: set ALICE_SEED, DEPLOYER_PRIVATE_KEY, and DLOB_FACTORY_ADDRESS
-# Fund Alice via https://faucet.polkadot.io/?parachain=paseo-asset-hub
-
-# Bootstrap a test market with order book and trade history
-node scripts/bootstrap-nvda.mjs --from 1 --to 5
-
-# Start the trading UI
-cd ../apps/trade
-pnpm dev
+# Start the trading UI against previewnet
+cd apps/trade
+VITE_NETWORK=previewnet pnpm dev
 ```
 
-The bootstrap script creates tUSD + tNVDA assets, a market at ~$175, seeds the order book ($170–$180), generates trades with a realistic candle pattern, and replenishes the book.
+### Bootstrapping a network
 
-To trade from the UI you can connect either an **EVM wallet** (import the Deployer EVM private key into MetaMask) or a **Substrate wallet** (SubWallet or polkadot-js). Supported wallets, the one-time network-metadata approval, and troubleshooting (stale sessions, reverts, market-order races) are documented in [`apps/trade/docs/wallets.md`](apps/trade/docs/wallets.md).
-
-To regenerate trade history on an existing market (sweeps stale orders, re-seeds, re-trades):
+`contracts/scripts/bootstrap.mjs` rebuilds the demo on a network from scratch. It funds generated EVM
+keys, creates the tUSD, tNVDA and tMU assets, deploys the DLOB factory and the tUSD faucet, creates the
+tNVDA/tUSD and tMU/tUSD markets, seeds their order books, generates a trade history for the candle
+chart, and writes the new addresses into `networks.json`. Run it again after a chain reset.
 
 ```bash
-cd contracts && node scripts/bootstrap-nvda.mjs --from 3 --to 5
+cd contracts
+node scripts/bootstrap.mjs --network previewnet          # every step (about 20 minutes)
+node scripts/bootstrap.mjs --network previewnet --only fund --fund <ss58>   # top up one more account
 ```
+
+The funder (`FUNDER_URI`, default `//Alice`) pays native funds and administers the test assets, so it
+must hold PAS on that network. Steps are idempotent and record their progress in
+`contracts/scripts/state/<network>.json`, which holds the generated keys and is gitignored; an
+interrupted run resumes where it stopped. Run `node scripts/bootstrap.mjs --help` for every option.
+
+To trade from the UI, connect an **EVM wallet** (MetaMask) or a **Substrate wallet** (SubWallet or
+polkadot-js), and claim test tUSD from the faucet on the home page. Supported wallets, the one-time
+network-metadata approval, and troubleshooting are documented in
+[`apps/trade/docs/wallets.md`](apps/trade/docs/wallets.md).
 
 ## Contracts
 

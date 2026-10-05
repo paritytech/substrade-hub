@@ -1,0 +1,19 @@
+{
+  "previewnet": {
+    "name": "Paseo Asset Hub Previewnet",
+    "papiEntry": "ah_previewnet",
+    "genesis": "0xbac97e23fc8f4bccae72a98f8aeb2bcab20bf755862304e4b46ad6473456e896",
+    "wsEndpoint": "wss://previewnet.substrate.dev/asset-hub",
+    "rpcUrl": "https://previewnet.substrate.dev/eth-rpc",
+    "chainId": 420420417,
+    "dotnsName": "substrade-hub.testnet",
+    "explorerUrl": null,
+    "factoryAddress": "0x13034846f0bff137b69954dc2cb63324db608eda",
+    "faucetAddress": "0x33aa6ed0f9d147308a6e7b1d67b3c265c5b4251a",
+    "knownQuote": {
+      "addr": "0x02faf33a00000000000000000000000001200000",
+      "symbol": "tUSD",
+      "decimals": 6
+    }
+  }
+}

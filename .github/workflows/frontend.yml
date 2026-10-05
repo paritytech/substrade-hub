@@ -47,3 +47,5 @@ jobs:
 
       - name: Build
         run: pnpm --filter @substrade-hub/trade build
+        env:
+          VITE_NETWORK: previewnet

@@ -3,6 +3,14 @@ import { fromHex } from "polkadot-api/utils";
 import type { Abi } from "viem";
 import { getTypedApi } from "./client";
 import { extractRevertReason } from "./errors";
+import {
+  submitAndWatch,
+  TxDispatchError,
+  type TxError,
+  TxSigningRejectedError,
+  TxTimeoutError,
+  TxValidityError,
+} from "@parity/product-sdk-tx";
 
 // Headroom over the dry-run estimates. Weight (ref_time/proof_size) is PoV-sensitive and counts against
 // block limits, so keep its buffer modest. Storage deposit does NOT affect block/PoV limits and the
@@ -59,70 +67,30 @@ export function formatSubmitError(err: unknown): string {
   return `Transaction failed: ${typeof err === "string" ? err : JSON.stringify(err)}`;
 }
 
-interface WatchEvent {
-  type?: string;
-  txHash?: string;
-  found?: boolean;
-  ok?: boolean;
-  dispatchError?: unknown;
-  block?: { hash?: string };
+/** Turn a product-sdk-tx failure into the short message the order UI shows. */
+export function describeTxError(e: TxError): string {
+  if (e instanceof TxTimeoutError) {
+    return `Transaction was not included within ${INCLUSION_TIMEOUT_MS / 1000}s — check the explorer and try again.`;
+  }
+  if (e instanceof TxSigningRejectedError) return "Signing was cancelled.";
+  // Validity errors (e.g. BadProof) arrive pre-inclusion; keep the structured payload so the BadProof
+  // explanation in formatSubmitError still applies.
+  if (e instanceof TxValidityError) return formatSubmitError({ error: e.reason });
+  if (e instanceof TxDispatchError) return formatSubmitError(e.dispatchError);
+  return formatSubmitError(e);
 }
 
-type WatchableTx = {
-  signSubmitAndWatch: (signer: PolkadotSigner) => {
-    subscribe: (observer: {
-      next: (ev: WatchEvent) => void;
-      error: (err: unknown) => void;
-    }) => { unsubscribe: () => void };
-  };
-};
-
 /**
- * Sign + submit, resolving on best-block INCLUSION (not finality) for UX parity with the EVM receipt
- * path. Rejects on a dispatch error (formatted) or a subscription error. Event shapes follow PAPI's
- * `signSubmitAndWatch` and mirror t3rminal's proven handling.
+ * Sign + submit via `@parity/product-sdk-tx`, resolving on best-block INCLUSION (not finality) for UX
+ * parity with the EVM receipt path. Rejects with a formatted message on any failure.
  */
-function signAndWatchInclusion(
-  tx: WatchableTx,
+async function submitAndAwaitInclusion(
+  tx: Parameters<typeof submitAndWatch>[0],
   signer: PolkadotSigner,
-): Promise<{ txHash: string; blockHash: string }> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let lastTxHash = "";
-    // Defer unsubscribe so `sub` is bound even when an event arrives synchronously.
-    const stop = () => queueMicrotask(() => {
-      try {
-        sub.unsubscribe();
-      } catch {
-        /* noop */
-      }
-    });
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      stop();
-      reject(new Error("Transaction was not included within 30s — check the explorer and try again."));
-    }, INCLUSION_TIMEOUT_MS);
-    const sub = tx.signSubmitAndWatch(signer).subscribe({
-      next(ev) {
-        if (ev.txHash) lastTxHash = ev.txHash;
-        if (ev.type === "txBestBlocksState" && ev.found && !settled) {
-          settled = true;
-          clearTimeout(timer);
-          stop();
-          if (ev.ok === false) reject(new Error(formatSubmitError(ev.dispatchError)));
-          else resolve({ txHash: lastTxHash, blockHash: ev.block?.hash ?? "" });
-        }
-      },
-      error(err) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        // Validity errors (e.g. BadProof) arrive here pre-inclusion — format them, don't dump raw JSON.
-        reject(new Error(formatSubmitError(err)));
-      },
-    });
-  });
+): Promise<{ txHash: string }> {
+  const res = await submitAndWatch(tx, signer, { waitFor: "best-block", timeoutMs: INCLUSION_TIMEOUT_MS });
+  if (!res.ok) throw new Error(describeTxError(res.error));
+  return { txHash: res.value.txHash };
 }
 
 /**
@@ -221,9 +189,8 @@ export async function submitReviveCall(
     data,
   });
 
-  // Resolve on best-block inclusion (not finality) for UX parity with the EVM receipt path. A raw
-  // DispatchError would not match usePlaceOrder's EVM formatOrderError, so signAndWatchInclusion
-  // formats it into the thrown Error message.
-  const { txHash } = await signAndWatchInclusion(tx as unknown as WatchableTx, params.signer);
+  // A raw DispatchError would not match usePlaceOrder's EVM formatOrderError, so
+  // submitAndAwaitInclusion formats it into the thrown Error message.
+  const { txHash } = await submitAndAwaitInclusion(tx, params.signer);
   return { txHash, status: "success" };
 }

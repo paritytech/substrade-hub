@@ -1,121 +1,140 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
+const GENESIS = `0x${"ab".repeat(32)}`;
+const OTHER = `0x${"cd".repeat(32)}`;
+
 // Sentinels shared between the mock factories and the assertions.
-const { WS_API, HOST_API, RAW } = vi.hoisted(() => ({
-  WS_API: { kind: "ws" },
-  HOST_API: { kind: "host" },
-  RAW: { kind: "raw" },
-}));
+const { API, HOST_PROVIDER, WS_PROVIDER, chainSpec, NotSupported } = vi.hoisted(() => {
+  class NotSupported extends Error {
+    constructor(readonly genesisHash: string) {
+      super(`not supported: ${genesisHash}`);
+    }
+  }
+  return {
+    API: { kind: "typed" },
+    HOST_PROVIDER: { kind: "host-provider" },
+    WS_PROVIDER: { kind: "ws-provider" },
+    chainSpec: vi.fn(),
+    NotSupported,
+  };
+});
 
 vi.mock("polkadot-api", () => ({
-  createClient: vi.fn(() => ({ getTypedApi: () => WS_API, destroy: vi.fn() })),
+  createClient: vi.fn(() => ({ getTypedApi: () => API, getChainSpecData: chainSpec, destroy: vi.fn() })),
 }));
-vi.mock("polkadot-api/ws", () => ({ getWsProvider: vi.fn(() => "ws-provider") }));
-vi.mock("@polkadot-api/descriptors", () => ({ passet_hub: { genesis: "0xtest" } }));
-vi.mock("@parity/product-sdk-chain-client", () => ({ createChainClient: vi.fn() }));
-vi.mock("@parity/product-sdk-host", () => ({ isChainSupported: vi.fn() }));
+vi.mock("polkadot-api/ws", () => ({ getWsProvider: vi.fn(() => WS_PROVIDER) }));
+vi.mock("@polkadot-api/descriptors", () => ({ ah_previewnet: {} }));
+vi.mock("@parity/product-sdk-host", () => ({
+  ChainNotSupportedError: NotSupported,
+  getHostChainInfo: vi.fn(),
+  getHostProvider: vi.fn(),
+}));
 vi.mock("./host/detect", () => ({ isInHost: vi.fn() }));
 vi.mock("../config/chains", () => ({
-  activeChain: { name: "Test AH", genesis: "0xtest", wsEndpoint: "wss://test" },
+  activeChain: { name: "Test AH", genesis: `0x${"ab".repeat(32)}`, wsEndpoint: "wss://test" },
 }));
 
-import { initChainClient, getTypedApi, getClient, destroyClient } from "./client";
+import { initChainClient, getTypedApi, destroyClient } from "./client";
 import { createClient } from "polkadot-api";
-import { createChainClient } from "@parity/product-sdk-chain-client";
-import { isChainSupported } from "@parity/product-sdk-host";
+import { getHostChainInfo, getHostProvider } from "@parity/product-sdk-host";
 import { isInHost } from "./host/detect";
 
 beforeEach(() => {
   destroyClient(); // clear module singletons between tests
   vi.clearAllMocks();
-  vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.mocked(isChainSupported).mockResolvedValue({ ok: true, value: true } as never);
-  vi.mocked(createChainClient).mockResolvedValue({
-    assetHub: HOST_API,
-    raw: { assetHub: RAW },
-    destroy: vi.fn(),
-  } as never);
+  chainSpec.mockResolvedValue({ genesisHash: GENESIS });
+  vi.mocked(getHostChainInfo).mockResolvedValue({ network: "paseo", chains: { AssetHub: GENESIS } } as never);
+  vi.mocked(getHostProvider).mockResolvedValue(HOST_PROVIDER as never);
 });
 afterEach(() => {
   destroyClient();
-  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("initChainClient", () => {
-  it("standalone: builds a WS client, never the host client", async () => {
+  it("standalone: builds a WS client and verifies its genesis", async () => {
     vi.mocked(isInHost).mockReturnValue(false);
     await initChainClient();
-    expect(createChainClient).not.toHaveBeenCalled();
+    expect(getHostProvider).not.toHaveBeenCalled();
+    expect(createClient).toHaveBeenCalledWith(WS_PROVIDER);
+    expect(chainSpec).toHaveBeenCalledOnce();
+    expect(getTypedApi()).toBe(API);
+  });
+
+  it("standalone: rejects when the live genesis differs (chain reset)", async () => {
+    vi.mocked(isInHost).mockReturnValue(false);
+    chainSpec.mockResolvedValue({ genesisHash: OTHER });
+    await expect(initChainClient()).rejects.toThrow(/may have been reset/);
+  });
+
+  it("host: routes through the host provider for the configured genesis", async () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    await initChainClient();
+    expect(getHostProvider).toHaveBeenCalledWith(GENESIS);
+    expect(createClient).toHaveBeenCalledWith(HOST_PROVIDER);
+    expect(getTypedApi()).toBe(API);
+  });
+
+  it("host: proceeds when discovery is unavailable", async () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    vi.mocked(getHostChainInfo).mockResolvedValue(null);
+    await initChainClient();
+    expect(getHostProvider).toHaveBeenCalledWith(GENESIS);
+  });
+
+  it("host: rejects when the host serves a different Asset Hub, without opening a provider", async () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    vi.mocked(getHostChainInfo).mockResolvedValue({ network: "paseo", chains: { AssetHub: OTHER } } as never);
+    await expect(initChainClient()).rejects.toThrow(/serves Asset Hub .* on "paseo"/);
+    expect(getHostProvider).not.toHaveBeenCalled();
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("host: ChainNotSupportedError is definitive (no retry) and never falls back to WS", async () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    vi.mocked(getHostProvider).mockRejectedValue(new NotSupported(GENESIS));
+    await expect(initChainClient()).rejects.toThrow(/does not serve Test AH/);
+    expect(getHostProvider).toHaveBeenCalledOnce();
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("host: retries a transient provider failure once", async () => {
+    vi.useFakeTimers();
+    vi.mocked(isInHost).mockReturnValue(true);
+    vi.mocked(getHostProvider).mockRejectedValueOnce(new Error("bridge not ready"));
+    const init = initChainClient();
+    await vi.runAllTimersAsync();
+    await init;
+    expect(getHostProvider).toHaveBeenCalledTimes(2);
+    expect(getTypedApi()).toBe(API);
+  });
+
+  it("host: a null provider (host gone) rejects", async () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    vi.mocked(getHostProvider).mockResolvedValue(null);
+    await expect(initChainClient()).rejects.toThrow(/not available/);
+  });
+
+  it("is idempotent and concurrency-safe (StrictMode double-mount)", async () => {
+    vi.mocked(isInHost).mockReturnValue(true);
+    await Promise.all([initChainClient(), initChainClient()]);
+    await initChainClient();
     expect(createClient).toHaveBeenCalledOnce();
-    expect(getTypedApi()).toBe(WS_API);
   });
 
-  it("host + supported: uses the host-routed client and our descriptor", async () => {
-    vi.mocked(isInHost).mockReturnValue(true);
+  it("a failed init can be retried", async () => {
+    vi.mocked(isInHost).mockReturnValue(false);
+    chainSpec.mockRejectedValueOnce(new Error("socket closed"));
+    await expect(initChainClient()).rejects.toThrow(/socket closed/);
     await initChainClient();
-    expect(isChainSupported).toHaveBeenCalledWith("0xtest");
-    expect(createChainClient).toHaveBeenCalledOnce();
-    expect(createClient).not.toHaveBeenCalled();
-    expect(getTypedApi()).toBe(HOST_API);
-    expect(getClient()).toBe(RAW);
-  });
-
-  it("host + chain unsupported: fails fast (rejects), builds no client — no WS fallback", async () => {
-    vi.mocked(isInHost).mockReturnValue(true);
-    vi.mocked(isChainSupported).mockResolvedValue({ ok: true, value: false } as never);
-    await expect(initChainClient()).rejects.toThrow(/does not serve/i);
-    expect(createChainClient).not.toHaveBeenCalled();
-    expect(createClient).not.toHaveBeenCalled();
-  });
-
-  it("host + support check errors (ok:false): fails fast, builds no client", async () => {
-    vi.mocked(isInHost).mockReturnValue(true);
-    vi.mocked(isChainSupported).mockResolvedValue({
-      ok: false,
-      error: { message: "host down" },
-    } as never);
-    await expect(initChainClient()).rejects.toThrow(/could not verify|host down/i);
-    expect(createChainClient).not.toHaveBeenCalled();
-    expect(createClient).not.toHaveBeenCalled();
-  });
-
-  it("host + createChainClient throws: fails fast, no WS fallback", async () => {
-    vi.mocked(isInHost).mockReturnValue(true);
-    vi.mocked(createChainClient).mockRejectedValue(new Error("no host provider"));
-    await expect(initChainClient()).rejects.toThrow(/no host provider/i);
-    expect(createClient).not.toHaveBeenCalled();
-  });
-
-  it("is idempotent: a second call does not rebuild the client", async () => {
-    vi.mocked(isInHost).mockReturnValue(true);
-    await initChainClient();
-    await initChainClient();
-    expect(createChainClient).toHaveBeenCalledOnce();
-  });
-
-  it("concurrent init builds only one client (StrictMode double-mount safe)", async () => {
-    vi.mocked(isInHost).mockReturnValue(true);
-    // Hold createChainClient pending so both init calls overlap before it settles.
-    let resolveCc: (v: unknown) => void = () => {};
-    vi.mocked(createChainClient).mockReturnValue(
-      new Promise((r) => {
-        resolveCc = r;
-      }) as never,
-    );
-    const p1 = initChainClient();
-    const p2 = initChainClient();
-    resolveCc({ assetHub: HOST_API, raw: { assetHub: RAW }, destroy: vi.fn() });
-    await Promise.all([p1, p2]);
-    expect(isChainSupported).toHaveBeenCalledOnce();
-    expect(createChainClient).toHaveBeenCalledOnce();
-    expect(getTypedApi()).toBe(HOST_API);
+    expect(getTypedApi()).toBe(API);
   });
 });
 
 describe("getTypedApi (pre-init safety net)", () => {
   it("standalone: builds a WS client on first use if initChainClient hasn't run", () => {
     vi.mocked(isInHost).mockReturnValue(false);
-    expect(getTypedApi()).toBe(WS_API);
+    expect(getTypedApi()).toBe(API);
     expect(createClient).toHaveBeenCalledOnce();
   });
 

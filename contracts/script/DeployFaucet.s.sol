@@ -7,9 +7,8 @@ import {Faucet} from "../src/Faucet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Deploys the tUSD demo Faucet.
-/// @dev Usage (MUST pass --rpc-url to actually broadcast; `polkadot-testnet` is only an [etherscan]
-///      alias, not an RPC endpoint, so `--chain polkadot-testnet` alone only simulates):
-///   source scripts/.env   # RPC_URL, DEPLOYER_PRIVATE_KEY
+/// @dev `scripts/bootstrap.mjs` runs this and funds the faucet. To run it by hand (MUST pass --rpc-url
+///      to actually broadcast; `polkadot-testnet` is only an [etherscan] alias, not an RPC endpoint):
 ///   TUSD_ADDRESS=0x0120... FAUCET_DRIP=<raw> FAUCET_COOLDOWN=<secs> \
 ///     forge script script/DeployFaucet.s.sol --rpc-url "$RPC_URL" \
 ///     --private-key $DEPLOYER_PRIVATE_KEY --broadcast

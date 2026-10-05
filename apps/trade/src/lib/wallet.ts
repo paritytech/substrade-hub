@@ -50,7 +50,33 @@ export async function connectMetaMask(): Promise<`0x${string}`> {
     }
   }
 
+  await assertWalletOnActiveChain();
   return accounts[0] as `0x${string}`;
+}
+
+/** How far behind our head the fingerprint block sits, so a wallet RPC that lags slightly still has it. */
+const FINGERPRINT_DEPTH = 5;
+
+/**
+ * Check that MetaMask's RPC serves the same chain as ours. Our networks share chain id 420420417, so a
+ * MetaMask that already knows that id from another network would switch "successfully" and then send
+ * our transactions to the wrong chain. A recent block hash is the fingerprint: a different chain does
+ * not have the same block at that height (old blocks are no use, these nodes prune their state).
+ */
+export async function assertWalletOnActiveChain(): Promise<void> {
+  if (!window.ethereum) throw new Error("MetaMask not found");
+  const head = parseInt((await ethRpcDirect("eth_blockNumber")) as string, 16);
+  const probe = `0x${Math.max(head - FINGERPRINT_DEPTH, 0).toString(16)}`;
+  const [ours, theirs] = (await Promise.all([
+    ethRpcDirect("eth_getBlockByNumber", [probe, false]),
+    window.ethereum.request({ method: "eth_getBlockByNumber", params: [probe, false] }),
+  ])) as [{ hash?: string } | null, { hash?: string } | null];
+  if (!ours?.hash || ours.hash !== theirs?.hash) {
+    throw new Error(
+      `MetaMask's network for chain id ${activeChain.chainId} is not ${activeChain.name}. In MetaMask, ` +
+        `edit that network's RPC URL to ${activeChain.rpcUrl} and try again.`,
+    );
+  }
 }
 
 export async function sendTransaction(params: {
@@ -60,6 +86,8 @@ export async function sendTransaction(params: {
   value?: bigint;
 }): Promise<`0x${string}`> {
   if (!window.ethereum) throw new Error("MetaMask not found");
+  // The wallet's network can change between connect and send.
+  await assertWalletOnActiveChain();
 
   // Estimate gas via our RPC — MetaMask can't estimate on Paseo
   console.log(`[sendTransaction] from=${params.from} to=${params.to} data=${params.data}`);

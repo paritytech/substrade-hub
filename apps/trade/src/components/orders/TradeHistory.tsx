@@ -25,7 +25,7 @@ export function TradeHistory() {
             <tr className="text-left text-text-muted">
               <th className="px-3 py-1 font-medium">Price</th>
               <th className="px-3 py-1 font-medium">Amount</th>
-              <th className="px-3 py-1 font-medium">Explorer</th>
+              <th className="px-3 py-1 font-medium">{activeChain.explorerUrl ? "Explorer" : "Tx"}</th>
             </tr>
           </thead>
           <tbody>
@@ -40,20 +40,22 @@ export function TradeHistory() {
                 <td className="px-3 py-1">
                   {/* EVM trades carry a real tx hash (link to /tx/); host-signed trades use a
                       block-index extrinsic id (link to /extrinsic/). */}
-                  <a
-                    href={
-                      trade.txHash.startsWith("0x")
-                        ? `${activeChain.explorerUrl}/tx/${trade.txHash}`
-                        : `${activeChain.explorerUrl}/extrinsic/${trade.txHash}`
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-text-secondary hover:text-text-primary underline decoration-dotted"
-                  >
-                    {trade.txHash.startsWith("0x")
-                      ? `${trade.txHash.slice(0, 10)}...`
-                      : trade.txHash}
-                  </a>
+                  {activeChain.explorerUrl ? (
+                    <a
+                      href={
+                        trade.txHash.startsWith("0x")
+                          ? `${activeChain.explorerUrl}/tx/${trade.txHash}`
+                          : `${activeChain.explorerUrl}/extrinsic/${trade.txHash}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-text-secondary hover:text-text-primary underline decoration-dotted"
+                    >
+                      {shortTxId(trade.txHash)}
+                    </a>
+                  ) : (
+                    <span className="text-text-secondary">{shortTxId(trade.txHash)}</span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -72,4 +74,8 @@ export function TradeHistory() {
       </div>
     </div>
   );
+}
+
+function shortTxId(txHash: string): string {
+  return txHash.startsWith("0x") ? `${txHash.slice(0, 10)}...` : txHash;
 }
