@@ -126,12 +126,18 @@ importers:
 
   contracts:
     dependencies:
-      '@polkadot/api':
-        specifier: ^16.5.6
-        version: 16.5.6
-      '@polkadot/keyring':
-        specifier: ^14.0.3
-        version: 14.0.3(@polkadot/util-crypto@14.0.3(@polkadot/util@14.0.3))(@polkadot/util@14.0.3)
+      '@polkadot-labs/hdkd':
+        specifier: ^0.0.29
+        version: 0.0.29
+      '@polkadot-labs/hdkd-helpers':
+        specifier: ^0.0.31
+        version: 0.0.31
+      polkadot-api:
+        specifier: ^2.1.6
+        version: 2.1.6(esbuild@0.28.1)(rxjs@7.8.2)
+      viem:
+        specifier: ^2.52.2
+        version: 2.52.2(typescript@6.0.3)(zod@4.4.3)
 
 packages:
 
@@ -3576,7 +3582,7 @@ snapshots:
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 

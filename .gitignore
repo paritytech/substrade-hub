@@ -12,6 +12,8 @@ node_modules/
 .env.*.local
 contracts/scripts/.env
 contracts/scripts/.env.local
+# Bootstrap state per network (holds generated EVM private keys)
+contracts/scripts/state/
 
 # OS
 .DS_Store

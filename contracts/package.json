@@ -8,7 +8,9 @@
     "fmt:check": "forge fmt --check"
   },
   "dependencies": {
-    "@polkadot/api": "^16.5.6",
-    "@polkadot/keyring": "^14.0.3"
+    "@polkadot-labs/hdkd": "^0.0.29",
+    "@polkadot-labs/hdkd-helpers": "^0.0.31",
+    "polkadot-api": "^2.1.6",
+    "viem": "^2.52.2"
   }
 }

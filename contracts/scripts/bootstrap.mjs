@@ -1,0 +1,537 @@
+#!/usr/bin/env node
+// Rebuild the SubsTrade Hub demo on a network from scratch: fund accounts, create the test assets,
+// deploy the DLOB factory and the tUSD faucet, create the demo markets, seed their order books,
+// generate a trade history for the candle chart, and write the resulting addresses into the app's
+// networks.json. Run it again after a chain reset.
+//
+// Usage (from contracts/):
+//   node scripts/bootstrap.mjs --network previewnet            # run every step
+//   node scripts/bootstrap.mjs --network previewnet --only fund --fund 5Cto...   # one step
+//   node scripts/bootstrap.mjs --help
+//
+// Every step is idempotent and records its result in scripts/state/<network>.json (gitignored: it
+// holds the generated EVM keys). A rerun skips finished work, so an interrupted run resumes where it
+// stopped. If the chain was reset, the state file's genesis no longer matches and the script refuses
+// to run until you delete that file.
+//
+// Signers: the funder (FUNDER_URI, default //Alice; a mnemonic, optionally with a //path, also works)
+// pays native funds and is the admin of the test assets. Generated EVM keys do everything else:
+// the deployer deploys contracts, creates markets and seeds books; four more keys create trade history
+// (separate keys, so takers never trade against their own orders).
+
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { AccountId, Binary, createClient, getSs58AddressInfo } from "polkadot-api";
+import { getPolkadotSigner } from "polkadot-api/signer";
+import { getWsProvider } from "polkadot-api/ws";
+import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
+import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
+import { createPublicClient, createWalletClient, defineChain, http, parseAbi } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const CONTRACTS = resolve(HERE, "..");
+const NETWORKS_FILE = resolve(CONTRACTS, "../apps/trade/src/config/networks.json");
+
+// ──────────────────────── Demo definition ──────────────────────────
+
+const DECIMALS = 6; // base and quote must share decimals: the DLOB does no cross-decimal scaling
+const UNIT = 10n ** BigInt(DECIMALS);
+const PRECISION = 10n ** 18n; // prices are 18-decimal fixed point
+const PAS = 10n ** 10n; // native planck per PAS
+const WEI_PER_PAS = 10n ** 18n; // EVM-side native value
+
+/** pallet-assets id that the runtime blocks from ERC-20 transfers; never trade it. */
+const PROTECTED_ASSET_IDS = new Set([50_000_413]);
+
+const QUOTE = { key: "tUSD", id: 50_000_698, name: "Test USD", supply: 10_000_000n * UNIT };
+const FAUCET = { drip: 10_000n * UNIT, cooldownSeconds: 86_400, funding: 10_000_000n * UNIT };
+
+const TICK_SIZE = PRECISION / 100n; // 0.01
+const MIN_ORDER_SIZE = 1n * UNIT;
+const MAX_ORDER_SIZE = 1_000_000n * UNIT;
+const LEVEL_STEP = 0.5;
+const BRIDGE_UNITS = 3;
+const TAPER = [1, 2, 2, 3, 4, 5, 6, 7, 9, 12]; // depth per level, thin at the edges, deep at the spread
+
+/** Ten bids up to `bestBid` and ten asks from `bestAsk`, each LEVEL_STEP apart, tapered toward the spread. */
+function ladder(bestBid, bestAsk) {
+  const bids = TAPER.map((amount, i) => ({ price: bestBid - (TAPER.length - 1 - i) * LEVEL_STEP, amount }));
+  const asks = [...TAPER].reverse().map((amount, i) => ({ price: bestAsk + i * LEVEL_STEP, amount }));
+  return { bids, asks };
+}
+
+// Target closes, one candle each: higher is a buy, lower a sell, equal a doji.
+const MARKETS = [
+  {
+    key: "tNVDA",
+    id: 50_000_699,
+    name: "Test NVIDIA",
+    supply: 100_000n * UNIT,
+    ...ladder(220.0, 221.0),
+    pricePath: [
+      222.0, 222.5, 223.0, 223.5, 224.0, 224.0, 223.5, 222.5, 221.5, 222.5, 223.5, 224.5, 225.0, 225.0,
+      224.5, 223.5, 222.5, 221.5, 220.5, 221.5, 222.5, 223.5, 224.5, 225.5, 224.5, 223.5, 223.0, 224.0,
+      225.0, 224.5, 223.5,
+    ],
+  },
+  {
+    key: "tMU",
+    id: 50_001_034,
+    name: "Test Micron",
+    supply: 10_000n * UNIT,
+    ...ladder(939.5, 940.5),
+    pricePath: [
+      941.5, 942.0, 942.5, 943.0, 943.5, 943.5, 943.0, 942.0, 941.0, 942.0, 943.0, 944.0, 944.5, 944.5,
+      944.0, 943.0, 942.0, 941.0, 940.0, 941.0, 942.0, 943.0, 944.0, 945.0, 944.0, 943.0, 942.5, 943.5,
+      944.5, 944.0, 943.0,
+    ],
+  },
+];
+
+// Native funding per generated EVM account (PAS). Contract deploys and storage deposits come from the
+// deployer; the trade-history keys only pay fees.
+const FUNDING = { deployer: 300n, makerBid: 30n, makerAsk: 30n, buyer: 30n, seller: 30n };
+const EXTRA_FUNDING = 50n; // per --fund account
+const TRADE_SPACING_MS = Number(process.env.TRADE_SPACING_S ?? 15) * 1000; // one candle per trade
+
+// ──────────────────────── CLI ──────────────────────────
+
+const STEPS = ["keys", "fund", "assets", "factory", "markets", "faucet", "seed", "history", "replenish", "config"];
+
+function parseArgs(argv) {
+  const args = { network: undefined, only: undefined, from: undefined, fund: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--help" || a === "-h") args.help = true;
+    else if (a === "--network") args.network = argv[++i];
+    else if (a === "--only") args.only = argv[++i];
+    else if (a === "--from") args.from = argv[++i];
+    else if (a === "--fund") args.fund.push(argv[++i]);
+    else throw new Error(`Unknown argument: ${a}`);
+  }
+  for (const s of [args.only, args.from]) {
+    if (s !== undefined && !STEPS.includes(s)) throw new Error(`Unknown step "${s}"; steps: ${STEPS.join(", ")}`);
+  }
+  return args;
+}
+
+const HELP = `Usage: node scripts/bootstrap.mjs --network <name> [--only <step> | --from <step>] [--fund <ss58>]...
+
+Steps, in order: ${STEPS.join(", ")}
+  --network  a key of apps/trade/src/config/networks.json
+  --only     run a single step        --from  run from a step onward
+  --fund     also send ${EXTRA_FUNDING} PAS to this SS58 account (repeatable), e.g. a host product account
+Env: FUNDER_URI (default //Alice), TRADE_SPACING_S (default 15)`;
+
+// ──────────────────────── State ──────────────────────────
+
+function loadJson(file) {
+  return JSON.parse(readFileSync(file, "utf8"));
+}
+
+function saveJson(file, value) {
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+// ──────────────────────── Substrate helpers ──────────────────────────
+
+function funderSigner(uri) {
+  const [phrase, path] = uri.startsWith("//") ? [DEV_PHRASE, uri] : splitSuri(uri);
+  const derive = sr25519CreateDerive(entropyToMiniSecret(mnemonicToEntropy(phrase)));
+  const pair = derive(path);
+  return getPolkadotSigner(pair.publicKey, "Sr25519", pair.sign);
+}
+
+function splitSuri(suri) {
+  const i = suri.indexOf("//");
+  return i === -1 ? [suri.trim(), ""] : [suri.slice(0, i).trim(), suri.slice(i)];
+}
+
+const ss58 = AccountId(42);
+
+/** pallet-revive's fallback AccountId32 for an EVM address: H160 ++ 0xEE * 12. */
+function evmToSs58(h160) {
+  return ss58.dec(Binary.fromHex(`${h160.toLowerCase()}${"ee".repeat(12)}`));
+}
+
+function samePublicKey(address, publicKey) {
+  const info = getSs58AddressInfo(address);
+  return info.isValid && Binary.toHex(info.publicKey) === Binary.toHex(publicKey);
+}
+
+function assetErc20(id) {
+  return `0x${id.toString(16).padStart(8, "0")}00000000000000000000000001200000`;
+}
+
+/** Submit and wait for finalization; throws on a failed dispatch. */
+async function submit(tx, signer, label) {
+  console.log(`  ${label}…`);
+  const res = await tx.signAndSubmit(signer);
+  if (!res.ok) throw new Error(`${label} failed: ${JSON.stringify(res.dispatchError, bigintJson)}`);
+  console.log(`  ${label}: finalized in #${res.block.number}`);
+}
+
+function bigintJson(_key, value) {
+  return typeof value === "bigint" ? value.toString() : value;
+}
+
+// ──────────────────────── EVM helpers ──────────────────────────
+
+const ERC20_ABI = parseAbi([
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function balanceOf(address owner) view returns (uint256)",
+]);
+
+function artifactAbi(file, name) {
+  return loadJson(resolve(CONTRACTS, `out/${file}/${name}.json`)).abi;
+}
+
+function forge(script, rpcUrl, privateKey, env = {}) {
+  execFileSync(
+    "forge",
+    ["script", `script/${script}`, "--rpc-url", rpcUrl, "--private-key", privateKey, "--broadcast", "--slow"],
+    { cwd: CONTRACTS, stdio: "inherit", env: { ...process.env, ...env } },
+  );
+}
+
+/** The address forge recorded for `contractName` in the latest broadcast of `script`. */
+function broadcastAddress(script, chainId, contractName) {
+  const run = loadJson(resolve(CONTRACTS, `broadcast/${script}/${chainId}/run-latest.json`));
+  const tx = run.transactions.find((t) => t.transactionType === "CREATE" && t.contractName === contractName);
+  if (!tx) throw new Error(`No ${contractName} deployment in the ${script} broadcast`);
+  return tx.contractAddress;
+}
+
+function priceToRaw(price) {
+  return BigInt(Math.round(price * 100)) * (PRECISION / 100n);
+}
+
+/** Quote needed for bids: sum of amount * price, rounded up per order. */
+function quoteFor(orders) {
+  return orders.reduce((sum, o) => sum + (BigInt(o.amount) * UNIT * priceToRaw(o.price) + PRECISION - 1n) / PRECISION, 0n);
+}
+
+// ──────────────────────── Trade-history planner ──────────────────────────
+
+/**
+ * Turn a price path into the bridge orders and trades that produce one candle per target close.
+ * It simulates the book (seeded with `bids`/`asks`): a buy sweeps asks up to the target, a sell sweeps
+ * bids down to it, a doji trades a single unit. When the needed side is empty it first adds bridge
+ * orders of BRIDGE_UNITS every LEVEL_STEP between the previous close and the target, clamped to the
+ * seeded range.
+ */
+export function planHistory({ bids, asks, pricePath }) {
+  const low = bids[0].price;
+  const high = asks[asks.length - 1].price;
+  const book = { bids: new Map(bids.map((o) => [o.price, o.amount])), asks: new Map(asks.map((o) => [o.price, o.amount])) };
+  const round = (n) => Math.round(n * 100) / 100;
+  const best = (side, pick) => {
+    const live = [...book[side]].filter(([, a]) => a > 0).map(([p]) => p);
+    return live.length ? pick(...live) : null;
+  };
+  const steps = [];
+  let prevClose = null;
+  let prevSide = 0;
+
+  for (const target of pricePath) {
+    const doji = prevClose !== null && target === prevClose;
+    const side = prevClose === null ? 0 : target > prevClose ? 0 : target < prevClose ? 1 : prevSide;
+    const [resting, bestOf, beyond] =
+      side === 0 ? ["asks", Math.min, (p) => p > target] : ["bids", Math.max, (p) => p < target];
+    const top = best(resting, bestOf);
+
+    if (top === null || beyond(top)) {
+      const dir = side === 0 ? 1 : -1;
+      const start = prevClose !== null ? round(prevClose - dir * LEVEL_STEP) : round(target - dir);
+      for (let p = side === 0 ? round(Math.max(start, low)) : round(Math.min(start, high)); dir * (target - p) >= 0; p = round(p + dir * LEVEL_STEP)) {
+        if ((book[resting].get(p) ?? 0) <= 0) {
+          steps.push({ type: "bridge", side: side === 0 ? 1 : 0, price: p, amount: BRIDGE_UNITS });
+          book[resting].set(p, (book[resting].get(p) ?? 0) + BRIDGE_UNITS);
+        }
+      }
+    }
+
+    if (doji) {
+      const at = best(resting, bestOf);
+      if (at !== null) {
+        steps.push({ type: "trade", side, price: target, amount: 1 });
+        book[resting].set(at, book[resting].get(at) - 1);
+      }
+    } else {
+      let amount = 0;
+      for (const [p, a] of book[resting]) {
+        if (a > 0 && !beyond(p)) {
+          amount += a;
+          book[resting].set(p, 0);
+        }
+      }
+      if (amount > 0) steps.push({ type: "trade", side, price: target, amount });
+    }
+    prevClose = target;
+    prevSide = side;
+  }
+  return steps;
+}
+
+// ──────────────────────── Main ──────────────────────────
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help || !args.network) {
+    console.log(HELP);
+    process.exit(args.help ? 0 : 1);
+  }
+
+  const networks = loadJson(NETWORKS_FILE);
+  const net = networks[args.network];
+  if (!net) throw new Error(`Unknown network "${args.network}"; expected one of: ${Object.keys(networks).join(", ")}`);
+  for (const a of [QUOTE, ...MARKETS]) {
+    if (PROTECTED_ASSET_IDS.has(a.id)) throw new Error(`${a.key} uses protected asset id ${a.id}`);
+  }
+
+  const stateFile = resolve(HERE, `state/${args.network}.json`);
+  const state = existsSync(stateFile) ? loadJson(stateFile) : { genesis: net.genesis, keys: {}, done: {} };
+  const save = () => saveJson(stateFile, state);
+
+  // Never destroyed: the process exits when main settles (see the entry point), and destroying the
+  // client mid-follow can throw from a pending reconnect timer.
+  const client = createClient(getWsProvider(net.wsEndpoint));
+  const api = client.getUnsafeApi();
+  const live = (await client.getChainSpecData()).genesisHash;
+  if (live !== net.genesis) {
+    throw new Error(`${net.name} has genesis ${live}, networks.json says ${net.genesis}: update networks.json first`);
+  }
+  if (state.genesis !== live) {
+    throw new Error(`${stateFile} belongs to genesis ${state.genesis}; the chain was reset, delete that file`);
+  }
+
+  const funder = funderSigner(process.env.FUNDER_URI ?? "//Alice");
+  const funderSs58 = ss58.dec(funder.publicKey);
+  const chain = defineChain({
+    id: net.chainId,
+    name: net.name,
+    nativeCurrency: { name: "PAS", symbol: "PAS", decimals: 18 },
+    rpcUrls: { default: { http: [net.rpcUrl] } },
+  });
+  const pub = createPublicClient({ chain, transport: http(net.rpcUrl) });
+  const wallet = (role) => createWalletClient({ chain, transport: http(net.rpcUrl), account: privateKeyToAccount(state.keys[role]) });
+  const addr = (role) => privateKeyToAccount(state.keys[role]).address;
+
+  /** Send a contract call from `role` and require a successful receipt. */
+  const write = async (role, address, abi, functionName, fnArgs, value) => {
+    const hash = await wallet(role).writeContract({ address, abi, functionName, args: fnArgs, value });
+    const receipt = await pub.waitForTransactionReceipt({ hash, timeout: 120_000 });
+    if (receipt.status !== "success") throw new Error(`${role} ${functionName} reverted (tx ${hash})`);
+    return receipt;
+  };
+  const read = (address, abi, functionName, fnArgs = []) => pub.readContract({ address, abi, functionName, args: fnArgs });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const start = args.only ?? args.from ?? STEPS[0];
+  const run = (step) => (args.only ? step === args.only : STEPS.indexOf(step) >= STEPS.indexOf(start));
+  const needs = (field, step) => {
+    if (!state[field]) throw new Error(`Step "${step}" needs ${field}; run the earlier steps first`);
+  };
+
+  console.log(`Bootstrapping ${net.name} (funder ${funderSs58})`);
+
+  if (run("keys")) {
+    console.log("\n== keys ==");
+    for (const role of Object.keys(FUNDING)) {
+      state.keys[role] ??= generatePrivateKey();
+      console.log(`  ${role.padEnd(8)} ${addr(role)}`);
+    }
+    save();
+  }
+
+  if (run("fund")) {
+    console.log("\n== fund ==");
+    const targets = [
+      ...Object.entries(FUNDING).map(([role, pas]) => [role, evmToSs58(addr(role)), pas]),
+      ...args.fund.map((a) => [a, a, EXTRA_FUNDING]),
+    ];
+    const calls = [];
+    for (const [label, account, pas] of targets) {
+      const free = (await api.query.System.Account.getValue(account)).data.free;
+      const want = pas * PAS;
+      if (free >= want) console.log(`  ${label}: has ${free / PAS} PAS`);
+      else {
+        console.log(`  ${label}: topping up to ${pas} PAS`);
+        calls.push(api.tx.Balances.transfer_keep_alive({ dest: { type: "Id", value: account }, value: want - free }).decodedCall);
+      }
+    }
+    if (calls.length) await submit(api.tx.Utility.batch_all({ calls }), funder, "transfers");
+  }
+
+  if (run("assets")) {
+    console.log("\n== assets ==");
+    const deployerSs58 = evmToSs58(addr("deployer"));
+    for (const a of [QUOTE, ...MARKETS]) {
+      const existing = await api.query.Assets.Asset.getValue(a.id);
+      if (existing) {
+        if (!samePublicKey(existing.owner, funder.publicKey)) throw new Error(`Asset ${a.id} (${a.key}) exists and is owned by ${existing.owner}`);
+        console.log(`  ${a.key} (${a.id}): exists`);
+        continue;
+      }
+      const calls = [
+        api.tx.Assets.create({ id: a.id, admin: { type: "Id", value: funderSs58 }, min_balance: 1n }),
+        api.tx.Assets.set_metadata({ id: a.id, name: Binary.fromText(a.name), symbol: Binary.fromText(a.key), decimals: DECIMALS }),
+        api.tx.Assets.mint({ id: a.id, beneficiary: { type: "Id", value: deployerSs58 }, amount: a.supply }),
+      ].map((t) => t.decodedCall);
+      await submit(api.tx.Utility.batch_all({ calls }), funder, `create ${a.key} (${a.id})`);
+    }
+    state.assets = Object.fromEntries([QUOTE, ...MARKETS].map((a) => [a.key, assetErc20(a.id)]));
+    save();
+  }
+
+  if (run("factory") || run("markets") || run("faucet") || run("seed") || run("history") || run("replenish")) {
+    // Quiet: a full build prints forge-lint notes for the whole tree, which drown the bootstrap log.
+    execFileSync("forge", ["build", "--quiet"], { cwd: CONTRACTS, stdio: ["ignore", "ignore", "inherit"] });
+  }
+  const factoryAbi = () => artifactAbi("DLOBFactory.sol", "DLOBFactory");
+  const dlobAbi = () => artifactAbi("DLOB.sol", "DLOB");
+
+  if (run("factory")) {
+    console.log("\n== factory ==");
+    if (state.factory && (await pub.getCode({ address: state.factory }))) console.log(`  deployed at ${state.factory}`);
+    else {
+      forge("DeployFactory.s.sol", net.rpcUrl, state.keys.deployer);
+      state.factory = broadcastAddress("DeployFactory.s.sol", net.chainId, "DLOBFactory");
+      save();
+      console.log(`  DLOBFactory ${state.factory}`);
+    }
+  }
+
+  if (run("markets")) {
+    console.log("\n== markets ==");
+    needs("factory", "markets");
+    needs("assets", "markets");
+    state.markets ??= {};
+    const quote = state.assets[QUOTE.key];
+    for (const m of MARKETS) {
+      const base = state.assets[m.key];
+      let market = await read(state.factory, factoryAbi(), "getMarket", [base, quote]);
+      if (/^0x0{40}$/i.test(market)) {
+        await write("deployer", state.factory, factoryAbi(), "createMarket", [
+          { token: base, xcmLocation: "0x" },
+          { token: quote, xcmLocation: "0x" },
+          TICK_SIZE,
+          MIN_ORDER_SIZE,
+          MAX_ORDER_SIZE,
+        ]);
+        market = await read(state.factory, factoryAbi(), "getMarket", [base, quote]);
+      }
+      state.markets[m.key] = market;
+      save();
+      console.log(`  ${m.key}/${QUOTE.key} ${market}`);
+      // The market's account needs an existential deposit before it can hold assets.
+      if ((await pub.getBalance({ address: market })) === 0n) {
+        const hash = await wallet("deployer").sendTransaction({ to: market, value: WEI_PER_PAS });
+        await pub.waitForTransactionReceipt({ hash });
+      }
+    }
+  }
+
+  if (run("faucet")) {
+    console.log("\n== faucet ==");
+    needs("assets", "faucet");
+    if (state.faucet && (await pub.getCode({ address: state.faucet }))) console.log(`  deployed at ${state.faucet}`);
+    else {
+      forge("DeployFaucet.s.sol", net.rpcUrl, state.keys.deployer, {
+        TUSD_ADDRESS: state.assets[QUOTE.key],
+        FAUCET_DRIP: FAUCET.drip.toString(),
+        FAUCET_COOLDOWN: String(FAUCET.cooldownSeconds),
+      });
+      state.faucet = broadcastAddress("DeployFaucet.s.sol", net.chainId, "Faucet");
+      save();
+      console.log(`  Faucet ${state.faucet}`);
+    }
+    const held = await read(state.assets[QUOTE.key], ERC20_ABI, "balanceOf", [state.faucet]);
+    if (held < FAUCET.drip) {
+      const mint = api.tx.Assets.mint({ id: QUOTE.id, beneficiary: { type: "Id", value: evmToSs58(state.faucet) }, amount: FAUCET.funding });
+      await submit(mint, funder, `mint ${FAUCET.funding / UNIT} ${QUOTE.key} to the faucet`);
+    } else console.log(`  holds ${held / UNIT} ${QUOTE.key}`);
+  }
+
+  /** Approve `market` for what `orders` need and place them from `role`. */
+  const placeAll = async (role, m, orders, label) => {
+    const market = state.markets[m.key];
+    const bids = orders.filter((o) => o.side === 0);
+    const asks = orders.filter((o) => o.side === 1);
+    if (bids.length) await write(role, state.assets[QUOTE.key], ERC20_ABI, "approve", [market, quoteFor(bids)]);
+    if (asks.length) {
+      const base = asks.reduce((s, o) => s + BigInt(o.amount) * UNIT, 0n);
+      await write(role, state.assets[m.key], ERC20_ABI, "approve", [market, base]);
+    }
+    for (const o of orders) {
+      await write(role, market, dlobAbi(), "placeLimitOrder", [o.side, priceToRaw(o.price), BigInt(o.amount) * UNIT, `0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`, 0, 0n]);
+      console.log(`  ${label}: ${o.side === 0 ? "bid" : "ask"} ${o.amount} @ ${o.price.toFixed(2)}`);
+    }
+  };
+  const ladderOrders = (m) => [...m.bids.map((o) => ({ ...o, side: 0 })), ...m.asks.map((o) => ({ ...o, side: 1 }))];
+
+  for (const [step, label] of [["seed", "seed"], ["history", "history"], ["replenish", "replenish"]]) {
+    if (!run(step)) continue;
+    console.log(`\n== ${step} ==`);
+    needs("markets", step);
+    for (const m of MARKETS) {
+      const doneKey = `${step}:${m.key}`;
+      if (state.done[doneKey]) {
+        console.log(`  ${m.key}: done`);
+        continue;
+      }
+      if (step !== "history") await placeAll("deployer", m, ladderOrders(m), `${m.key} ${label}`);
+      else {
+        const plan = planHistory(m);
+        // Fund each history key from the deployer with what its part of the plan needs.
+        const roleOf = (s) => (s.type === "bridge" ? (s.side === 0 ? "makerBid" : "makerAsk") : s.side === 0 ? "buyer" : "seller");
+        for (const role of ["makerBid", "makerAsk", "buyer", "seller"]) {
+          const mine = plan.filter((s) => roleOf(s) === role);
+          const quote = 2n * quoteFor(mine.filter((s) => s.side === 0));
+          const base = 2n * mine.filter((s) => s.side === 1).reduce((t, s) => t + BigInt(s.amount) * UNIT, 0n);
+          if (quote > 0n) await write("deployer", state.assets[QUOTE.key], ERC20_ABI, "transfer", [addr(role), quote]);
+          if (base > 0n) await write("deployer", state.assets[m.key], ERC20_ABI, "transfer", [addr(role), base]);
+          if (quote > 0n) await write(role, state.assets[QUOTE.key], ERC20_ABI, "approve", [state.markets[m.key], quote]);
+          if (base > 0n) await write(role, state.assets[m.key], ERC20_ABI, "approve", [state.markets[m.key], base]);
+        }
+        for (const s of plan) {
+          await write(roleOf(s), state.markets[m.key], dlobAbi(), "placeLimitOrder", [s.side, priceToRaw(s.price), BigInt(s.amount) * UNIT, `0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`, 0, 0n]);
+          console.log(`  ${m.key} ${s.type}: ${s.side === 0 ? "buy" : "sell"} ${s.amount} @ ${s.price.toFixed(2)}`);
+          if (s.type === "trade") await sleep(TRADE_SPACING_MS);
+        }
+      }
+      state.done[doneKey] = true;
+      save();
+    }
+  }
+
+  if (run("config")) {
+    console.log("\n== config ==");
+    needs("factory", "config");
+    needs("faucet", "config");
+    const fresh = loadJson(NETWORKS_FILE);
+    Object.assign(fresh[args.network], {
+      factoryAddress: state.factory,
+      faucetAddress: state.faucet,
+      knownQuote: { addr: state.assets[QUOTE.key], symbol: QUOTE.key, decimals: DECIMALS },
+    });
+    saveJson(NETWORKS_FILE, fresh);
+    console.log(`  wrote ${args.network} addresses to ${NETWORKS_FILE}`);
+  }
+  console.log("\nDone.");
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().then(
+    () => process.exit(0),
+    (e) => {
+      console.error(`\n${e.message}`);
+      process.exit(1);
+    },
+  );
+}
