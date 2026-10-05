@@ -5,7 +5,7 @@ import { dlobFactoryAbi } from "../abi/dlob-factory";
 import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
 import { activeChain } from "../config/chains";
-import { filterKnownQuoteMarkets } from "../lib/markets";
+import { filterKnownQuoteMarkets, isNonZeroAddress } from "../lib/markets";
 import type { MarketInfo, TokenInfo } from "../types/market";
 
 /**
@@ -47,6 +47,8 @@ async function fetchTokenInfo(addr: `0x${string}`): Promise<TokenInfo> {
 
 async function fetchMarkets(): Promise<MarketInfo[]> {
   const factory = activeChain.factoryAddress;
+  // Not deployed on this network yet (see networks.json): no markets, and no call to the zero address.
+  if (!isNonZeroAddress(factory)) return [];
   const count = (await readContract(
     dlobFactoryAbi,
     "getMarketCount",
