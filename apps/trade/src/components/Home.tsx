@@ -6,6 +6,8 @@ import { useFaucetState, useClaimFaucet, isFaucetConfigured } from "../hooks/use
 import { activeChain } from "../config/chains";
 import { formatTokenAmount, groupThousands } from "../lib/format";
 import { Spinner } from "./ui/Spinner";
+import { FundingNotice } from "./wallet/FundingNotice";
+import { useFunding } from "../hooks/use-funding";
 import type { MarketInfo } from "../types/market";
 
 function formatCooldown(secs: number): string {
@@ -21,6 +23,7 @@ function FaucetCard() {
   const { symbol, decimals } = activeChain.knownQuote;
   const { data: state } = useFaucetState();
   const claim = useClaimFaucet();
+  const { low: needsNative, token } = useFunding();
 
   if (!isFaucetConfigured()) {
     return (
@@ -47,13 +50,15 @@ function FaucetCard() {
       </p>
       <button
         onClick={() => claim.mutate()}
-        disabled={!h160 || onCooldown || claim.isPending}
+        disabled={!h160 || needsNative || onCooldown || claim.isPending}
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-brand py-2.5 text-sm font-medium text-white hover:bg-brand-light disabled:opacity-50"
       >
         {claim.isPending && <Spinner className="h-4 w-4" />}
         {!h160
           ? "Connect a wallet to claim"
-          : onCooldown
+          : needsNative
+            ? `Add ${token?.symbol ?? "native token"} to your account first`
+            : onCooldown
             ? `Claim again in ${formatCooldown(cooldownLeft)}`
             : `Get test ${symbol}`}
       </button>
@@ -117,6 +122,10 @@ export function Home() {
             stocks on Asset Hub.
           </p>
         </section>
+
+        <div className="mt-8 empty:hidden">
+          <FundingNotice />
+        </div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           <FaucetCard />

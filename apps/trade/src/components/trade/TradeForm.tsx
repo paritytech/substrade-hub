@@ -7,14 +7,12 @@ import { useMarketStore } from "../../stores/market";
 import { usePlaceOrder } from "../../hooks/use-place-order";
 import { useBestPrices } from "../../hooks/use-best-prices";
 import { useTokenBalance } from "../../hooks/use-token-balance";
-import { useNativeBalance } from "../../hooks/use-native-balance";
-import { useNativeToken } from "../../hooks/use-native-token";
+import { FundingNotice } from "../wallet/FundingNotice";
 import {
   parseTokenAmount,
   quoteAmountCeil,
   formatTokenAmount,
   tickToDisplayDecimals,
-  feeWarningThreshold,
   hasMarketLiquidity,
 } from "../../lib/format";
 import { Side } from "../../types/market";
@@ -24,19 +22,12 @@ import { Amount } from "../ui/Amount";
 export function TradeForm() {
   const { side, orderType, setOrderType, price, amount, reset } =
     useTradeFormStore();
-  const { h160, accountType } = useWalletStore();
+  const { h160 } = useWalletStore();
   const market = useMarketStore((s) => s.selectedMarket);
   const placeOrder = usePlaceOrder();
   const { data: bestPrices } = useBestPrices();
   const { data: quoteBalance } = useTokenBalance(market?.quote.addr, h160 ?? undefined);
   const { data: baseBalance } = useTokenBalance(market?.base.addr, h160 ?? undefined);
-  const { data: nativeFree } = useNativeBalance();
-  const { data: nativeToken } = useNativeToken();
-  const lowDot =
-    accountType === "substrate" &&
-    nativeFree !== undefined &&
-    nativeToken !== undefined &&
-    nativeFree < feeWarningThreshold(nativeToken.decimals);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,11 +139,7 @@ export function TradeForm() {
         </div>
       )}
 
-      {lowDot && (
-        <div className="rounded border border-border bg-surface-overlay px-2 py-1.5 text-xs text-text-secondary">
-          Low {nativeToken?.symbol ?? "native"} balance — you may not have enough to cover network fees.
-        </div>
-      )}
+      <FundingNotice />
 
       {placeOrder.error && (
         <div className="rounded bg-sell-dim px-2 py-1.5 text-xs text-sell">
