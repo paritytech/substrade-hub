@@ -4,7 +4,7 @@ import { faucetAbi } from "../abi/faucet";
 import { activeChain } from "../config/chains";
 import { isNonZeroAddress } from "../lib/markets";
 import { useWalletStore } from "../stores/wallet";
-import { useToastStore } from "../stores/toast";
+import { txProgressToast, useToastStore } from "../stores/toast";
 import { POLL_INTERVAL_MS } from "../config/constants";
 
 const SYMBOL = activeChain.knownQuote.symbol;
@@ -51,11 +51,12 @@ export function useClaimFaucet() {
   return useMutation({
     mutationFn: async () => {
       if (!h160) throw new Error("Connect a wallet first");
-      const toastId = addToast("pending", `Requesting test ${SYMBOL}...`);
+      const requesting = `Requesting test ${SYMBOL}`;
+      const toastId = addToast("pending", `${requesting}: waiting for signature...`);
       try {
-        const res = await writeContract(faucetAbi, "claim", [], activeChain.faucetAddress, h160);
-        updateToast(toastId, "success", `Test ${SYMBOL} received!`);
-        return res;
+        return await writeContract(faucetAbi, "claim", [], activeChain.faucetAddress, h160, {
+          onProgress: txProgressToast(toastId, { pending: requesting, done: `Test ${SYMBOL} received` }),
+        });
       } catch (e) {
         updateToast(toastId, "error", formatFaucetError(e));
         throw e;
