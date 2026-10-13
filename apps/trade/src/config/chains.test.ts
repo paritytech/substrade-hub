@@ -13,6 +13,7 @@ const valid = {
   dotnsName: "app.testnet",
   bulletinDeployEnv: "preview",
   explorerUrl: null,
+  nativeFaucetUrl: null,
   factoryAddress: ZERO,
   faucetAddress: ZERO,
   knownQuote: { addr: ZERO, symbol: "tUSD", decimals: 6 },
@@ -43,6 +44,9 @@ describe("parseNetwork", () => {
     expect(() => parseNetwork("test", { ...valid, chainId: 0 })).toThrow(/chainId/);
     expect(() => parseNetwork("test", { ...valid, dotnsName: "app" })).toThrow(/dotnsName/);
     expect(() => parseNetwork("test", { ...valid, bulletinDeployEnv: "" })).toThrow(/bulletinDeployEnv/);
+    expect(() => parseNetwork("test", { ...valid, nativeFaucetUrl: "http://faucet.example" })).toThrow(
+      /nativeFaucetUrl/,
+    );
     expect(() => parseNetwork("test", { ...valid, knownQuote: { ...valid.knownQuote, decimals: -1 } })).toThrow(
       /decimals/,
     );

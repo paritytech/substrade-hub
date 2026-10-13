@@ -1,28 +1,52 @@
 import { useQuery } from "@tanstack/react-query";
 import { getTypedApi } from "../lib/client";
 import { useMarketStore } from "../stores/market";
-import { useChartStore, RANGE_BLOCKS } from "../stores/chart";
+import { HISTORY_BLOCKS } from "../stores/chart";
 import { POLL_INTERVAL_MS } from "../config/constants";
 import { activeChain } from "../config/chains";
 import type { TradeEvent } from "../types/trade";
 import { decodeEventLog, toHex } from "viem";
 import { dlobAbi } from "../abi/dlob";
+import { isInHost } from "../lib/host/detect";
+import { requestRemoteAccess } from "../lib/host/remote";
 
 // topic0 of the DLOB `Trade(uint32 indexed, uint32 indexed, uint96, uint128)` event.
 const TRADE_TOPIC = "0x73e4731f0cea3899ce6476355a198e3e4520fd9850a8418a06b56e4cfc4acc87";
 
-// Trade history is merged from two complementary sources:
-//   1. eth_getLogs (indexed, cheap over a wide block range) surfaces every EVM-origin trade — the
-//      bootstrap seed/trade history and anything placed via eth_transact. This is what fills the candle
-//      chart, which needs deep history that a block-by-block scan can't reach.
-//   2. A bounded substrate `Revive.ContractEmitted` scan surfaces host-signed (.dot / SubWallet) trades
-//      that go through pallet_revive.call, which eth_getLogs does NOT index.
-// Either source can be unavailable (e.g. direct RPC fetch blocked in a strict host, or the host client
-// not ready), so each is guarded independently and we merge whatever we get. Full deep history for
-// host-only trades still needs an indexer.
+// Trade history (the Recent Trades list and the candle chart) comes from two sources, merged and
+// deduplicated:
+//
+//   1. eth-rpc `eth_getLogs`, the primary source. It covers the whole chart (30 days), because eth-rpc
+//      keeps its own index of contract logs.
+//   2. A scan of `Revive.ContractEmitted` in recent blocks, through the chain client. It catches trades
+//      signed through a host or a Substrate wallet, which go through `pallet_revive.call`.
+//
+// Why eth-rpc and not the chain client for history: trade events live in each block's
+// `System.Events` storage, and nodes prune state after a few hundred blocks, so no chain client can
+// read events older than roughly that, whatever it is connected to. Inside a host the chain client is
+// a light client that only follows blocks from the moment it connects, and a block-by-block scan costs
+// one round trip per block. So the on-chain scan is bounded to `HOST_SCAN_BLOCKS`, and only eth-rpc,
+// with its own log index, can fill a chart.
+//
+// Inside a host, the eth-rpc call is outbound HTTP, which hosts block unless the product holds the
+// `Remote` permission for that domain (see `lib/host/remote`). It is requested the first time history
+// is fetched; if it is denied or the call fails, the chart shows what the on-chain scan found.
 const HOST_SCAN_BLOCKS = 200;
-const MAX_TRADES = 200;
+const MAX_TRADES = 2000;
 const BATCH = 20;
+
+/**
+ * Largest block span requested in one `eth_getLogs` call. The eth-rpc serves a ~350k-block span and
+ * rejects a 1.3M one, so the 30-day history (~1.3M blocks) is fetched in chunks of this size.
+ */
+const LOG_CHUNK_BLOCKS = 300_000;
+
+/** Inclusive `[start, end]` block spans covering `from..to`, each at most `size` blocks long. */
+export function blockChunks(from: number, to: number, size: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let start = from; start <= to; start += size) out.push([start, Math.min(start + size - 1, to)]);
+  return out;
+}
 
 // ---- Source 1: EVM logs (indexed, deep history) -----------------------------------
 
@@ -63,27 +87,44 @@ async function ethRpc(method: string, params: unknown[] = []): Promise<unknown> 
   return json.result;
 }
 
-async function fetchEvmTrades(
-  marketAddr: `0x${string}`,
-  lookbackBlocks: number,
-): Promise<TradeEvent[]> {
+type EthLog = {
+  data: `0x${string}`;
+  topics: `0x${string}`[];
+  blockNumber: string;
+  transactionHash: string;
+  transactionIndex: string;
+};
+
+type Cached = { lastBlock: number; trades: TradeEvent[] };
+const evmCache = new Map<string, Cached>();
+
+/**
+ * Trades from eth-rpc logs over the last `HISTORY_BLOCKS`. The first call per market fetches the whole
+ * window in `LOG_CHUNK_BLOCKS` chunks; later calls fetch only the blocks since the previous one, since
+ * past logs never change.
+ */
+async function fetchEvmTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]> {
+  if (isInHost() && !(await requestRemoteAccess())) {
+    throw new Error("network access to eth-rpc was not granted by the host");
+  }
   const blockHex = (await ethRpc("eth_blockNumber")) as string;
   const current = parseInt(blockHex, 16);
-  const start = Math.max(1, current - lookbackBlocks);
-  const logs = (await ethRpc("eth_getLogs", [
-    {
-      address: marketAddr,
-      topics: [TRADE_TOPIC],
-      fromBlock: `0x${start.toString(16)}`,
-      toBlock: "latest",
-    },
-  ])) as Array<{
-    data: `0x${string}`;
-    topics: `0x${string}`[];
-    blockNumber: string;
-    transactionHash: string;
-    transactionIndex: string;
-  }>;
+  const prev = evmCache.get(marketAddr);
+  const from = prev ? prev.lastBlock + 1 : Math.max(1, current - HISTORY_BLOCKS);
+  if (from > current) return prev?.trades ?? [];
+
+  const logs: EthLog[] = [];
+  for (const [start, end] of blockChunks(from, current, LOG_CHUNK_BLOCKS)) {
+    const chunk = (await ethRpc("eth_getLogs", [
+      {
+        address: marketAddr,
+        topics: [TRADE_TOPIC],
+        fromBlock: `0x${start.toString(16)}`,
+        toBlock: `0x${end.toString(16)}`,
+      },
+    ])) as EthLog[];
+    logs.push(...chunk);
+  }
 
   // Batch the unique block timestamps (seconds) so candles bucket on wall-clock time. Pruned nodes
   // cannot answer for old blocks, so those are estimated from the blocks that did answer.
@@ -127,7 +168,9 @@ async function fetchEvmTrades(
       /* not a decodable Trade — skip */
     }
   }
-  return out;
+  const trades = [...(prev?.trades ?? []), ...out].slice(-MAX_TRADES);
+  evmCache.set(marketAddr, { lastBlock: current, trades });
+  return trades;
 }
 
 // ---- Source 2: substrate ContractEmitted scan (host-signed trades) -----------------
@@ -188,7 +231,6 @@ export function decodeTradesInBlock(
   return out;
 }
 
-type Cached = { lastBlock: number; trades: TradeEvent[] };
 const hostCache = new Map<string, Cached>();
 
 async function fetchHostTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]> {
@@ -234,12 +276,9 @@ async function fetchHostTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]>
 // EVM logs and the substrate scan overlap on recent EVM trades; this dedups them.
 const tradeKey = (t: TradeEvent) => `${t.blockNumber}:${t.buyOrderId}:${t.sellOrderId}:${t.amount}`;
 
-async function fetchTradeHistory(
-  marketAddr: `0x${string}`,
-  lookbackBlocks: number,
-): Promise<TradeEvent[]> {
+async function fetchTradeHistory(marketAddr: `0x${string}`): Promise<TradeEvent[]> {
   const [evm, host] = await Promise.all([
-    fetchEvmTrades(marketAddr, lookbackBlocks).catch((e) => {
+    fetchEvmTrades(marketAddr).catch((e) => {
       console.warn("[tradeHistory] eth_getLogs unavailable:", e);
       return [] as TradeEvent[];
     }),
@@ -261,13 +300,12 @@ async function fetchTradeHistory(
   return merged.slice(-MAX_TRADES);
 }
 
+/** The selected market's trades over the last 30 days, oldest first. Ranges filter it client-side. */
 export function useTradeHistory() {
   const market = useMarketStore((s) => s.selectedMarket);
-  const timeRange = useChartStore((s) => s.timeRange);
-  const lookbackBlocks = RANGE_BLOCKS[timeRange];
   return useQuery({
-    queryKey: ["tradeHistory", market?.address, timeRange],
-    queryFn: () => fetchTradeHistory(market!.address, lookbackBlocks),
+    queryKey: ["tradeHistory", market?.address],
+    queryFn: () => fetchTradeHistory(market!.address),
     enabled: !!market,
     refetchInterval: POLL_INTERVAL_MS * 2,
   });

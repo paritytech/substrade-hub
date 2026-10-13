@@ -24,6 +24,11 @@ export interface ChainConfig {
   bulletinDeployEnv: string;
   /** Subscan-style explorer base URL; `null` when the network has none (explorer links are hidden). */
   explorerUrl: string | null;
+  /**
+   * Where users get the native token for fees and storage deposits; `null` when the network has no
+   * public faucet (the funding notice then explains without a link).
+   */
+  nativeFaucetUrl: string | null;
   factoryAddress: `0x${string}`;
   /** Test-token faucet (dispenses `knownQuote`). Zero address = not deployed yet (UI hides the button). */
   faucetAddress: `0x${string}`;
@@ -47,6 +52,7 @@ const FIELDS = [
   "dotnsName",
   "bulletinDeployEnv",
   "explorerUrl",
+  "nativeFaucetUrl",
   "factoryAddress",
   "faucetAddress",
   "knownQuote",
@@ -109,6 +115,8 @@ export function parseNetwork(network: string, raw: unknown): ChainConfig {
     dotnsName: r.dotnsName,
     bulletinDeployEnv: r.bulletinDeployEnv,
     explorerUrl: r.explorerUrl === null ? null : url(network, "explorerUrl", r.explorerUrl, ["https:"]),
+    nativeFaucetUrl:
+      r.nativeFaucetUrl === null ? null : url(network, "nativeFaucetUrl", r.nativeFaucetUrl, ["https:"]),
     factoryAddress: address(network, "factoryAddress", r.factoryAddress),
     faucetAddress: address(network, "faucetAddress", r.faucetAddress),
     knownQuote: { addr: address(network, "knownQuote.addr", q.addr), symbol: q.symbol, decimals: q.decimals },

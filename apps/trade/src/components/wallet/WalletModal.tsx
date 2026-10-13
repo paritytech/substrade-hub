@@ -151,7 +151,11 @@ export function WalletModal({ onClose }: WalletModalProps) {
     try {
       const accs = await connectHostAccounts();
       if (!accs.length) {
-        setError("No accounts available from the Polkadot host.");
+        // The host derives the app's account from the signed-in user; with no session it returns none.
+        // The app connects by itself once the host reports a sign-in (see useHostReconnect).
+        setError(
+          "The Polkadot host has no account for this app yet. Sign in to your Polkadot account in the host; the app connects as soon as you do.",
+        );
         setConnecting(false);
         return;
       }

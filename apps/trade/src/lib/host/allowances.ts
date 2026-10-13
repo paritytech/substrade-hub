@@ -1,17 +1,21 @@
 /**
- * Host resource allowances. On the Products Devnet, gas is PGAS, provisioned by the host's
- * `SmartContractAllowance`; it must be granted before the first `Revive.call` or the write is rejected.
- * `AutoSigning` lets subsequent writes proceed without a per-transaction approval.
+ * Host resource allowances, requested once per host session and best-effort.
+ *
+ * `SmartContractAllowance` is the product account's PGAS allowance, which pays the gas of its
+ * `Revive.call` transactions. `AutoSigning` lets later writes proceed without a per-transaction
+ * approval. Hosts differ in how they provide them: the Android host tops up the PGAS allowance by itself
+ * whenever the product signs a transaction made only of Revive calls, while other hosts answer
+ * `NotAvailable`. So the request is made up front, where it helps, and its outcome never blocks the
+ * user: an account whose allowance was not granted still connects, and any write that then cannot pay
+ * fails with the chain's own error, which the order flow shows.
  *
  * Provisioning is wired into `SignerManager`'s `onConnect` (see signer.ts), which the SDK fires once per
- * session — on the initial connect and again after every auto-reconnect / fresh host session — so grants
- * are re-provisioned whenever a session refreshes or an allocation expires.
+ * session (the initial connect and every auto-reconnect), so the request repeats when a session
+ * refreshes.
  *
- * Timing: the SDK emits "connected" to subscribers BEFORE it runs `onConnect`, and it only logs a thrown
- * `onConnect`. So the lifecycle subscription can populate the wallet before allocation finishes. To stop
- * an apparently-connected-but-unauthorized wallet, `onConnect` drives a shared allowance gate here that
- * `writeContract` (every host write) and the connect modal both await; a rejection surfaces instead of
- * silently failing the first write.
+ * Timing: the SDK emits "connected" before it runs `onConnect`. Writes and the connect modal wait on the
+ * gate here until the request has been answered, so the host's allowance prompt and a signing prompt
+ * never compete. The gate opens on any answer, and closes again only when the session ends.
  */
 import type {
   AllocatableResource,
@@ -26,75 +30,62 @@ import type {
  */
 const PRODUCT_ACCOUNT_INDEX: DerivationIndex = { tag: "Index", value: 0 };
 
-/** The resources the contract flow needs, granted together once per host session. */
+/** The resources the contract flow asks for, together, once per host session. */
 export const CONTRACT_ALLOWANCE_RESOURCES: AllocatableResource[] = [
   { tag: "SmartContractAllowance", value: PRODUCT_ACCOUNT_INDEX },
   { tag: "AutoSigning", value: undefined },
 ];
 
 /**
- * Validate the per-resource outcomes ("Allocated" | "Rejected" | "NotAvailable", in request order): a
- * non-"Allocated" outcome means the grant did not happen, so throw naming the offending resource(s).
+ * Request the resources and report the ones the host did not allocate, as `"Tag: Outcome"` entries (in
+ * request order). An empty list means everything was allocated. A failing request is reported as such.
  */
 export async function allocateContractResources(
   request: (resources: AllocatableResource[]) => Promise<AllocationOutcome[]>,
-): Promise<void> {
-  const outcomes = await request(CONTRACT_ALLOWANCE_RESOURCES);
-  const denied = CONTRACT_ALLOWANCE_RESOURCES.map((r, i) => ({ tag: r.tag, outcome: outcomes[i] })).filter(
-    (x) => x.outcome !== "Allocated",
-  );
-  if (denied.length > 0) {
-    const detail = denied.map((d) => `${d.tag}: ${d.outcome ?? "missing"}`).join(", ");
-    throw new Error(`The host did not grant the contract allowance (${detail}).`);
+): Promise<string[]> {
+  let outcomes: AllocationOutcome[];
+  try {
+    outcomes = await request(CONTRACT_ALLOWANCE_RESOURCES);
+  } catch (e) {
+    return [`request failed: ${e instanceof Error ? e.message : String(e)}`];
   }
+  return CONTRACT_ALLOWANCE_RESOURCES.map((r, i) => ({ tag: r.tag, outcome: outcomes[i] }))
+    .filter((x) => x.outcome !== "Allocated")
+    .map((x) => `${x.tag}: ${x.outcome ?? "missing"}`);
 }
 
 // ── Shared allowance gate ────────────────────────────────────────────────────
-export type AllowanceStatus = "idle" | "pending" | "granted" | "error";
+export type AllowanceStatus = "idle" | "pending" | "answered";
 
 interface Waiter {
   resolve: () => void;
   reject: (e: Error) => void;
 }
 
-// `generation` tags each provisioning attempt. It is bumped both when a new attempt begins AND on reset,
+// `generation` tags each provisioning attempt. It is bumped both when a new attempt begins and on reset,
 // so a completion whose generation is stale (a newer attempt started, or the session was reset while it
 // was in flight) is ignored and can never overwrite the current session's status. Reset also rejects any
 // outstanding waiters so a gated write can't hang on a dead session.
 let generation = 0;
 let status: AllowanceStatus = "idle";
-let lastError: Error | null = null;
+let notAllocated: string[] = [];
 const waiters = new Set<Waiter>();
 
-function drainWaiters(): void {
-  if (status === "granted") {
-    for (const w of [...waiters]) {
-      waiters.delete(w);
-      w.resolve();
-    }
-  } else if (status === "error") {
-    const err = lastError ?? new Error("allowance not granted");
-    for (const w of [...waiters]) {
-      waiters.delete(w);
-      w.reject(err);
-    }
-  }
-}
-
-export function getAllowanceStatus(): { status: AllowanceStatus; error: Error | null } {
-  return { status, error: lastError };
+/** The gate's state, plus the resources the host did not allocate in the current session. */
+export function getAllowanceStatus(): { status: AllowanceStatus; notAllocated: string[] } {
+  return { status, notAllocated };
 }
 
 /**
- * Invalidate the current session — call on explicit disconnect and whenever host state leaves
- * "connected". Bumps the generation so an in-flight provisioning completion is ignored, drops to "idle",
- * and rejects any waiters so a pending host write fails fast rather than hanging on a dead session.
+ * Invalidate the current session: call on explicit disconnect and whenever host state leaves
+ * "connected". Bumps the generation so an in-flight request's answer is ignored, drops to "idle", and
+ * rejects any waiters so a pending host write fails fast instead of hanging on a dead session.
  */
 export function resetContractAllowanceStatus(): void {
   generation += 1;
   status = "idle";
-  lastError = null;
-  const err = new Error("Host session ended before the contract allowance was granted.");
+  notAllocated = [];
+  const err = new Error("Host session ended before the contract allowance request was answered.");
   for (const w of [...waiters]) {
     waiters.delete(w);
     w.reject(err);
@@ -102,9 +93,8 @@ export function resetContractAllowanceStatus(): void {
 }
 
 /**
- * Run the allocation for a session and track its status, tagged with a generation so a stale completion
- * (superseded by a newer attempt or a reset) can't clobber the current session. Called from `onConnect`;
- * rethrows so the SDK logs it. `awaitContractAllowance` carries the result to the gated consumers.
+ * Request the session's resources and open the gate once the host answers, whatever the answer. Called
+ * from `onConnect`. Never throws: an unallocated resource is logged and recorded.
  */
 export async function provisionContractAllowance(
   request: (resources: AllocatableResource[]) => Promise<AllocationOutcome[]>,
@@ -112,31 +102,25 @@ export async function provisionContractAllowance(
   generation += 1;
   const gen = generation;
   status = "pending";
-  lastError = null;
-  try {
-    await allocateContractResources(request);
-    if (gen !== generation) return; // superseded — leave the newer session's state untouched
-    status = "granted";
-    lastError = null;
-    drainWaiters();
-  } catch (e) {
-    const err = e instanceof Error ? e : new Error(String(e));
-    if (gen !== generation) throw err; // superseded — don't touch state, just surface for the SDK log
-    status = "error";
-    lastError = err;
-    drainWaiters();
-    throw err;
+  notAllocated = [];
+  const missing = await allocateContractResources(request);
+  if (gen !== generation) return; // superseded: leave the newer session's state untouched
+  if (missing.length) console.warn(`[host] resources not allocated (continuing): ${missing.join(", ")}`);
+  status = "answered";
+  notAllocated = missing;
+  for (const w of [...waiters]) {
+    waiters.delete(w);
+    w.resolve();
   }
 }
 
 /**
- * Resolve once the current session's allowance is granted; reject if it failed or the session was reset.
- * Waits through the "idle"/"pending" window (the microtask gap after "connected" but before `onConnect`).
+ * Resolve once the current session's allowance request has been answered; reject if the session ended
+ * first. Waits through the "idle"/"pending" window (the gap after "connected" but before `onConnect`).
  * Every host `writeContract` and the connect modal await this.
  */
 export function awaitContractAllowance(): Promise<void> {
-  if (status === "granted") return Promise.resolve();
-  if (status === "error") return Promise.reject(lastError ?? new Error("allowance not granted"));
+  if (status === "answered") return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
     waiters.add({ resolve, reject });
   });

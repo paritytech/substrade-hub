@@ -30,7 +30,7 @@ export function OrderBookSide({ levels, side, maxTotal, baseDecimals, priceDecim
       // Reserve the 6px scrollbar gutter on both sides whether or not they scroll, so the right-aligned
       // Volume column always lines up with the header (which mirrors the same inset). Without it, an
       // overflowing side would shift 6px left of a non-overflowing one.
-      className={`flex max-h-72 flex-col overflow-y-auto [scrollbar-gutter:stable] ${anchor === "bottom" ? "justify-end" : ""}`}
+      className={`flex max-h-48 shrink-0 flex-col overflow-y-auto [scrollbar-gutter:stable] lg:max-h-72 lg:shrink ${anchor === "bottom" ? "justify-end" : ""}`}
     >
       <div
         className="relative w-full shrink-0"

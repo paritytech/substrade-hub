@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   allocateContractResources,
   provisionContractAllowance,
@@ -23,46 +23,48 @@ describe("CONTRACT_ALLOWANCE_RESOURCES", () => {
 });
 
 describe("allocateContractResources", () => {
-  it("passes the resources to the requester and resolves when all are Allocated", async () => {
+  it("passes the resources to the requester and reports nothing when all are Allocated", async () => {
     const request = vi.fn(async (): Promise<AllocationOutcome[]> => ["Allocated", "Allocated"]);
-    await expect(allocateContractResources(request)).resolves.toBeUndefined();
+    await expect(allocateContractResources(request)).resolves.toEqual([]);
     expect(request).toHaveBeenCalledWith(CONTRACT_ALLOWANCE_RESOURCES);
   });
 
-  it("throws (naming the resource) when a grant is Rejected", async () => {
-    const request = vi.fn(async (): Promise<AllocationOutcome[]> => ["Rejected", "Allocated"]);
-    await expect(allocateContractResources(request)).rejects.toThrow(/SmartContractAllowance: Rejected/i);
+  it("reports a Rejected or NotAvailable resource by name, without throwing", async () => {
+    const request = vi.fn(async (): Promise<AllocationOutcome[]> => ["Rejected", "NotAvailable"]);
+    await expect(allocateContractResources(request)).resolves.toEqual([
+      "SmartContractAllowance: Rejected",
+      "AutoSigning: NotAvailable",
+    ]);
   });
 
-  it("throws when a grant is NotAvailable", async () => {
-    const request = vi.fn(async (): Promise<AllocationOutcome[]> => ["Allocated", "NotAvailable"]);
-    await expect(allocateContractResources(request)).rejects.toThrow(/AutoSigning: NotAvailable/i);
-  });
-
-  it("throws when outcomes are missing entirely (shape mismatch)", async () => {
+  it("reports missing outcomes (shape mismatch)", async () => {
     const request = vi.fn(async (): Promise<AllocationOutcome[]> => []);
-    await expect(allocateContractResources(request)).rejects.toThrow(/did not grant/i);
+    await expect(allocateContractResources(request)).resolves.toEqual([
+      "SmartContractAllowance: missing",
+      "AutoSigning: missing",
+    ]);
   });
 
-  it("propagates a throwing requester (host error on the err channel)", async () => {
+  it("reports a throwing requester (host error) instead of propagating it", async () => {
     const request = vi.fn(async (): Promise<AllocationOutcome[]> => {
       throw new Error("host unavailable");
     });
-    await expect(allocateContractResources(request)).rejects.toThrow("host unavailable");
+    await expect(allocateContractResources(request)).resolves.toEqual(["request failed: host unavailable"]);
   });
 });
 
 describe("allowance gate (provision + await)", () => {
   beforeEach(() => resetContractAllowanceStatus());
+  afterEach(() => vi.restoreAllMocks());
 
-  it("starts idle and reports granted after a successful provision", async () => {
+  it("starts idle and opens once the request is answered", async () => {
     expect(getAllowanceStatus().status).toBe("idle");
     await provisionContractAllowance(async () => ["Allocated", "Allocated"]);
-    expect(getAllowanceStatus().status).toBe("granted");
+    expect(getAllowanceStatus()).toEqual({ status: "answered", notAllocated: [] });
     await expect(awaitContractAllowance()).resolves.toBeUndefined();
   });
 
-  it("a waiter registered while pending resolves once the grant completes", async () => {
+  it("a waiter registered while pending resolves once the request is answered", async () => {
     let release!: (o: AllocationOutcome[]) => void;
     const request = (): Promise<AllocationOutcome[]> =>
       new Promise((r) => {
@@ -76,13 +78,15 @@ describe("allowance gate (provision + await)", () => {
     await expect(waiter).resolves.toBeUndefined();
   });
 
-  it("a waiter registered before provisioning rejects when the grant is denied", async () => {
+  it("a denied or unavailable allowance still opens the gate, and is recorded", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const waiter = awaitContractAllowance(); // registered while idle
-    await expect(
-      provisionContractAllowance(async () => ["Rejected", "Allocated"]),
-    ).rejects.toThrow(/did not grant/i);
-    await expect(waiter).rejects.toThrow(/did not grant/i);
-    expect(getAllowanceStatus().status).toBe("error");
+    await expect(provisionContractAllowance(async () => ["NotAvailable", "Rejected"])).resolves.toBeUndefined();
+    await expect(waiter).resolves.toBeUndefined();
+    expect(getAllowanceStatus()).toEqual({
+      status: "answered",
+      notAllocated: ["SmartContractAllowance: NotAvailable", "AutoSigning: Rejected"],
+    });
   });
 
   it("reset returns the gate to idle for the next session", async () => {
@@ -91,7 +95,7 @@ describe("allowance gate (provision + await)", () => {
     expect(getAllowanceStatus().status).toBe("idle");
   });
 
-  it("reset while pending rejects the waiter and ignores the stale completion", async () => {
+  it("reset while pending rejects the waiter and ignores the stale answer", async () => {
     let release!: (o: AllocationOutcome[]) => void;
     const request = (): Promise<AllocationOutcome[]> =>
       new Promise((r) => {
@@ -107,13 +111,13 @@ describe("allowance gate (provision + await)", () => {
     await expect(waiter).rejects.toThrow(/session ended/i);
     expect(getAllowanceStatus().status).toBe("idle");
 
-    // The old provisioning now completes — it is stale and must not flip the gate back to granted.
+    // The old request now completes; it is stale and must not reopen the gate.
     release(["Allocated", "Allocated"]);
     await provision;
     expect(getAllowanceStatus().status).toBe("idle");
   });
 
-  it("an older provisioning completing after a newer one does not overwrite status", async () => {
+  it("an older request answered after a newer one does not overwrite the status", async () => {
     let releaseOld!: (o: AllocationOutcome[]) => void;
     const oldReq = (): Promise<AllocationOutcome[]> =>
       new Promise((r) => {
@@ -125,11 +129,11 @@ describe("allowance gate (provision + await)", () => {
 
     // A newer session supersedes it and settles first.
     await provisionContractAllowance(async () => ["Allocated", "Allocated"]);
-    expect(getAllowanceStatus().status).toBe("granted");
+    expect(getAllowanceStatus()).toEqual({ status: "answered", notAllocated: [] });
 
-    // The stale one now fails; it must be ignored (rethrown for the SDK log, but no status change).
+    // The stale one now answers with a denial; it must be ignored.
     releaseOld(["Rejected", "Allocated"]);
-    await expect(oldProvision).rejects.toThrow(/did not grant/i);
-    expect(getAllowanceStatus().status).toBe("granted");
+    await oldProvision;
+    expect(getAllowanceStatus()).toEqual({ status: "answered", notAllocated: [] });
   });
 });

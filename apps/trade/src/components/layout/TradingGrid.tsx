@@ -31,8 +31,9 @@ export function TradingGrid() {
         <TradeForm />
       </div>
 
-      {/* Order Book */}
-      <div className="h-80 shrink-0 overflow-hidden bg-surface lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-auto">
+      {/* Order Book: sized to its content below lg (each side scrolls within its own cap); a fixed-height
+          box would squeeze the ask side, the first shrinkable child, to nothing. */}
+      <div className="shrink-0 bg-surface lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-auto lg:overflow-hidden">
         <OrderBook />
       </div>
 

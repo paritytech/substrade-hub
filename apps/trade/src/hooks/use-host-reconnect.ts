@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { getAccountsProvider } from "@parity/product-sdk-host";
 import { isInHost } from "../lib/host/detect";
 import {
   connectHostAccounts,
@@ -54,23 +55,46 @@ export function useHostReconnect(): void {
     // Subscribe first so no state change between connect and subscribe is missed.
     const unsubscribe = subscribeHostState(apply);
 
-    // Establish the session on load (subscribing alone does not connect). connect() triggers onConnect
+    // Establish the session (subscribing alone does not connect). connect() triggers onConnect
     // (allowance) and state emissions that `apply` turns into store updates; select the first account if
     // the SDK restored none, then reconcile the current state once.
-    void (async () => {
-      try {
-        const accounts = await connectHostAccounts();
-        if (cancelled || !accounts.length) return;
-        if (!getHostState().selectedAccount) selectHostAccount(accounts[0]!.address);
-        apply(getHostState());
-      } catch {
-        // No host session yet — stay disconnected until the user connects.
-      }
-    })();
+    // One attempt at a time: a second connect() would cancel the one in flight.
+    let inFlight: Promise<void> | undefined;
+    const establish = () =>
+      (inFlight ??= (async () => {
+        try {
+          const accounts = await connectHostAccounts();
+          if (cancelled || !accounts.length) return;
+          if (!getHostState().selectedAccount) selectHostAccount(accounts[0]!.address);
+          apply(getHostState());
+        } catch {
+          // No host session yet: stay disconnected until the user signs in or connects.
+        } finally {
+          inFlight = undefined;
+        }
+      })());
+    void establish();
+
+    // A user who signs in to the host after the app loaded gets no account from the first attempt, since
+    // the host has no session to derive it from yet, and the signer SDK only reacts to a session that
+    // drops. So follow the host's own sign-in status and connect again once it reports a session.
+    let stopFollowingSignIn: (() => void) | undefined;
+    void getAccountsProvider()
+      .then((provider) => {
+        if (cancelled || !provider) return;
+        const sub = provider.subscribeAccountConnectionStatus((signIn) => {
+          if (signIn === "Connected" && useWalletStore.getState().accountType !== "host") void establish();
+        });
+        stopFollowingSignIn = typeof sub === "function" ? sub : () => sub.unsubscribe();
+      })
+      .catch(() => {
+        // Without the status feed, connecting from the wallet modal still works.
+      });
 
     return () => {
       cancelled = true;
       unsubscribe();
+      stopFollowingSignIn?.();
     };
   }, []);
 }

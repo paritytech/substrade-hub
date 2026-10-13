@@ -5,7 +5,9 @@ import { Spinner } from "../ui/Spinner";
 import { activeChain } from "../../config/chains";
 
 export function TradeHistory() {
-  const { data: trades, isLoading } = useTradeHistory();
+  const { data: history, isLoading } = useTradeHistory();
+  // The history is oldest first, for the chart; the list reads newest first.
+  const trades = history && [...history].reverse();
   const market = useMarketStore((s) => s.selectedMarket);
   const baseDecimals = market?.base.decimals ?? 6;
   const priceDecimals = tickToDisplayDecimals(market?.tickSize ?? 10n ** 18n);

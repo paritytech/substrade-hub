@@ -1,24 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
-import type { SS58String } from "polkadot-api";
+import { AccountId } from "polkadot-api";
+import { fromHex } from "polkadot-api/utils";
 import { getTypedApi } from "../lib/client";
 import { useWalletStore } from "../stores/wallet";
 import { POLL_INTERVAL_MS } from "../config/constants";
 
+const ss58 = AccountId(42);
+
 /**
- * Free native DOT balance (planck, 10 decimals on Asset Hub) of the connected Substrate account.
- * Disabled (returns no data) for EVM or disconnected accounts. Used to warn about insufficient funds
- * for network fees before signing.
+ * Free native balance (planck) of the connected account, whatever its kind: a host or Substrate account
+ * is its own AccountId32, and an EVM account is pallet-revive's `H160 ++ 0xEE * 12` account, which is
+ * where its native balance lives. Every write spends from it: network fees, and storage deposits that
+ * gas sponsoring does not cover.
  */
 export function useNativeBalance() {
-  const accountType = useWalletStore((s) => s.accountType);
-  const ss58 = useWalletStore((s) => s.ss58);
+  const originAccount = useWalletStore((s) => s.originAccount);
   return useQuery({
-    queryKey: ["nativeBalance", ss58],
+    queryKey: ["nativeBalance", originAccount],
     queryFn: async (): Promise<bigint> => {
-      const info = await getTypedApi().query.System.Account.getValue(ss58! as SS58String);
+      const info = await getTypedApi().query.System.Account.getValue(ss58.dec(fromHex(originAccount!)));
       return info.data.free;
     },
-    enabled: accountType === "substrate" && !!ss58,
+    enabled: !!originAccount,
     refetchInterval: POLL_INTERVAL_MS,
   });
 }
