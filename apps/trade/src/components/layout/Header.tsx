@@ -40,8 +40,10 @@ export function Header() {
   );
 
   return (
-    <header className="relative flex items-center justify-between border-b border-border bg-surface px-4 py-2">
-      <div className="flex items-center gap-2 sm:gap-4">
+    // Wraps onto a second row on narrow screens (the Polkadot app runs on phones), so the market
+    // selector and the wallet button are never pushed off-screen.
+    <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-4">
         <button onClick={() => setView("home")} className="font-display text-lg font-bold text-brand">
           SubsTrade
         </button>
@@ -59,11 +61,14 @@ export function Header() {
           </>
         )}
       </div>
-      {/* Centered wallet-style balance — hidden on small screens (shown in the trade form's Available). */}
-      <div className="pointer-events-none absolute left-1/2 hidden -translate-x-1/2 md:block">
-        <HeaderBalance />
+      {/* Wallet-style balance next to the wallet button, in the normal flow so it never overlaps it.
+          Hidden on small screens, where the trade form's "Available" shows it. */}
+      <div className="flex items-center gap-2">
+        <div className="hidden md:block">
+          <HeaderBalance />
+        </div>
+        <WalletButton />
       </div>
-      <WalletButton />
     </header>
   );
 }

@@ -24,19 +24,19 @@ export function WalletButton() {
     const h160Short = `${h160.slice(0, 6)}...${h160.slice(-4)}`;
     return (
       <div className="flex items-center gap-2">
-        <span className="rounded bg-surface-overlay px-2 py-1.5 text-xs uppercase text-text-secondary">
+        <span className="hidden rounded bg-surface-overlay px-2 py-1.5 text-xs uppercase text-text-secondary sm:inline">
           {badge}
         </span>
         <span
-          className="rounded bg-surface-raised px-3 py-1.5 text-sm text-text-secondary"
+          className="whitespace-nowrap rounded bg-surface-raised px-3 py-1.5 text-sm text-text-secondary"
           title={showSs58 ? `${ss58}\nH160: ${h160}` : h160}
         >
           {primary}
-          {showSs58 && <span className="ml-2 text-xs text-text-muted">H160 {h160Short}</span>}
+          {showSs58 && <span className="ml-2 hidden text-xs text-text-muted sm:inline">H160 {h160Short}</span>}
         </span>
         <button
           onClick={handleDisconnect}
-          className="rounded bg-surface-raised px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
+          className="whitespace-nowrap rounded bg-surface-raised px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
         >
           Disconnect
         </button>
@@ -48,7 +48,7 @@ export function WalletButton() {
     <>
       <button
         onClick={() => setShowModal(true)}
-        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light"
+        className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light"
       >
         Connect Wallet
       </button>
