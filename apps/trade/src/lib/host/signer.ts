@@ -21,9 +21,9 @@ function getManager(): SignerManager {
       ss58Prefix: 42,
       dappName: activeChain.dotnsName,
       // Fires on the initial connect AND after every SDK auto-reconnect / fresh host session, so the
-      // SmartContractAllowance + AutoSigning grants are (re-)provisioned whenever a session refreshes or
-      // an allocation expires — something the one-shot reconnect hook cannot do. Best-effort: the SDK
-      // logs a throw here and retries on the next reconnect. Already-granted resources come back
+      // SmartContractAllowance + AutoSigning request repeats whenever a session refreshes or an
+      // allocation expires, something the one-shot reconnect hook cannot do. Best-effort: the outcome is
+      // recorded and never blocks the account (see allowances.ts). Already-granted resources come back
       // "Allocated" with no prompt, so this is a no-op on a warm reload.
       onConnect: async (_account, { requestResourceAllocation }) => {
         await provisionContractAllowance(requestResourceAllocation);

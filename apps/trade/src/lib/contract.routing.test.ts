@@ -90,7 +90,7 @@ describe("writeContract routing", () => {
     expect(res).toEqual({ txHash: "0xsubstrate", status: "success" });
   });
 
-  it("host writes wait on the allowance gate and fail clearly if it was rejected", async () => {
+  it("host writes wait on the allowance gate and fail clearly if the session ended first", async () => {
     useWalletStore.getState().connectHost({
       ss58: SUB.ss58,
       h160: SUB.h160,
@@ -98,10 +98,10 @@ describe("writeContract routing", () => {
       signer: SUB.signer,
     });
     vi.mocked(awaitContractAllowance).mockRejectedValueOnce(
-      new Error("The host did not grant the contract allowance (SmartContractAllowance: Rejected)"),
+      new Error("Host session ended before the contract allowance request was answered."),
     );
     await expect(writeContract(erc20Abi, "approve", args, TOKEN, SUB.h160)).rejects.toThrow(
-      /did not grant/i,
+      /session ended/i,
     );
     expect(submitReviveCall).not.toHaveBeenCalled();
   });
