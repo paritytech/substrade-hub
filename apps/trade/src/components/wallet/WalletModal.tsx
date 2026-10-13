@@ -120,9 +120,9 @@ export function WalletModal({ onClose }: WalletModalProps) {
       setConnecting(true);
       try {
         // selectHostAccount drives the manager to connected+selected, which fires the SignerManager
-        // onConnect that provisions the allowance (PGAS / contract-call authorization). "connected" is
-        // emitted before onConnect finishes, so await the allowance gate here to surface a decline/
-        // failure in this modal instead of connecting a wallet whose first write would fail.
+        // onConnect that requests the session's allowances. "connected" is emitted before onConnect
+        // finishes, so wait here until the host has answered, keeping its allowance prompt ahead of any
+        // signing prompt. The answer itself never blocks the account (see allowances.ts).
         selectHostAccount(acc.address);
         const signer = getHostSigner();
         await awaitContractAllowance();

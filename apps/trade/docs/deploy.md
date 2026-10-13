@@ -13,6 +13,13 @@ The app runs the **same** build in-host and standalone; host mode is auto-detect
 The contracts the build talks to come from the same `networks.json` entry, so bootstrap the network
 first (`contracts/scripts/bootstrap.mjs`, see the root README).
 
+## Opening the published app
+
+- **In a browser**: the web gateway in the table above. It is itself a host, so sign in there to trade.
+- **In the Polkadot app**: each build of the app serves one network, fixed when it is built, and resolves
+  only that network's names. Use a build that serves the network you published to, and open the dotNS
+  name (for example `substrade-hub.testnet`) in its in-app browser.
+
 ## How a publish works
 
 `scripts/deploy-dot.mjs` runs a pinned `bulletin-deploy` with the network's environment. It:
@@ -48,8 +55,17 @@ required `version`) or on a `dot-v*` tag, which publishes to previewnet with the
   store the owner's mnemonic there as the environment secret **`DOTNS_MNEMONIC`**, and its SS58 address
   as the environment variable **`DOTNS_OWNER`**. The publish refuses to run unless the mnemonic derives
   that address.
-- **After a testnet reset**, bootstrap the network again, then rerun the workflow by hand: it
-  re-registers the name and republishes.
+- **After a testnet reset**: the chain has a new genesis. The app and the bootstrap refuse a live genesis
+  that differs from `networks.json`, and the build refuses a `networks.json` genesis that differs from
+  its `.papi` entry. So:
+  1. refresh the chain types: `pnpm exec papi update <papiEntry>` in `apps/trade`, which also records the
+     new genesis in `.papi/polkadot-api.json`;
+  2. set the network's `genesis` in `networks.json` to the new value (the build fails while it differs
+     from the `.papi` entry);
+  3. delete `contracts/scripts/state/<network>.json` and run the bootstrap, which redeploys the
+     contracts and writes their new addresses into `networks.json`;
+  4. fund the owner account again (`--only fund --fund <owner>`), commit, and rerun this workflow by
+     hand: it re-registers the name and republishes.
 - **Pinned CLI.** The publish step runs `bulletin-deploy@0.22.0` because it handles the mnemonic; bump the
   pin in `scripts/deploy-dot.mjs` deliberately after reviewing a release.
 
@@ -79,6 +95,7 @@ never commit it.
 
 ## Known caveat
 
-Candle history (`use-trade-history`) fetches via a direct `eth_getLogs` to the network's `rpcUrl`, not
-the host-routed client. If a strict host or gateway blocks that direct call, the chart may be empty while
-trading still works.
+Trade history and the candle chart read `eth_getLogs` from the network's eth-rpc, over HTTP. Inside a
+host the app requests the `Remote` permission for that domain the first time it needs history; if the
+user denies it, the chart only shows trades from the last few minutes, read through the chain client,
+while trading still works. `src/hooks/use-trade-history.ts` explains why history comes from eth-rpc.

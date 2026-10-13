@@ -1,32 +1,33 @@
 # Wallets
 
-The trading UI supports two account families against the same DLOB contracts on Asset Hub:
+The trading UI reaches the same DLOB contracts on Asset Hub through three kinds of account:
 
-- **EVM wallets** (MetaMask, or Talisman in EVM mode) sign an `eth_sendTransaction` through the eth-rpc
-  proxy.
+- **EVM wallets** (MetaMask, or Talisman in EVM mode) sign an `eth_sendTransaction` through the
+  network's eth-rpc.
 - **Substrate wallets** (SubWallet, polkadot-js) sign a `pallet_revive.call` extrinsic via
   `polkadot-api` (PAPI).
+- **Host accounts**: inside a Polkadot Triangle host (the Polkadot app, Polkadot Desktop, or a dot.li
+  gateway such as testnet.li) the host provides the account and signs; see "Host / .dot mode" at the
+  bottom.
 
-Both drive the identical on-chain logic; only the signing path differs. This page covers the Substrate
-path, which has runtime-specific requirements, and the issues you may hit.
-
-A third mode, **host mode**, runs the app inside a Polkadot Triangle host (Polkadot Desktop / dot.li);
-see "Host / .dot mode" at the bottom.
+All three drive the identical on-chain logic; only the signing path differs. This page covers what each
+path needs and the messages you may hit.
 
 ## Supported Substrate wallets
 
 | Wallet | Status | Notes |
 |--------|--------|-------|
-| **SubWallet** | Supported (verified) | Honors the network metadata the app provides; signs orders end-to-end. |
-| **polkadot-js** | Supported | Reference extension; same behavior as SubWallet. |
+| **SubWallet** | Supported | Honors the network metadata the app provides. Signed orders end to end on an earlier Asset Hub Next runtime; not yet re-tested on the current one. |
+| **polkadot-js** | Expected to work | Same metadata mechanism as SubWallet; not tested end to end. |
 | **Talisman** | Not supported (Substrate) | Talisman keeps its own chaindata registry and may ignore the metadata the app provides, so it can't encode this runtime's custom signed extensions. Use SubWallet or polkadot-js for Substrate signing. Talisman's EVM mode still works for the EVM path. |
 
 ### Why the metadata approval prompt appears
 
-Paseo "Asset Hub Next" carries several **custom signed (transaction) extensions**
-(`AuthorizeValueTransfer`, `AsPgas`, `AsRingAlias`, and others). A wallet that doesn't recognise these
-names silently drops them when it re-encodes the transaction, signs the wrong bytes, and the chain
-rejects the signature with `BadProof`.
+The Asset Hub Next runtime (previewnet, paseo-v2) carries several **custom signed (transaction)
+extensions** (`AsPgas`, `AsDotnsGateway`, `RestrictOrigins`, and others; the full list is the
+`USER_EXTENSIONS` table in `src/lib/extension-metadata.ts`, which a test keeps in sync with the runtime
+metadata). A wallet that doesn't recognise these names silently drops them when it re-encodes the
+transaction, signs the wrong bytes, and the chain rejects the signature with `BadProof`.
 
 To prevent this, on first connect the app calls the wallet's `metadata.provide()` with a definition of
 these extensions, so the wallet's registry can encode them correctly. **You will see a one-time
@@ -36,13 +37,34 @@ app cannot sign on this chain and will tell you to approve and retry.
 
 ## Troubleshooting
 
+### "Your account needs PAS before you can trade"
+
+Shown for any account (EVM, Substrate or host) whose native token balance is below 0.05. The native token
+pays network fees and storage deposits, and receiving tUSD needs the account to exist, so with none
+every write fails, including claiming test tUSD. Send the native token to the address the notice shows
+(the SS58 address of a Substrate or host account, the H160 of an EVM account). The notice links the
+network's faucet when `networks.json` has a `nativeFaucetUrl`; until the account is funded, the faucet
+button reads "Add PAS to your account first".
+
+### "MetaMask's network for chain id 420420417 is not …"
+
+The test networks share chain id 420420417, so MetaMask can switch to a network it already knows under
+that id that is a different chain. The app compares a recent block between MetaMask's RPC and its own
+on connect and before every send, and stops on a mismatch. Edit that network in MetaMask so its RPC URL
+is the one the message names, then retry.
+
+### "You've already claimed" or "The faucet is out of tUSD"
+
+The tUSD faucet dispenses a fixed amount once per account per cooldown (24 hours by default); the button
+shows the time left. "Out of tUSD" means the faucet contract needs refilling by its operator.
+
 ### The wallet won't present a signing prompt (or signing seems stuck)
 
 This is usually a stale wallet session (the connection was established before a reload, or the wallet
 was locked/unlocked). **Disconnect and reconnect the account** in the app — that re-obtains a fresh
 signer and re-registers the network metadata. This resolves most "it just won't let me sign" cases.
 
-### "This wallet can't register this network's signing extensions"
+### "<wallet> can't register this network's signing extensions"
 
 The wallet doesn't expose the metadata API, or ignores the provided definition (Talisman). Switch to
 **SubWallet or polkadot-js**.
@@ -112,44 +134,52 @@ rm -rf apps/trade/node_modules/.vite   # drop the stale dependency pre-bundle
 
 ## Host / .dot mode (Polkadot Triangle)
 
-The app can run as a Polkadot Triangle ".dot" app inside a host container (Polkadot Desktop webview,
-dot.li iframe, or the local test harness). In host mode the app detects the container and routes chain
-access through the host instead of a browser wallet, and orders are signed by the host — no browser
-extension involved.
+The app can run as a Polkadot Triangle ".dot" app inside a host container (the Polkadot app, Polkadot
+Desktop, a dot.li gateway such as testnet.li, or the local test harness). In host mode the app detects
+the container, reaches the chain through the host, and the host signs orders; no browser extension is
+involved.
 
 - **Detection** (`src/lib/host/detect.ts`): `isInHost()` = `isInsideContainerSync()` from
   `@parity/product-sdk-host`. `VITE_USE_HOST_API=false` forces standalone (handy for local dev in a
   plain tab).
-- **Chain client** (`src/lib/client.ts`): in host mode reads go through the sanctioned, host-routed
-  `createChainClient` (`@parity/product-sdk-chain-client`) — **no RPC endpoint; the descriptor's genesis
-  selects the chain** — gated by `isChainSupported(genesis)` so an unsupported chain fails fast. It
-  reuses our full `passet_hub` descriptor, so `client.assetHub` is the same `TypedApi` the rest of the
-  app already uses (`ReviveApi.call`/`eth_transact` intact). Standalone connects directly by WS. Both
-  paths run once at boot via `initChainClient()`, gated by `ChainBoot` so data hooks wait for the
-  client. This mirrors the official `playground-app-template`.
-- **Signing** (`src/lib/host/signer.ts`, `allowances.ts`): in host mode "Connect Wallet" offers
-  **"Connect Polkadot account"** — a `SignerManager` (`@parity/product-sdk-signer`) resolves the app's
-  product account, and `getSigner()` hands back a PAPI `PolkadotSigner`. That signer is stored in the
-  wallet store and drives the **same** `writeContract` -> `submitReviveCall` path as the browser
-  Substrate flow (no browser extension, no `metadata.provide`/ExtDef — the host builds and signs the
-  extrinsic). On connect the app requests a `SmartContractAllowance` (+ `AutoSigning`) via
-  `requestResourceAllocation`, which provisions **PGAS** (the host's gas token) and authorizes contract
-  calls; without it the first `Revive.call` is rejected. Mapping is handled host-side, so the host path
-  skips `ensureMapped`. Reconnect is automatic on load (`use-host-reconnect`).
+- **Chain client** (`src/lib/client.ts`): the network comes from `networks.json` (`VITE_NETWORK`). In
+  host mode the app asks the host which Asset Hub it serves (`getHostChainInfo`) and refuses a different
+  one, then connects through `getHostProvider(genesis)`; there is no direct RPC fallback inside a host.
+  Both modes check the live genesis, so a reset chain fails with a clear message.
+- **Account and signing** (`src/lib/host/signer.ts`): "Connect Wallet" offers **"Connect Polkadot
+  account"**. A `SignerManager` (`@parity/product-sdk-signer`) resolves the app's product account,
+  derived from the network's dotNS name, and its `PolkadotSigner` drives the same
+  `writeContract` -> `submitReviveCall` path as the browser Substrate flow; the host builds and signs the
+  extrinsic, so no `metadata.provide`/ExtDef is needed. The host derives the account from the
+  signed-in user: without a session it returns none and the modal says "The Polkadot host has no account
+  for this app yet"; the app connects by itself once the host reports a sign-in (`use-host-reconnect`).
+  Mapping is handled host-side, so the host path skips `ensureMapped`.
+- **Allowances** (`src/lib/host/allowances.ts`): on connect the app requests `SmartContractAllowance`
+  (the PGAS allowance that pays Revive gas) and `AutoSigning`, best-effort. Some hosts sponsor gas by
+  themselves when signing (the Android host tops up PGAS for Revive calls); others answer
+  `NotAvailable`. The outcome never blocks connecting or trading.
+- **Native token**: a host may sponsor gas, never storage deposits, and a new product account holds no
+  native token; see "Your account needs PAS before you can trade" above.
+- **Network access** (`src/lib/host/remote.ts`): hosts block outbound HTTP unless the product holds the
+  `Remote` permission for the domain. Trade history reads the network's eth-rpc, so the app requests it
+  the first time history is fetched; `src/hooks/use-trade-history.ts` explains why history comes from
+  eth-rpc.
 
 ### Try it in one command (test harness)
 
 `@parity/host-api-test-sdk` provides a real host-protocol server that embeds the app and answers Host
-API calls with a funded dev account (alice) — no Desktop install, no deploy:
+API calls, with the product's account derived from `//Alice`. No Desktop install, no deploy:
 
 ```bash
-pnpm dev          # terminal 1: Vite on http://localhost:5173
-pnpm demo:host    # terminal 2: prints a URL — open it in any browser
+VITE_NETWORK=previewnet pnpm dev          # terminal 1: Vite on http://localhost:5173
+VITE_NETWORK=previewnet pnpm demo:host    # terminal 2: prints a URL; open it in any browser
 ```
 
 The printed URL loads the app inside a host, reading the live order book and signing via the host
-account. (The dev account holds no tUSD/tNVDA, so a full order needs funding first.)
+account. That account is derived from `//Alice` and starts with no funds, so fund it before trading
+(`node contracts/scripts/bootstrap.mjs --network previewnet --only fund --fund <address>`).
 
 ### Try it in the real host
 
-Type `http://localhost:5173` into the **Polkadot Desktop** address bar — same code, real Host API.
+Type `http://localhost:5173` into the **Polkadot Desktop** address bar (same code, real Host API), or open
+the published name in the Polkadot app on the matching network (see `docs/deploy.md`).
