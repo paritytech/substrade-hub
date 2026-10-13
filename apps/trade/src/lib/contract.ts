@@ -123,9 +123,9 @@ export async function writeContract<
   // Substrate and host accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
   // Host accounts are marked mapped (handled host-side), so they skip the ensureMapped probe.
   if ((accountType === "substrate" || accountType === "host") && ss58 && signer) {
-    // Host writes need the session allowance (PGAS + AutoSigning). onConnect provisions it, but the SDK
-    // reports "connected" before that finishes, so gate here: block until it is granted and surface a
-    // clear error if it was rejected, instead of letting the first Revive.call fail opaquely.
+    // Host writes wait until the session's allowance request (PGAS + AutoSigning) has been answered, so
+    // its prompt never competes with a signing prompt; the SDK reports "connected" before onConnect
+    // finishes. The answer never blocks the write (see allowances.ts); only an ended session does.
     if (accountType === "host") await awaitContractAllowance();
     if (!mapped && h160) {
       await ensureMapped(h160, signer);

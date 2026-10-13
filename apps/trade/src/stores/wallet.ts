@@ -91,7 +91,7 @@ export const useWalletStore = create<WalletState>((set) => ({
       originAccount: a.originAccount,
       ss58: a.ss58,
       signer: a.signer,
-      mapped: true, // the host / Devnet handles account mapping — skip the map_account probe
+      mapped: true, // the host handles account mapping, so skip the map_account probe
       isConnecting: false,
     });
   },
