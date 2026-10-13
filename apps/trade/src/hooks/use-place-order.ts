@@ -4,7 +4,7 @@ import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
 import { useMarketStore } from "../stores/market";
-import { useToastStore } from "../stores/toast";
+import { txProgressToast, useToastStore } from "../stores/toast";
 import { quoteAmountCeil, marketApproveAmount } from "../lib/format";
 import { parseTokenAmount } from "../lib/format";
 import { Side } from "../types/market";
@@ -54,17 +54,19 @@ export function usePlaceOrder() {
           )) as bigint;
 
           if (currentAllowance < escrowAmount) {
-            updateToast(toastId, "pending", "Approving token spend...");
+            updateToast(toastId, "pending", "Approving token spend: waiting for signature...");
             await writeContract(
               erc20Abi,
               "approve",
               [market.address, escrowAmount],
               escrowToken,
               h160,
+              { onProgress: txProgressToast(toastId, { pending: "Approving token spend" }) },
             );
           }
 
-          updateToast(toastId, "pending", `Placing ${sideLabel.toLowerCase()} order...`);
+          const placing = `Placing ${sideLabel.toLowerCase()} order`;
+          updateToast(toastId, "pending", `${placing}: waiting for signature...`);
           console.log("[placeLimitOrder] params:", {
             side: params.side,
             price: price.toString(),
@@ -87,9 +89,8 @@ export function usePlaceOrder() {
             ],
             market.address,
             h160,
-            { value },
+            { value, onProgress: txProgressToast(toastId, { pending: placing, done: `${sideLabel} order placed` }) },
           );
-          updateToast(toastId, "success", `${sideLabel} order placed!`);
           return result;
         } else {
           const escrowToken =
@@ -111,13 +112,14 @@ export function usePlaceOrder() {
           )) as bigint;
 
           if (currentAllowance < approveAmount) {
-            updateToast(toastId, "pending", "Approving token spend...");
+            updateToast(toastId, "pending", "Approving token spend: waiting for signature...");
             await writeContract(
               erc20Abi,
               "approve",
               [market.address, approveAmount],
               escrowToken,
               h160,
+              { onProgress: txProgressToast(toastId, { pending: "Approving token spend" }) },
             );
           }
 
@@ -155,16 +157,22 @@ export function usePlaceOrder() {
             );
           }
 
-          updateToast(toastId, "pending", `Placing market ${sideLabel.toLowerCase()} order...`);
+          const placing = `Placing market ${sideLabel.toLowerCase()} order`;
+          updateToast(toastId, "pending", `${placing}: waiting for signature...`);
           const result = await writeContract(
             dlobAbi,
             "placeMarketOrder",
             marketArgs,
             market.address,
             h160,
-            { value },
+            {
+              value,
+              onProgress: txProgressToast(toastId, {
+                pending: placing,
+                done: `Market ${sideLabel.toLowerCase()} order filled`,
+              }),
+            },
           );
-          updateToast(toastId, "success", `Market ${sideLabel.toLowerCase()} order filled!`);
           return result;
         }
       } catch (err) {
@@ -187,7 +195,7 @@ export function usePlaceOrder() {
 }
 
 /** Map raw contract errors to user-friendly messages */
-function formatOrderError(err: unknown): string {
+export function formatOrderError(err: unknown): string {
   let msg: string;
   if (err instanceof Error) {
     msg = err.message;

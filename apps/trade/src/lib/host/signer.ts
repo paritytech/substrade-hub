@@ -7,7 +7,7 @@ import { SignerManager, type SignerAccount, type SignerState } from "@parity/pro
 import { formatHostError, getAccountsProvider } from "@parity/product-sdk-host";
 import type { PolkadotSigner } from "polkadot-api";
 import { activeChain } from "../../config/chains";
-import { provisionContractAllowance, resetContractAllowanceStatus } from "./allowances";
+import { withTimeout } from "../timeout";
 
 let manager: SignerManager | null = null;
 
@@ -21,14 +21,6 @@ function getManager(): SignerManager {
     manager = new SignerManager({
       ss58Prefix: 42,
       dappName: activeChain.dotnsName,
-      // Fires on the initial connect AND after every SDK auto-reconnect / fresh host session, so the
-      // SmartContractAllowance + AutoSigning request repeats whenever a session refreshes or an
-      // allocation expires, something the one-shot reconnect hook cannot do. Best-effort: the outcome is
-      // recorded and never blocks the account (see allowances.ts). Already-granted resources come back
-      // "Allocated" with no prompt, so this is a no-op on a warm reload.
-      onConnect: async (_account, { requestResourceAllocation }) => {
-        await provisionContractAllowance(requestResourceAllocation);
-      },
     });
   }
   return manager;
@@ -36,19 +28,29 @@ function getManager(): SignerManager {
 
 export type { SignerAccount, SignerState };
 
+/** How long a host connect may take before the app gives up and lets the user retry. */
+export const CONNECT_TIMEOUT_MS = 30_000;
+
 let connecting: Promise<SignerAccount[]> | undefined;
 
 /**
  * Connect to the host and return the available product accounts. Concurrent callers (the connect modal
  * and the sign-in listener in `use-host-reconnect`) share one attempt, since a second `connect()` would
- * cancel the one in flight.
+ * cancel the one in flight. A host that does not answer within `CONNECT_TIMEOUT_MS` fails the attempt, so
+ * the next call starts a fresh one.
  */
 export function connectHostAccounts(): Promise<SignerAccount[]> {
-  connecting ??= (async () => {
-    const res = await getManager().connect();
-    if (!res.ok) throw new Error(res.error.message || "Failed to connect to the Polkadot host");
-    return res.value;
-  })().finally(() => {
+  connecting ??= withTimeout(
+    (async () => {
+      const res = await getManager().connect();
+      if (!res.ok) throw new Error(res.error.message || "Failed to connect to the Polkadot host");
+      return res.value;
+    })(),
+    CONNECT_TIMEOUT_MS,
+    () => {
+      throw new Error("The Polkadot host did not respond. Try again.");
+    },
+  ).finally(() => {
     connecting = undefined;
   });
   return connecting;
@@ -71,6 +73,27 @@ export async function requestHostLogin(): Promise<boolean> {
       throw new Error(`Host sign-in failed: ${formatHostError(error)}`);
     },
   );
+}
+
+/** Bound on the username lookup, which only decorates the account and never blocks it. */
+const USERNAME_TIMEOUT_MS = 10_000;
+
+/**
+ * The signed-in user's username (`getUserId().primaryUsername`), or `null` when the host has none, fails
+ * or does not answer in time, so the caller falls back to the address.
+ */
+export async function getHostUsername(): Promise<string | null> {
+  try {
+    const provider = await getAccountsProvider();
+    if (!provider) return null;
+    const lookup = provider.getUserId().match(
+      (id) => id.primaryUsername.trim(),
+      () => "",
+    );
+    return (await withTimeout(lookup, USERNAME_TIMEOUT_MS, () => "")) || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Select an account by SS58 address (required before `getHostSigner`). */
@@ -96,6 +119,5 @@ export function getHostState(): SignerState {
 }
 
 export function disconnectHost(): void {
-  resetContractAllowanceStatus();
   getManager().disconnect();
 }

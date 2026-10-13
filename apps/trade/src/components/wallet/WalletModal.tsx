@@ -13,7 +13,6 @@ import {
   disconnectHost,
   type SignerAccount,
 } from "../../lib/host/signer";
-import { awaitContractAllowance } from "../../lib/host/allowances";
 import { useWalletStore } from "../../stores/wallet";
 import { Spinner } from "../ui/Spinner";
 
@@ -120,13 +119,8 @@ export function WalletModal({ onClose }: WalletModalProps) {
       setError(null);
       setConnecting(true);
       try {
-        // selectHostAccount drives the manager to connected+selected, which fires the SignerManager
-        // onConnect that requests the session's allowances. "connected" is emitted before onConnect
-        // finishes, so wait here until the host has answered, keeping its allowance prompt ahead of any
-        // signing prompt. The answer itself never blocks the account (see allowances.ts).
         selectHostAccount(acc.address);
         const signer = getHostSigner();
-        await awaitContractAllowance();
         connectHost({
           ss58: acc.address,
           h160: acc.h160Address as `0x${string}`,

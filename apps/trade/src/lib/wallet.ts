@@ -131,7 +131,9 @@ async function ethRpcDirect(method: string, params: unknown[] = []): Promise<unk
   return json.result;
 }
 
-export async function waitForReceipt(txHash: `0x${string}`): Promise<{ status: string }> {
+export async function waitForReceipt(
+  txHash: `0x${string}`,
+): Promise<{ status: string; blockNumber: string }> {
   console.log(`[waitForReceipt] polling for ${txHash}...`);
   for (let i = 0; i < 40; i++) {
     try {
@@ -155,4 +157,23 @@ export async function waitForReceipt(txHash: `0x${string}`): Promise<{ status: s
     await new Promise((r) => setTimeout(r, 2000));
   }
   throw new Error("Transaction receipt timeout — check explorer: " + txHash);
+}
+
+/** How long to wait for a block to finalize before giving up on reporting it. */
+const FINALITY_TIMEOUT_MS = 120_000;
+
+/** Resolve to whether block `blockNumber` (hex) finalized within `FINALITY_TIMEOUT_MS`. */
+export async function waitForFinality(blockNumber: string): Promise<boolean> {
+  const target = BigInt(blockNumber);
+  const deadline = Date.now() + FINALITY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const head = (await ethRpcDirect("eth_getBlockByNumber", ["finalized", false])) as { number: string } | null;
+      if (head && BigInt(head.number) >= target) return true;
+    } catch {
+      // A failed poll is retried until the deadline.
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  return false;
 }
