@@ -4,6 +4,7 @@
  * the host path reuses the existing order flow (see stores/wallet `connectHost` + lib/contract).
  */
 import { SignerManager, type SignerAccount, type SignerState } from "@parity/product-sdk-signer";
+import { formatHostError, getAccountsProvider } from "@parity/product-sdk-host";
 import type { PolkadotSigner } from "polkadot-api";
 import { activeChain } from "../../config/chains";
 import { provisionContractAllowance, resetContractAllowanceStatus } from "./allowances";
@@ -35,11 +36,41 @@ function getManager(): SignerManager {
 
 export type { SignerAccount, SignerState };
 
-/** Connect to the host and return the available product accounts. */
-export async function connectHostAccounts(): Promise<SignerAccount[]> {
-  const res = await getManager().connect();
-  if (!res.ok) throw new Error(res.error.message || "Failed to connect to the Polkadot host");
-  return res.value;
+let connecting: Promise<SignerAccount[]> | undefined;
+
+/**
+ * Connect to the host and return the available product accounts. Concurrent callers (the connect modal
+ * and the sign-in listener in `use-host-reconnect`) share one attempt, since a second `connect()` would
+ * cancel the one in flight.
+ */
+export function connectHostAccounts(): Promise<SignerAccount[]> {
+  connecting ??= (async () => {
+    const res = await getManager().connect();
+    if (!res.ok) throw new Error(res.error.message || "Failed to connect to the Polkadot host");
+    return res.value;
+  })().finally(() => {
+    connecting = undefined;
+  });
+  return connecting;
+}
+
+/** Shown by the host on its sign-in screen. */
+const LOGIN_REASON = "Connect SubsTrade Hub to trade with your Polkadot account.";
+
+/**
+ * Ask the host to sign the user in, for when it has no session to derive the app's account from. The host
+ * shows its own sign-in screen: on a dot.li gateway, a QR code to scan with the Polkadot app. Resolves to
+ * whether the user is now signed in; throws when the host is unavailable or the request fails.
+ */
+export async function requestHostLogin(): Promise<boolean> {
+  const provider = await getAccountsProvider();
+  if (!provider) throw new Error("The Polkadot host is not available.");
+  return provider.requestLogin(LOGIN_REASON).match(
+    (outcome) => outcome !== "Rejected",
+    (error) => {
+      throw new Error(`Host sign-in failed: ${formatHostError(error)}`);
+    },
+  );
 }
 
 /** Select an account by SS58 address (required before `getHostSigner`). */

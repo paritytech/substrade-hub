@@ -58,21 +58,17 @@ export function useHostReconnect(): void {
     // Establish the session (subscribing alone does not connect). connect() triggers onConnect
     // (allowance) and state emissions that `apply` turns into store updates; select the first account if
     // the SDK restored none, then reconcile the current state once.
-    // One attempt at a time: a second connect() would cancel the one in flight.
-    let inFlight: Promise<void> | undefined;
-    const establish = () =>
-      (inFlight ??= (async () => {
-        try {
-          const accounts = await connectHostAccounts();
-          if (cancelled || !accounts.length) return;
-          if (!getHostState().selectedAccount) selectHostAccount(accounts[0]!.address);
-          apply(getHostState());
-        } catch {
-          // No host session yet: stay disconnected until the user signs in or connects.
-        } finally {
-          inFlight = undefined;
-        }
-      })());
+    // Overlapping calls share one connect attempt (see connectHostAccounts).
+    const establish = async () => {
+      try {
+        const accounts = await connectHostAccounts();
+        if (cancelled || !accounts.length) return;
+        if (!getHostState().selectedAccount) selectHostAccount(accounts[0]!.address);
+        apply(getHostState());
+      } catch {
+        // No host session yet: stay disconnected until the user signs in or connects.
+      }
+    };
     void establish();
 
     // A user who signs in to the host after the app loaded gets no account from the first attempt, since
