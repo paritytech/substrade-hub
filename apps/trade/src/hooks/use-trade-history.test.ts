@@ -4,7 +4,7 @@ import { dlobAbi } from "../abi/dlob";
 
 vi.mock("../lib/client", () => ({ getTypedApi: vi.fn() }));
 
-import { decodeTradesInBlock, estimateTimestamps } from "./use-trade-history";
+import { blockChunks, decodeTradesInBlock, estimateTimestamps } from "./use-trade-history";
 
 const MARKET = "0x109088bd0e237449fde1a5b884c86f0559aae3a1";
 const OTHER = "0x0000000000000000000000000000000000000abc";
@@ -55,5 +55,20 @@ describe("estimateTimestamps", () => {
   it("assumes 2s blocks with a single anchor, and returns nothing with none", () => {
     expect(estimateTimestamps([90], new Map([[100, 1_000]])).get(90)).toBe(980);
     expect(estimateTimestamps([90], new Map()).size).toBe(0);
+  });
+});
+
+describe("blockChunks", () => {
+  it("covers the span in inclusive chunks of at most `size` blocks", () => {
+    expect(blockChunks(1, 10, 4)).toEqual([
+      [1, 4],
+      [5, 8],
+      [9, 10],
+    ]);
+  });
+
+  it("returns a single chunk for a short span and none for an empty one", () => {
+    expect(blockChunks(5, 7, 300_000)).toEqual([[5, 7]]);
+    expect(blockChunks(8, 7, 300_000)).toEqual([]);
   });
 });

@@ -10,7 +10,23 @@ import {
 } from "lightweight-charts";
 import { useCandleData } from "../../hooks/use-candle-data";
 import { useBestPrices } from "../../hooks/use-best-prices";
-import { useChartStore, RANGE_CANDLE_INTERVAL, type TimeRange } from "../../stores/chart";
+import { useTradeHistory } from "../../hooks/use-trade-history";
+import { useMarketStore } from "../../stores/market";
+import {
+  useChartStore,
+  RANGE_CANDLE_INTERVAL,
+  TIME_RANGES,
+  shortestRangeWithTrades,
+  type TimeRange,
+} from "../../stores/chart";
+
+const RANGE_LABEL: Record<TimeRange, string> = { "1H": "hour", "12H": "12 hours", "7D": "7 days", "30D": "30 days" };
+
+function formatCandleInterval(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${seconds / 60}m`;
+  return `${seconds / 3600}h`;
+}
 
 export function PriceChart() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -21,11 +37,25 @@ export function PriceChart() {
   const prevCandleCountRef = useRef(0);
   const pulseRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { timeRange, setTimeRange } = useChartStore();
-  const candleLabel = RANGE_CANDLE_INTERVAL[timeRange] < 60
-    ? `${RANGE_CANDLE_INTERVAL[timeRange]}s`
-    : `${RANGE_CANDLE_INTERVAL[timeRange] / 60}m`;
-  const ranges: TimeRange[] = ["1H", "12H"];
+  const { timeRange, autoRange, setTimeRange, setAutoRange, resetAutoRange } = useChartStore();
+  const candleLabel = formatCandleInterval(RANGE_CANDLE_INTERVAL[timeRange]);
+  const { data: trades } = useTradeHistory();
+  const marketAddr = useMarketStore((s) => s.selectedMarket?.address);
+
+  // A newly selected market starts on the automatic range again.
+  useEffect(() => {
+    resetAutoRange();
+  }, [marketAddr, resetAutoRange]);
+
+  // Until the user picks a range, show the shortest one that has trades.
+  useEffect(() => {
+    if (!autoRange || !trades) return;
+    const next = shortestRangeWithTrades(
+      trades.map((t) => t.timestamp),
+      Math.floor(Date.now() / 1000),
+    );
+    if (next !== timeRange) setAutoRange(next);
+  }, [autoRange, trades, timeRange, setAutoRange]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -212,7 +242,7 @@ export function PriceChart() {
   return (
     <div className="relative h-full w-full">
       <div className="absolute left-3 top-2 z-10 flex items-center gap-1">
-        {ranges.map((r) => (
+        {TIME_RANGES.map((r) => (
           <button
             key={r}
             onClick={() => setTimeRange(r)}
@@ -228,9 +258,14 @@ export function PriceChart() {
         <span className="ml-1 text-xs text-text-muted">{candleLabel} candles</span>
       </div>
       <div ref={containerRef} className="h-full w-full" />
+      {/* Kept clear of the price scale on the right, so it never overlaps the axis labels. */}
       {candles.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-text-muted">
-          No trades yet — place a market order to generate chart data
+        <div className="pointer-events-none absolute inset-y-0 left-0 right-16 flex items-center justify-center px-4 text-center text-sm text-text-muted">
+          {trades === undefined
+            ? "Loading trades…"
+            : trades.length === 0
+              ? "No trades in the last 30 days. Place an order to start the chart."
+              : `No trades in the last ${RANGE_LABEL[timeRange]}.`}
         </div>
       )}
     </div>
