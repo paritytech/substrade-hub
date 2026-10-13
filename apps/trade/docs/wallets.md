@@ -151,8 +151,10 @@ involved.
   derived from the network's dotNS name, and its `PolkadotSigner` drives the same
   `writeContract` -> `submitReviveCall` path as the browser Substrate flow; the host builds and signs the
   extrinsic, so no `metadata.provide`/ExtDef is needed. The host derives the account from the
-  signed-in user: without a session it returns none and the modal says "The Polkadot host has no account
-  for this app yet"; the app connects by itself once the host reports a sign-in (`use-host-reconnect`).
+  signed-in user, so when the host has no session, Connect asks it to sign the user in (`requestLogin`).
+  The host shows its own sign-in screen; on a dot.li gateway that is a QR code to scan with the Polkadot
+  app. A declined sign-in shows "Sign-in was declined", and the app also connects by itself whenever the
+  host reports a sign-in (`use-host-reconnect`).
   Mapping is handled host-side, so the host path skips `ensureMapped`.
 - **Allowances** (`src/lib/host/allowances.ts`): on connect the app requests `SmartContractAllowance`
   (the PGAS allowance that pays Revive gas) and `AutoSigning`, best-effort. Some hosts sponsor gas by

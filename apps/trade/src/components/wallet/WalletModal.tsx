@@ -7,6 +7,7 @@ import { accountToH160, ss58ToOriginAccount } from "../../lib/account";
 import { isInHost } from "../../lib/host/detect";
 import {
   connectHostAccounts,
+  requestHostLogin,
   selectHostAccount,
   getHostSigner,
   disconnectHost,
@@ -149,10 +150,20 @@ export function WalletModal({ onClose }: WalletModalProps) {
     setError(null);
     setConnecting(true);
     try {
-      const accs = await connectHostAccounts();
+      let accs = await connectHostAccounts();
       if (!accs.length) {
         // The host derives the app's account from the signed-in user; with no session it returns none.
-        // The app connects by itself once the host reports a sign-in (see useHostReconnect).
+        // Ask the host to sign the user in (it shows its own screen, a QR code on dot.li), then retry.
+        if (!(await requestHostLogin())) {
+          setError("Sign-in was declined. Connect again to retry.");
+          setConnecting(false);
+          return;
+        }
+        accs = await connectHostAccounts();
+      }
+      if (!accs.length) {
+        // Signed in, yet no account: the app connects by itself once the host reports a session
+        // (see useHostReconnect).
         setError(
           "The Polkadot host has no account for this app yet. Sign in to your Polkadot account in the host; the app connects as soon as you do.",
         );
