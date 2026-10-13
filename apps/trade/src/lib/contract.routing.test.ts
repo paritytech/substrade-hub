@@ -8,18 +8,15 @@ vi.mock("./revive", () => ({
 }));
 vi.mock("./wallet", () => ({
   sendTransaction: vi.fn().mockResolvedValue("0xevmhash"),
-  waitForReceipt: vi.fn().mockResolvedValue({ status: "0x1" }),
-}));
-vi.mock("./host/allowances", () => ({
-  awaitContractAllowance: vi.fn().mockResolvedValue(undefined),
+  waitForReceipt: vi.fn().mockResolvedValue({ status: "0x1", blockNumber: "0x10" }),
+  waitForFinality: vi.fn().mockResolvedValue(true),
 }));
 
 import { writeContract } from "./contract";
-import { awaitContractAllowance } from "./host/allowances";
 import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
 import { submitReviveCall, ensureMapped } from "./revive";
-import { sendTransaction } from "./wallet";
+import { sendTransaction, waitForFinality } from "./wallet";
 
 const EVM = "0x1234567890abcdef1234567890abcdef12345678" as const;
 const SUB = {
@@ -44,6 +41,15 @@ describe("writeContract routing", () => {
     expect(sendTransaction).toHaveBeenCalledOnce();
     expect(submitReviveCall).not.toHaveBeenCalled();
     expect(res).toEqual({ txHash: "0xevmhash", status: "success" });
+  });
+
+  it("reports the EVM steps: submitted, included, then finalized once the block is", async () => {
+    useWalletStore.getState().connectEvm(EVM);
+    const steps: string[] = [];
+    await writeContract(erc20Abi, "approve", args, TOKEN, EVM, { onProgress: (s) => steps.push(s) });
+    expect(steps.slice(0, 2)).toEqual(["submitted", "in-block"]);
+    await vi.waitFor(() => expect(steps).toEqual(["submitted", "in-block", "finalized"]));
+    expect(waitForFinality).toHaveBeenCalledWith("0x10");
   });
 
   it("routes Substrate accounts through submitReviveCall, mapping first when unmapped", async () => {
@@ -79,7 +85,6 @@ describe("writeContract routing", () => {
       signer: SUB.signer,
     });
     const res = await writeContract(erc20Abi, "approve", args, TOKEN, SUB.h160);
-    expect(awaitContractAllowance).toHaveBeenCalledOnce();
     expect(ensureMapped).not.toHaveBeenCalled();
     expect(submitReviveCall).toHaveBeenCalledOnce();
     expect(sendTransaction).not.toHaveBeenCalled();
@@ -88,21 +93,5 @@ describe("writeContract routing", () => {
       signer: SUB.signer,
     });
     expect(res).toEqual({ txHash: "0xsubstrate", status: "success" });
-  });
-
-  it("host writes wait on the allowance gate and fail clearly if the session ended first", async () => {
-    useWalletStore.getState().connectHost({
-      ss58: SUB.ss58,
-      h160: SUB.h160,
-      originAccount: SUB.originAccount,
-      signer: SUB.signer,
-    });
-    vi.mocked(awaitContractAllowance).mockRejectedValueOnce(
-      new Error("Host session ended before the contract allowance request was answered."),
-    );
-    await expect(writeContract(erc20Abi, "approve", args, TOKEN, SUB.h160)).rejects.toThrow(
-      /session ended/i,
-    );
-    expect(submitReviveCall).not.toHaveBeenCalled();
   });
 });

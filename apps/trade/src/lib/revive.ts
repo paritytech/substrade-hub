@@ -10,7 +10,9 @@ import {
   TxSigningRejectedError,
   TxTimeoutError,
   TxValidityError,
+  type TxStatus,
 } from "@parity/product-sdk-tx";
+import type { TxStep } from "./tx-progress";
 
 // Headroom over the dry-run estimates. Weight (ref_time/proof_size) is PoV-sensitive and counts against
 // block limits, so keep its buffer modest. Storage deposit does NOT affect block/PoV limits and the
@@ -80,15 +82,32 @@ export function describeTxError(e: TxError): string {
   return formatSubmitError(e);
 }
 
+/** The SDK's lifecycle statuses, as the steps the UI reports. Its "signing" fires once signed. */
+const STEP_OF_STATUS: Partial<Record<TxStatus, TxStep>> = {
+  signing: "signed",
+  broadcasting: "submitted",
+  "in-block": "in-block",
+  finalized: "finalized",
+};
+
 /**
  * Sign + submit via `@parity/product-sdk-tx`, resolving on best-block INCLUSION (not finality) for UX
- * parity with the EVM receipt path. Rejects with a formatted message on any failure.
+ * parity with the EVM receipt path. Rejects with a formatted message on any failure. `onProgress` keeps
+ * receiving steps after it resolves, up to finality.
  */
 async function submitAndAwaitInclusion(
   tx: Parameters<typeof submitAndWatch>[0],
   signer: PolkadotSigner,
+  onProgress?: (step: TxStep) => void,
 ): Promise<{ txHash: string }> {
-  const res = await submitAndWatch(tx, signer, { waitFor: "best-block", timeoutMs: INCLUSION_TIMEOUT_MS });
+  const res = await submitAndWatch(tx, signer, {
+    waitFor: "best-block",
+    timeoutMs: INCLUSION_TIMEOUT_MS,
+    onStatus: (status) => {
+      const step = STEP_OF_STATUS[status];
+      if (step) onProgress?.(step);
+    },
+  });
   if (!res.ok) throw new Error(describeTxError(res.error));
   return { txHash: res.value.txHash };
 }
@@ -129,6 +148,8 @@ export interface ReviveCallParams {
    * do not assume 10.
    */
   value?: bigint;
+  /** Reports the transaction's steps, from signed to finalized. */
+  onProgress?: (step: TxStep) => void;
 }
 
 /**
@@ -191,6 +212,6 @@ export async function submitReviveCall(
 
   // A raw DispatchError would not match usePlaceOrder's EVM formatOrderError, so
   // submitAndAwaitInclusion formats it into the thrown Error message.
-  const { txHash } = await submitAndAwaitInclusion(tx, params.signer);
+  const { txHash } = await submitAndAwaitInclusion(tx, params.signer, params.onProgress);
   return { txHash, status: "success" };
 }

@@ -70,6 +70,29 @@ describe("submitReviveCall", () => {
     expect(arg.value).toBe(0n);
   });
 
+  it("reports each step, from signed to finalized", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    const included = { txHash: "0xh", ok: true, block: { hash: "0xb", number: 1, index: 0 }, events: [] };
+    mockApi.tx.Revive.call.mockReturnValue(
+      watch([
+        { type: "signed", txHash: "0xh" },
+        { type: "broadcasted", txHash: "0xh" },
+        { type: "txBestBlocksState", found: true, ...included },
+        { type: "finalized", ...included },
+      ]),
+    );
+    const steps: string[] = [];
+    await submitReviveCall({
+      abi: ABI,
+      contractAddress: CONTRACT,
+      callData: CALLDATA,
+      originSs58: "5A",
+      signer,
+      onProgress: (step) => steps.push(step),
+    });
+    expect(steps).toEqual(["signed", "submitted", "in-block", "finalized"]);
+  });
+
   it("defaults value to 0n and passes a provided native value to the dry-run and the extrinsic", async () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(

@@ -4,6 +4,7 @@ import { ChainNotSupportedError, getHostChainInfo, getHostProvider } from "@pari
 import { ah_previewnet } from "@polkadot-api/descriptors";
 import { activeChain } from "../config/chains";
 import { isInHost } from "./host/detect";
+import { withTimeout } from "./timeout";
 
 type AssetHubApi = TypedApi<typeof ah_previewnet>;
 
@@ -19,14 +20,6 @@ let typedApi: AssetHubApi | undefined;
 let initPromise: Promise<void> | undefined;
 
 const short = (hash: string) => `${hash.slice(0, 10)}…`;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: () => T | Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<T>((resolve, reject) => {
-    timer = setTimeout(() => Promise.resolve().then(onTimeout).then(resolve, reject), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

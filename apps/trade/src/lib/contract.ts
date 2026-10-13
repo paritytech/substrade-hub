@@ -8,10 +8,10 @@ import {
 import { fromHex, toHex } from "polkadot-api/utils";
 import { getTypedApi } from "./client";
 import { extractRevertReason } from "./errors";
-import { sendTransaction, waitForReceipt } from "./wallet";
+import { sendTransaction, waitForFinality, waitForReceipt } from "./wallet";
+import type { TxStep } from "./tx-progress";
 import { useWalletStore } from "../stores/wallet";
 import { submitReviveCall, ensureMapped } from "./revive";
-import { awaitContractAllowance } from "./host/allowances";
 
 function buildEthTransactTx(
   contractAddress: `0x${string}`,
@@ -114,7 +114,7 @@ export async function writeContract<
   args: ContractFunctionArgs<TAbi, "nonpayable" | "payable", TFn>,
   contractAddress: `0x${string}`,
   from: `0x${string}`,
-  options?: { value?: bigint },
+  options?: { value?: bigint; onProgress?: (step: TxStep) => void },
 ): Promise<{ txHash: string; status: "success" }> {
   const callData = encodeFunctionData({ abi, functionName, args } as never);
 
@@ -123,10 +123,6 @@ export async function writeContract<
   // Substrate and host accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
   // Host accounts are marked mapped (handled host-side), so they skip the ensureMapped probe.
   if ((accountType === "substrate" || accountType === "host") && ss58 && signer) {
-    // Host writes wait until the session's allowance request (PGAS + AutoSigning) has been answered, so
-    // its prompt never competes with a signing prompt; the SDK reports "connected" before onConnect
-    // finishes. The answer never blocks the write (see allowances.ts); only an ended session does.
-    if (accountType === "host") await awaitContractAllowance();
     if (!mapped && h160) {
       await ensureMapped(h160, signer);
       setMapped();
@@ -139,6 +135,7 @@ export async function writeContract<
       originSs58: ss58,
       signer,
       value: options?.value,
+      onProgress: options?.onProgress,
     });
   }
 
@@ -151,7 +148,16 @@ export async function writeContract<
   });
 
   console.log(`[writeContract] ${String(functionName)} tx: ${txHash}`);
-  await waitForReceipt(txHash); // throws on revert / timeout
+  // MetaMask signs and broadcasts in one step, so the first step reported is "submitted".
+  const onProgress = options?.onProgress;
+  onProgress?.("submitted");
+  const receipt = await waitForReceipt(txHash); // throws on revert / timeout
+  onProgress?.("in-block");
+  if (onProgress) {
+    void waitForFinality(receipt.blockNumber).then((finalized) => {
+      if (finalized) onProgress("finalized");
+    });
+  }
   return { txHash, status: "success" };
 }
 

@@ -9,7 +9,6 @@ import {
   getHostState,
 } from "../lib/host/signer";
 import { hostSyncAction } from "../lib/host/sync";
-import { resetContractAllowanceStatus } from "../lib/host/allowances";
 import { ss58ToOriginAccount } from "../lib/account";
 import { useWalletStore } from "../stores/wallet";
 import type { SignerState } from "../lib/host/signer";
@@ -18,8 +17,7 @@ import type { SignerState } from "../lib/host/signer";
  * Keep the wallet store in sync with the host signer session for its whole lifetime (Task 2's
  * `subscribeAccounts` requirement): reflects SDK auto-reconnect, account switches, and disconnects, not
  * just the one-shot connect on load. `connectHost`/`disconnect` are guarded (see `hostSyncAction`) so
- * redundant emissions are no-ops. Allowance provisioning is not done here — it runs in the SignerManager
- * `onConnect` on every (re)connect. Best-effort and a no-op outside a host.
+ * redundant emissions are no-ops. Best-effort and a no-op outside a host.
  */
 export function useHostReconnect(): void {
   useEffect(() => {
@@ -28,10 +26,6 @@ export function useHostReconnect(): void {
 
     const apply = (state: SignerState) => {
       if (cancelled) return;
-      // Leaving "connected" (disconnect, reconnecting, host gone) invalidates the session's allowance:
-      // reset the gate so a stale grant can't authorize a write and any pending gated write is rejected.
-      // A fresh onConnect on the next "connected" re-provisions.
-      if (state.status !== "connected") resetContractAllowanceStatus();
       const store = useWalletStore.getState();
       const action = hostSyncAction(state, { accountType: store.accountType, ss58: store.ss58 });
       if (action.type === "disconnect") {
@@ -55,9 +49,9 @@ export function useHostReconnect(): void {
     // Subscribe first so no state change between connect and subscribe is missed.
     const unsubscribe = subscribeHostState(apply);
 
-    // Establish the session (subscribing alone does not connect). connect() triggers onConnect
-    // (allowance) and state emissions that `apply` turns into store updates; select the first account if
-    // the SDK restored none, then reconcile the current state once.
+    // Establish the session (subscribing alone does not connect). connect() triggers state emissions
+    // that `apply` turns into store updates; select the first account if the SDK restored none, then
+    // reconcile the current state once.
     // Overlapping calls share one connect attempt (see connectHostAccounts).
     const establish = async () => {
       try {

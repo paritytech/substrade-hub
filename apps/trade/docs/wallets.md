@@ -13,6 +13,10 @@ The trading UI reaches the same DLOB contracts on Asset Hub through three kinds 
 All three drive the identical on-chain logic; only the signing path differs. This page covers what each
 path needs and the messages you may hit.
 
+Each transaction reports its progress in a toast: signed, submitted, included in a block, and confirmed
+once that block is finalized. MetaMask signs and broadcasts in one step, so its progress starts at
+submitted.
+
 ## Supported Substrate wallets
 
 | Wallet | Status | Notes |
@@ -154,12 +158,16 @@ involved.
   signed-in user, so when the host has no session, Connect asks it to sign the user in (`requestLogin`).
   The host shows its own sign-in screen; on a dot.li gateway that is a QR code to scan with the Polkadot
   app. A declined sign-in shows "Sign-in was declined", and the app also connects by itself whenever the
-  host reports a sign-in (`use-host-reconnect`).
+  host reports a sign-in (`use-host-reconnect`). A host that does not answer a connect within 30
+  seconds fails it with "The Polkadot host did not respond. Try again."
   Mapping is handled host-side, so the host path skips `ensureMapped`.
-- **Allowances** (`src/lib/host/allowances.ts`): on connect the app requests `SmartContractAllowance`
-  (the PGAS allowance that pays Revive gas) and `AutoSigning`, best-effort. Some hosts sponsor gas by
-  themselves when signing (the Android host tops up PGAS for Revive calls); others answer
-  `NotAvailable`. The outcome never blocks connecting or trading.
+- **Username**: the account button shows the signed-in user's username from the host (`getUserId`),
+  and the address when the host has none.
+- **Permissions**: the app requests only the `Remote` grant below, and no resource allocation. The
+  Android host sponsors gas by itself: when it signs a transaction made only of Revive calls, including
+  one forwarded from a dot.li gateway, it tops up the product account's PGAS allowance first. A
+  transaction that does not use a PGAS allowance pays its fees in the native token, as browser-wallet
+  transactions do.
 - **Native token**: a host may sponsor gas, never storage deposits, and a new product account holds no
   native token; see "Your account needs PAS before you can trade" above.
 - **Network access** (`src/lib/host/remote.ts`): hosts block outbound HTTP unless the product holds the

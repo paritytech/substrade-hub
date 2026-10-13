@@ -17,7 +17,14 @@ vi.mock("@parity/product-sdk-signer", () => ({
   }),
 }));
 
-import { connectHostAccounts, selectHostAccount, getHostSigner, requestHostLogin } from "./signer";
+import {
+  connectHostAccounts,
+  selectHostAccount,
+  getHostSigner,
+  requestHostLogin,
+  getHostUsername,
+  CONNECT_TIMEOUT_MS,
+} from "./signer";
 import { SignerManager } from "@parity/product-sdk-signer";
 
 beforeEach(() => {
@@ -50,6 +57,23 @@ describe("connectHostAccounts", () => {
     manager.connect.mockResolvedValue({ ok: true, value: [] });
     await connectHostAccounts();
     expect(manager.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up on a host that does not answer, and lets the next call start afresh", async () => {
+    vi.useFakeTimers();
+    try {
+      manager.connect.mockReturnValueOnce(new Promise(() => {}));
+      const stuck = connectHostAccounts();
+      const assertion = expect(stuck).rejects.toThrow(/did not respond/);
+      await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS);
+      await assertion;
+
+      manager.connect.mockResolvedValue({ ok: true, value: [] });
+      await expect(connectHostAccounts()).resolves.toEqual([]);
+      expect(manager.connect).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -86,6 +110,37 @@ describe("requestHostLogin", () => {
     await expect(requestHostLogin()).rejects.toThrow("Host sign-in failed: Unsupported");
     hostApi.getAccountsProvider.mockResolvedValue(null);
     await expect(requestHostLogin()).rejects.toThrow(/not available/);
+  });
+});
+
+/** A host `getUserId` result, shaped like neverthrow's ResultAsync `match`. */
+function userIdResult(outcome: { ok: { primaryUsername: string } } | { err: string }) {
+  return {
+    match: (onOk: (v: { primaryUsername: string }) => unknown, onErr: (e: string) => unknown) =>
+      Promise.resolve().then(() => ("ok" in outcome ? onOk(outcome.ok) : onErr(outcome.err))),
+  };
+}
+
+describe("getHostUsername", () => {
+  beforeEach(() => hostApi.getAccountsProvider.mockReset());
+
+  it("returns the signed-in user's username", async () => {
+    hostApi.getAccountsProvider.mockResolvedValue({
+      getUserId: () => userIdResult({ ok: { primaryUsername: " giuseppe.dot " } }),
+    });
+    await expect(getHostUsername()).resolves.toBe("giuseppe.dot");
+  });
+
+  it("returns null for an empty username, so the address is shown", async () => {
+    hostApi.getAccountsProvider.mockResolvedValue({ getUserId: () => userIdResult({ ok: { primaryUsername: "" } }) });
+    await expect(getHostUsername()).resolves.toBeNull();
+  });
+
+  it("returns null when the host fails or is unavailable", async () => {
+    hostApi.getAccountsProvider.mockResolvedValue({ getUserId: () => userIdResult({ err: "NotConnected" }) });
+    await expect(getHostUsername()).resolves.toBeNull();
+    hostApi.getAccountsProvider.mockResolvedValue(null);
+    await expect(getHostUsername()).resolves.toBeNull();
   });
 });
 
