@@ -9,9 +9,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   fmt:
-    name: Formatting
+    name: Contracts formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,13 +24,14 @@ jobs:
       - name: Install foundry-polkadot
         env:
           FOUNDRY_DIR: ${{ github.workspace }}/.foundry
+        # Pinned installer and release, so every run installs the same forge.
         run: |
           curl -sSf -L -o /usr/local/bin/foundryup \
-            https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
+            https://raw.githubusercontent.com/paritytech/foundry-polkadot/2375d9bef7479b5496e45959c95bdc38aab6f845/foundryup/foundryup
           chmod +x /usr/local/bin/foundryup
           mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
           export PATH="$FOUNDRY_DIR/bin:$PATH"
-          foundryup
+          foundryup --install v1.5.1
           echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
 
       - name: Check formatting
@@ -45,13 +49,14 @@ jobs:
       - name: Install foundry-polkadot
         env:
           FOUNDRY_DIR: ${{ github.workspace }}/.foundry
+        # Pinned installer and release, so every run installs the same forge.
         run: |
           curl -sSf -L -o /usr/local/bin/foundryup \
-            https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
+            https://raw.githubusercontent.com/paritytech/foundry-polkadot/2375d9bef7479b5496e45959c95bdc38aab6f845/foundryup/foundryup
           chmod +x /usr/local/bin/foundryup
           mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
           export PATH="$FOUNDRY_DIR/bin:$PATH"
-          foundryup
+          foundryup --install v1.5.1
           echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
 
       - name: Build
