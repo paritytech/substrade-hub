@@ -13,9 +13,12 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
 
+permissions:
+  contents: read
+
 jobs:
   rustfmt:
-    name: Formatting
+    name: E2E formatting
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
