@@ -17,5 +17,24 @@
       "symbol": "tUSD",
       "decimals": 6
     }
+  },
+  "paseo-v2": {
+    "name": "Paseo Asset Hub Next",
+    "papiEntry": "ah_paseo_v2",
+    "genesis": "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a",
+    "wsEndpoint": "wss://paseo-asset-hub-next-rpc.polkadot.io",
+    "rpcUrl": "https://eth-rpc-paseo-next.polkadot.io",
+    "chainId": 420420417,
+    "dotnsName": "substrade-hub.paseo",
+    "bulletinDeployEnv": "paseo-next-v2",
+    "explorerUrl": null,
+    "nativeFaucetUrl": "https://faucet.polkadot.io/?parachain=1500",
+    "factoryAddress": "0x0000000000000000000000000000000000000000",
+    "faucetAddress": "0x0000000000000000000000000000000000000000",
+    "knownQuote": {
+      "addr": "0x0000000000000000000000000000000000000000",
+      "symbol": "tUSD",
+      "decimals": 6
+    }
   }
 }

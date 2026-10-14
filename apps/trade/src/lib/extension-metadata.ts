@@ -4,14 +4,16 @@ import { getClient } from "./client";
 type ExtDef = Record<string, { extrinsic: Record<string, string>; payload: Record<string, string> }>;
 
 /**
- * The custom signed extensions on the Asset Hub Next runtime (`next-asset-hub-paseo`). A browser
+ * The custom signed extensions of every Asset Hub Next runtime in `.papi` (`next-asset-hub-paseo`). A
+ * wallet uses only the entries whose names its chain's metadata lists, so one table serves every
+ * network. A browser
  * extension's `@polkadot/types` registry SILENTLY DROPS signed-extension names it doesn't recognise
  * (`expandExtensionTypes` filters unknowns), so it re-encodes a too-short payload and the signature
  * fails on-chain with `BadProof`. Declaring them here (pushed to the wallet via `metadata.provide`)
  * stops the drop. Every value defaults to None/false/empty, matching the bytes the chain and PAPI's
  * native signer produce (each Option/bool custom extension encodes to `0x00`; the rest to empty).
  *
- * `extension-metadata.test.ts` checks this table against the committed `.papi` metadata, so a runtime
+ * `extension-metadata.test.ts` checks this table against each committed `.papi` metadata, so a runtime
  * upgrade that changes the set fails the tests once the descriptors are regenerated. The `Option<...>`
  * inner types are irrelevant while the value is None (`0x00` regardless), so `Option<Null>` suffices
  * for the enum-valued ones — we never send `Some`.

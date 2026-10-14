@@ -1,0 +1,120 @@
+name: Bootstrap network
+
+# Runs contracts/scripts/bootstrap.mjs for one network: deploys the demo contracts and test assets,
+# seeds the order books and writes the addresses into apps/trade/src/config/networks.json. Manual only.
+# See apps/trade/docs/deploy.md.
+#
+# Every key comes from the secret DOTNS_MNEMONIC of the `<network>-deploy` environment, the same secret
+# the .dot publish uses: its root account funds the run and owns the test assets and the dotNS name,
+# and the EVM keys are its BIP-44 accounts. Fund that account (DOTNS_OWNER) before the first run.
+#
+# The run's progress, contracts/deployments/<network>.json, holds no secret. It is pushed with
+# networks.json to the branch `bootstrap/<network>` even when the run fails, and the next run resumes
+# from that file (its `config` step rewrites the addresses in networks.json from it). Open a PR from the
+# branch once the run succeeds.
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: "Network to bootstrap (a key of apps/trade/src/config/networks.json)"
+        type: choice
+        options: [paseo-v2]
+      step:
+        description: "Run every step, or only one"
+        type: choice
+        options: [all, keys, fund, assets, factory, markets, faucet, seed, history, replenish, config]
+        default: all
+      fund:
+        description: "Also send native funds to these SS58 accounts (space separated, optional)"
+        required: false
+
+# Shared with the .dot publish: both sign with the same account, so they never run at once.
+concurrency:
+  group: chain-${{ github.event.inputs.network }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    name: Bootstrap (${{ github.event.inputs.network }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ${{ github.event.inputs.network }}-deploy
+    env:
+      NETWORK: ${{ github.event.inputs.network }}
+      BRANCH: bootstrap/${{ github.event.inputs.network }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resume from the bootstrap branch
+        run: |
+          if git fetch --depth=1 origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" 2>/dev/null; then
+            git checkout "origin/$BRANCH" -- "contracts/deployments/$NETWORK.json"
+            echo "Resuming from $BRANCH"
+          else
+            echo "No $BRANCH branch; starting fresh"
+          fi
+
+      - name: Install foundry-polkadot
+        env:
+          FOUNDRY_DIR: ${{ github.workspace }}/.foundry
+        run: |
+          curl -sSf -L -o /usr/local/bin/foundryup \
+            https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
+          chmod +x /usr/local/bin/foundryup
+          mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
+          export PATH="$FOUNDRY_DIR/bin:$PATH"
+          foundryup
+          echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bootstrap
+        working-directory: contracts
+        # Inputs reach the script through env and are validated, never interpolated into it.
+        env:
+          DEPLOY_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
+          STEP: ${{ github.event.inputs.step }}
+          FUND: ${{ github.event.inputs.fund }}
+        run: |
+          if [ -z "$DEPLOY_MNEMONIC" ]; then
+            echo "::error::DOTNS_MNEMONIC secret is not set in the $NETWORK-deploy environment"; exit 1
+          fi
+          args=(--network "$NETWORK")
+          if [ "$STEP" != "all" ]; then args+=(--only "$STEP"); fi
+          for account in $FUND; do
+            if ! printf '%s' "$account" | grep -qE '^[1-9A-HJ-NP-Za-km-z]{46,48}$'; then
+              echo "::error::'$account' is not an SS58 address"; exit 1
+            fi
+            args+=(--fund "$account")
+          done
+          node scripts/bootstrap.mjs "${args[@]}"
+
+      - name: Push the progress to the bootstrap branch
+        if: always()
+        run: |
+          git add -- "contracts/deployments/$NETWORK.json" apps/trade/src/config/networks.json 2>/dev/null || true
+          if git diff --cached --quiet; then echo "Nothing to push"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Bootstrap $NETWORK (run $GITHUB_RUN_ID)"
+          git push -f origin "HEAD:refs/heads/$BRANCH"
+          {
+            echo "Progress pushed to \`$BRANCH\`."
+            echo "Once the run succeeds, open a PR: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/master...$BRANCH?expand=1"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -28,6 +28,10 @@ if (!network) {
   console.error(`Set VITE_NETWORK to one of: ${Object.keys(networks).join(", ")}`);
   process.exit(1);
 }
+if (/^0x0{40}$/i.test(network.factoryAddress)) {
+  console.error(`${name} has no contracts yet; run contracts/scripts/bootstrap.mjs --network ${name} first`);
+  process.exit(1);
+}
 for (const key of ["MNEMONIC", "APP_VERSION"]) {
   if (!process.env[key]) {
     console.error(`${key} is not set`);

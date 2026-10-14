@@ -10,14 +10,16 @@ import { decAnyMetadata, unifyMetadata } from "@polkadot-api/substrate-bindings"
 import { getLookupFn } from "@polkadot-api/metadata-builders";
 import { buildMetadataDef, ensureExtensionMetadata, MetadataError } from "./extension-metadata";
 
-// The runtime the app is built against (see .papi/polkadot-api.json).
-const metadata = unifyMetadata(
-  decAnyMetadata(readFileSync(new URL("../../.papi/metadata/ah_previewnet.scale", import.meta.url))),
-);
-const signedExtensionsByVersion = metadata.extrinsic.signedExtensions;
-const signedExtensions = Array.isArray(signedExtensionsByVersion)
-  ? signedExtensionsByVersion
-  : (signedExtensionsByVersion[0] ?? []);
+// Every runtime the app can be built against (the entries of .papi/polkadot-api.json).
+const papiConfig = JSON.parse(readFileSync(new URL("../../.papi/polkadot-api.json", import.meta.url), "utf8")) as {
+  entries: Record<string, { metadata: string }>;
+};
+const runtimes = Object.entries(papiConfig.entries).map(([entry, { metadata: file }]) => {
+  const metadata = unifyMetadata(decAnyMetadata(readFileSync(new URL(`../../${file}`, import.meta.url))));
+  const byVersion = metadata.extrinsic.signedExtensions;
+  const signedExtensions = Array.isArray(byVersion) ? byVersion : (byVersion[0] ?? []);
+  return { entry, metadata, signedExtensions };
+});
 
 /** Signed extensions `@polkadot/types` encodes natively, so they need no `userExtensions` entry. */
 const POLKADOT_TYPES_BUILTINS = new Set([
@@ -31,6 +33,7 @@ const POLKADOT_TYPES_BUILTINS = new Set([
   "ChargeTransactionPayment",
   "ChargeAssetTxPayment",
   "CheckMetadataHash",
+  "PrevalidateAttests",
 ]);
 
 const GENESIS = "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
@@ -62,11 +65,18 @@ describe("buildMetadataDef", () => {
     });
   });
 
-  it("declares every custom signed extension of the committed runtime metadata, with matching shapes", async () => {
+  it("declares exactly the custom signed extensions of the committed runtimes", async () => {
+    const def = await buildMetadataDef();
+    const custom = new Set(
+      runtimes.flatMap((r) => r.signedExtensions.map((e) => e.identifier)).filter((id) => !POLKADOT_TYPES_BUILTINS.has(id)),
+    );
+    expect(Object.keys(def.userExtensions).sort()).toEqual([...custom].sort());
+  });
+
+  it.each(runtimes)("declares the custom signed extensions of $entry with matching shapes", async ({ metadata, signedExtensions }) => {
     const def = await buildMetadataDef();
     const lookup = getLookupFn(metadata);
     const custom = signedExtensions.filter((e) => !POLKADOT_TYPES_BUILTINS.has(e.identifier));
-    expect(Object.keys(def.userExtensions)).toEqual(custom.map((e) => e.identifier));
     for (const e of custom) {
       const declared = def.userExtensions[e.identifier]!;
       // No custom extension carries an implicit (signed-only) part, so the payload half stays empty.

@@ -27,10 +27,10 @@ submitted.
 
 ### Why the metadata approval prompt appears
 
-The Asset Hub Next runtime (previewnet, paseo-v2) carries several **custom signed (transaction)
-extensions** (`AsPgas`, `AsDotnsGateway`, `RestrictOrigins`, and others; the full list is the
-`USER_EXTENSIONS` table in `src/lib/extension-metadata.ts`, which a test keeps in sync with the runtime
-metadata). A wallet that doesn't recognise these names silently drops them when it re-encodes the
+The Asset Hub Next runtimes carry **custom signed (transaction) extensions**: on previewnet `AsPgas`,
+`AsDotnsGateway`, `RestrictOrigins` and others, on paseo-v2 `AuthorizeCall`, `EthSetOrigin` and
+`StorageWeightReclaim`. The full list is the `USER_EXTENSIONS` table in
+`src/lib/extension-metadata.ts`, which a test keeps in sync with each network's runtime metadata. A wallet that doesn't recognise these names silently drops them when it re-encodes the
 transaction, signs the wrong bytes, and the chain rejects the signature with `BadProof`.
 
 To prevent this, on first connect the app calls the wallet's `metadata.provide()` with a definition of
