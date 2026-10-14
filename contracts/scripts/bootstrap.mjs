@@ -31,7 +31,7 @@ import { getPolkadotSigner } from "polkadot-api/signer";
 import { getWsProvider } from "polkadot-api/ws";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
-import { createPublicClient, createWalletClient, defineChain, http, parseAbi, toHex } from "viem";
+import { WaitForTransactionReceiptTimeoutError, createPublicClient, createWalletClient, defineChain, http, parseAbi, toHex } from "viem";
 import { generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -196,6 +196,10 @@ const ERC20_ABI = parseAbi([
 function artifactAbi(file, name) {
   return loadJson(resolve(CONTRACTS, `out/${file}/${name}.json`)).abi;
 }
+
+/** How long to wait for an EVM transaction's receipt, and how often to send a lost one. */
+const TX_TIMEOUT_MS = 60_000;
+const TX_ATTEMPTS = 3;
 
 /** Attempts at a forge broadcast; every attempt after the first resumes the previous one. */
 const FORGE_ATTEMPTS = 3;
@@ -367,11 +371,39 @@ async function main() {
   const wallet = (role) => createWalletClient({ chain, transport: http(net.rpcUrl), account: privateKeyToAccount(keyOf(role)) });
   const addr = (role) => privateKeyToAccount(keyOf(role)).address;
 
+  /**
+   * Send a transaction from `role` (`send` receives the nonce to use) and wait for its receipt. eth-rpc
+   * can accept a transaction and then lose it: no receipt, and the node no longer knows its hash. A lost
+   * transaction is sent again with the same nonce, so at most one of the copies executes.
+   */
+  const sendAndConfirm = async (role, label, send) => {
+    const nonce = await pub.getTransactionCount({ address: addr(role), blockTag: "pending" });
+    for (let attempt = 1; ; attempt++) {
+      const hash = await send(nonce);
+      for (;;) {
+        try {
+          return await pub.waitForTransactionReceipt({ hash, timeout: TX_TIMEOUT_MS });
+        } catch (e) {
+          if (!(e instanceof WaitForTransactionReceiptTimeoutError)) throw e;
+        }
+        // Still known to the node: pending, so keep waiting.
+        if (await pub.getTransaction({ hash }).catch(() => null)) continue;
+        if ((await pub.getTransactionCount({ address: addr(role) })) > nonce) {
+          throw new Error(`${label}: nonce ${nonce} was used, but ${hash} has no receipt`);
+        }
+        break;
+      }
+      if (attempt === TX_ATTEMPTS) throw new Error(`${label}: the transaction was lost ${TX_ATTEMPTS} times`);
+      console.log(`  ${label}: ${hash} was lost; sending it again (attempt ${attempt + 1} of ${TX_ATTEMPTS})`);
+    }
+  };
+
   /** Send a contract call from `role` and require a successful receipt. */
   const write = async (role, address, abi, functionName, fnArgs, value) => {
-    const hash = await wallet(role).writeContract({ address, abi, functionName, args: fnArgs, value });
-    const receipt = await pub.waitForTransactionReceipt({ hash, timeout: 120_000 });
-    if (receipt.status !== "success") throw new Error(`${role} ${functionName} reverted (tx ${hash})`);
+    const receipt = await sendAndConfirm(role, `${role} ${functionName}`, (nonce) =>
+      wallet(role).writeContract({ address, abi, functionName, args: fnArgs, value, nonce }),
+    );
+    if (receipt.status !== "success") throw new Error(`${role} ${functionName} reverted (tx ${receipt.transactionHash})`);
     return receipt;
   };
   const read = (address, abi, functionName, fnArgs = []) => pub.readContract({ address, abi, functionName, args: fnArgs });
@@ -476,8 +508,9 @@ async function main() {
       console.log(`  ${m.key}/${QUOTE.key} ${market}`);
       // The market's account needs an existential deposit before it can hold assets.
       if ((await pub.getBalance({ address: market })) === 0n) {
-        const hash = await wallet("deployer").sendTransaction({ to: market, value: WEI_PER_PAS });
-        await pub.waitForTransactionReceipt({ hash });
+        await sendAndConfirm("deployer", `existential deposit for ${m.key}`, (nonce) =>
+          wallet("deployer").sendTransaction({ to: market, value: WEI_PER_PAS, nonce }),
+        );
       }
     }
   }
