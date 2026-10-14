@@ -48,7 +48,25 @@ owner is also the bootstrap funder (see "paseo-v2: one secret" below), so fund i
 | Network | Owner |
 |---|---|
 | previewnet | `5CfNK8oFBuZReoEsYpMeztkrvMGZic1uJTzbSKQK7nvVYnbb` |
-| paseo-v2 | not set up yet |
+| paseo-v2 | `5DJjEEsTvRUibZm5JzBPYfiH6d3QJ6SbPnMTK7eMdWvwFPt2` |
+
+## Deployed contracts
+
+The app reads the factory, faucet and tUSD addresses from `networks.json`; this table also lists the
+markets and the other test tokens. The tokens are pallet-assets precompiles, with the same asset ids
+(tUSD 50000698, tNVDA 50000699, tMU 50001034) on both networks. The admin is the bootstrap's deployer
+key: it administers the factory and owns the tUSD faucet.
+
+| Contract | previewnet | paseo-v2 |
+|---|---|---|
+| DLOB factory | `0x13034846f0bff137b69954dc2cb63324db608eda` | `0x32fcc3fc8ccca53930296a06f5143258ed9edc9e` |
+| tNVDA/tUSD market | `0x109088bD0E237449FDE1a5b884C86F0559aAe3A1` | `0x75Fd50693BD8dB1f94A7ea3A7E171f088112699e` |
+| tMU/tUSD market | `0xFEC7B97f01890637C4c8fd1F57F6f6Dc9952F44c` | `0x46aC42F0266F971F13B54Eb7FB536344414a01e2` |
+| tUSD faucet | `0x33aa6ed0f9d147308a6e7b1d67b3c265c5b4251a` | `0x3864d6a84f6b0e7b12049c99c2fc429866d0f174` |
+| tUSD token | `0x02faf33a00000000000000000000000001200000` | `0x02faf33a00000000000000000000000001200000` |
+| tNVDA token | `0x02faf33b00000000000000000000000001200000` | `0x02faf33b00000000000000000000000001200000` |
+| tMU token | `0x02faf48a00000000000000000000000001200000` | `0x02faf48a00000000000000000000000001200000` |
+| Admin | `0x49260dE7F3Bb7C7658E1aabb7fA6Fa91171DfCd0` | `0xa2b6183fBb377fB2079749a4dC0221774d179627` |
 
 ## CI publish
 
@@ -70,8 +88,9 @@ required `version`) or on a `dot-v*` tag, which publishes to previewnet with the
   3. delete the bootstrap state (`contracts/scripts/state/<network>.json`, or
      `contracts/deployments/<network>.json` on paseo-v2) and run the bootstrap, which redeploys the
      contracts and writes their new addresses into `networks.json`;
-  4. fund the owner account again (`--only fund --fund <owner>`), commit, and rerun this workflow by
-     hand: it re-registers the name and republishes.
+  4. fund the owner account again (`--only fund --fund <owner>`), update "Deployed contracts" above
+     with the new addresses, commit, and rerun this workflow by hand: it re-registers the name and
+     republishes.
 - **Pinned CLI.** The publish step runs `bulletin-deploy@0.22.0` because it handles the mnemonic; bump the
   pin in `scripts/deploy-dot.mjs` deliberately after reviewing a release.
 
@@ -94,7 +113,8 @@ First setup:
 3. Run the **Bootstrap network** workflow for `paseo-v2`. It takes about 20 minutes and pushes its
    progress (`contracts/deployments/paseo-v2.json` and the addresses in `networks.json`) to the branch
    `bootstrap/paseo-v2`, even when it fails; a rerun resumes from that branch. When it succeeds, open a
-   PR from that branch, merge it, and delete the branch.
+   PR from that branch, add the new addresses to "Deployed contracts" in it, merge it, and delete the
+   branch.
 4. Run the **Deploy .dot app** workflow for `paseo-v2`.
 
 After a reset, make one PR with steps 1 to 3 of "After a testnet reset" above (step 3 deletes
