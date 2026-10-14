@@ -9,15 +9,18 @@
 //   node scripts/bootstrap.mjs --network previewnet --only fund --fund 5Cto...   # one step
 //   node scripts/bootstrap.mjs --help
 //
-// Every step is idempotent and records its result in scripts/state/<network>.json (gitignored: it
-// holds the generated EVM keys). A rerun skips finished work, so an interrupted run resumes where it
-// stopped. If the chain was reset, the state file's genesis no longer matches and the script refuses
-// to run until you delete that file.
+// Every step is idempotent and records its result in a state file. A rerun skips finished work, so an
+// interrupted run resumes where it stopped. If the chain was reset, the state file's genesis no longer
+// matches and the script refuses to run until you delete that file.
 //
-// Signers: the funder (FUNDER_URI, default //Alice; a mnemonic, optionally with a //path, also works)
-// pays native funds and is the admin of the test assets. Generated EVM keys do everything else:
-// the deployer deploys contracts, creates markets and seeds books; four more keys create trade history
-// (separate keys, so takers never trade against their own orders).
+// Signers: the funder pays native funds and is the admin of the test assets. EVM keys do everything
+// else: the deployer deploys contracts, creates markets and seeds books; four more keys create trade
+// history (separate keys, so takers never trade against their own orders). The keys come from one of:
+// - DEPLOY_MNEMONIC: the funder is the mnemonic's root sr25519 account and the EVM keys are its BIP-44
+//   accounts (m/44'/60'/0'/0/<index>), so the mnemonic alone recovers every key. The state file,
+//   deployments/<network>.json, then holds no secret and is committed. The bootstrap workflow uses this.
+// - FUNDER_URI (default //Alice; a mnemonic, optionally with a //path, also works) and random EVM keys,
+//   kept in scripts/state/<network>.json (gitignored: it holds those keys).
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -28,8 +31,8 @@ import { getPolkadotSigner } from "polkadot-api/signer";
 import { getWsProvider } from "polkadot-api/ws";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
-import { createPublicClient, createWalletClient, defineChain, http, parseAbi } from "viem";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { createPublicClient, createWalletClient, defineChain, http, parseAbi, toHex } from "viem";
+import { generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONTRACTS = resolve(HERE, "..");
@@ -95,6 +98,8 @@ const MARKETS = [
 // deployer; the trade-history keys only pay fees.
 const FUNDING = { deployer: 300n, makerBid: 30n, makerAsk: 30n, buyer: 30n, seller: 30n };
 const EXTRA_FUNDING = 50n; // per --fund account
+/** BIP-44 address index of each EVM key under DEPLOY_MNEMONIC. Never renumber: it would change the keys. */
+const KEY_INDEX = { deployer: 0, makerBid: 1, makerAsk: 2, buyer: 3, seller: 4 };
 const TRADE_SPACING_MS = Number(process.env.TRADE_SPACING_S ?? 15) * 1000; // one candle per trade
 
 // ──────────────────────── CLI ──────────────────────────
@@ -124,7 +129,8 @@ Steps, in order: ${STEPS.join(", ")}
   --network  a key of apps/trade/src/config/networks.json
   --only     run a single step        --from  run from a step onward
   --fund     also send ${EXTRA_FUNDING} PAS to this SS58 account (repeatable), e.g. a host product account
-Env: FUNDER_URI (default //Alice), TRADE_SPACING_S (default 15)`;
+Env: DEPLOY_MNEMONIC (funder and EVM keys from one mnemonic) or FUNDER_URI (default //Alice),
+     TRADE_SPACING_S (default 15)`;
 
 // ──────────────────────── State ──────────────────────────
 
@@ -294,9 +300,29 @@ async function main() {
     if (PROTECTED_ASSET_IDS.has(a.id)) throw new Error(`${a.key} uses protected asset id ${a.id}`);
   }
 
-  const stateFile = resolve(HERE, `state/${args.network}.json`);
-  const state = existsSync(stateFile) ? loadJson(stateFile) : { genesis: net.genesis, keys: {}, done: {} };
+  const mnemonic = process.env.DEPLOY_MNEMONIC?.trim();
+  if (mnemonic && process.env.FUNDER_URI) throw new Error("Set DEPLOY_MNEMONIC or FUNDER_URI, not both");
+  const stateFile = mnemonic
+    ? resolve(CONTRACTS, `deployments/${args.network}.json`)
+    : resolve(HERE, `state/${args.network}.json`);
+  const state = existsSync(stateFile)
+    ? loadJson(stateFile)
+    : { genesis: net.genesis, ...(mnemonic ? {} : { keys: {} }), done: {} };
   const save = () => saveJson(stateFile, state);
+
+  /** The EVM private key of `role`: derived from DEPLOY_MNEMONIC, or the random one in the state file. */
+  const derivedKeys = {};
+  const keyOf = (role) => {
+    if (!mnemonic) return state.keys[role];
+    if (!Object.hasOwn(KEY_INDEX, role)) throw new Error(`No KEY_INDEX for "${role}"`);
+    derivedKeys[role] ??= toHex(mnemonicToAccount(mnemonic, { addressIndex: KEY_INDEX[role] }).getHdKey().privateKey);
+    return derivedKeys[role];
+  };
+  if (mnemonic) {
+    if (Object.keys(state.keys ?? {}).length) throw new Error(`${stateFile} holds private keys, which DEPLOY_MNEMONIC mode never stores`);
+    // GitHub Actions masks secrets only verbatim; mask the derived keys too.
+    if (process.env.GITHUB_ACTIONS) for (const role of Object.keys(KEY_INDEX)) console.log(`::add-mask::${keyOf(role)}`);
+  }
 
   // Never destroyed: the process exits when main settles (see the entry point), and destroying the
   // client mid-follow can throw from a pending reconnect timer.
@@ -310,7 +336,7 @@ async function main() {
     throw new Error(`${stateFile} belongs to genesis ${state.genesis}; the chain was reset, delete that file`);
   }
 
-  const funder = funderSigner(process.env.FUNDER_URI ?? "//Alice");
+  const funder = funderSigner(mnemonic ?? process.env.FUNDER_URI ?? "//Alice");
   const funderSs58 = ss58.dec(funder.publicKey);
   const chain = defineChain({
     id: net.chainId,
@@ -319,8 +345,8 @@ async function main() {
     rpcUrls: { default: { http: [net.rpcUrl] } },
   });
   const pub = createPublicClient({ chain, transport: http(net.rpcUrl) });
-  const wallet = (role) => createWalletClient({ chain, transport: http(net.rpcUrl), account: privateKeyToAccount(state.keys[role]) });
-  const addr = (role) => privateKeyToAccount(state.keys[role]).address;
+  const wallet = (role) => createWalletClient({ chain, transport: http(net.rpcUrl), account: privateKeyToAccount(keyOf(role)) });
+  const addr = (role) => privateKeyToAccount(keyOf(role)).address;
 
   /** Send a contract call from `role` and require a successful receipt. */
   const write = async (role, address, abi, functionName, fnArgs, value) => {
@@ -343,7 +369,7 @@ async function main() {
   if (run("keys")) {
     console.log("\n== keys ==");
     for (const role of Object.keys(FUNDING)) {
-      state.keys[role] ??= generatePrivateKey();
+      if (!mnemonic) state.keys[role] ??= generatePrivateKey();
       console.log(`  ${role.padEnd(8)} ${addr(role)}`);
     }
     save();
@@ -400,7 +426,7 @@ async function main() {
     console.log("\n== factory ==");
     if (state.factory && (await pub.getCode({ address: state.factory }))) console.log(`  deployed at ${state.factory}`);
     else {
-      forge("DeployFactory.s.sol", net.rpcUrl, state.keys.deployer);
+      forge("DeployFactory.s.sol", net.rpcUrl, keyOf("deployer"));
       state.factory = broadcastAddress("DeployFactory.s.sol", net.chainId, "DLOBFactory");
       save();
       console.log(`  DLOBFactory ${state.factory}`);
@@ -442,7 +468,7 @@ async function main() {
     needs("assets", "faucet");
     if (state.faucet && (await pub.getCode({ address: state.faucet }))) console.log(`  deployed at ${state.faucet}`);
     else {
-      forge("DeployFaucet.s.sol", net.rpcUrl, state.keys.deployer, {
+      forge("DeployFaucet.s.sol", net.rpcUrl, keyOf("deployer"), {
         TUSD_ADDRESS: state.assets[QUOTE.key],
         FAUCET_DRIP: FAUCET.drip.toString(),
         FAUCET_COOLDOWN: String(FAUCET.cooldownSeconds),

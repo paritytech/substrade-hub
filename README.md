@@ -83,11 +83,18 @@ node scripts/bootstrap.mjs --network previewnet          # every step (about 20 
 node scripts/bootstrap.mjs --network previewnet --only fund --fund <ss58>   # top up one more account
 ```
 
-The funder (`FUNDER_URI`, default `//Alice`) pays native funds and administers the test assets, so it
-must hold PAS on that network. `//Alice` holds PAS only on previewnet; on paseo-v2, set `FUNDER_URI` to
-an account funded from the network's faucet (about 425 PAS for a full run). Steps are idempotent and record their progress in
-`contracts/scripts/state/<network>.json`, which holds the generated keys and is gitignored; an
-interrupted run resumes where it stopped. Run `node scripts/bootstrap.mjs --help` for every option.
+The funder pays native funds and administers the test assets, so it must hold PAS on that network
+(about 425 PAS for a full run). The keys come from one of two places:
+
+- **`DEPLOY_MNEMONIC`**: the funder is the mnemonic's root account and the EVM keys are derived from it,
+  so the mnemonic alone recovers every key. Progress goes to `contracts/deployments/<network>.json`,
+  which holds no secret and is committed. paseo-v2 runs this way, in CI only, through the Bootstrap
+  network workflow (see [`apps/trade/docs/deploy.md`](apps/trade/docs/deploy.md)).
+- **`FUNDER_URI`** (default `//Alice`, which holds PAS on previewnet) with random EVM keys. Progress and
+  the keys go to `contracts/scripts/state/<network>.json`, which is gitignored.
+
+Steps are idempotent and record their progress, so an interrupted run resumes where it stopped. Run
+`node scripts/bootstrap.mjs --help` for every option.
 
 To trade from the UI, connect an **EVM wallet** (MetaMask) or a **Substrate wallet** (SubWallet or
 polkadot-js), and claim test tUSD from the faucet on the home page. Supported wallets, the one-time

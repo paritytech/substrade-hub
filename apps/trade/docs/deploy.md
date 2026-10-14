@@ -40,9 +40,10 @@ registration needs no proof of personhood.
 ## The owner account
 
 The owner is the account whose mnemonic is passed as `MNEMONIC`. It must hold native PAS on the
-network's Asset Hub; fund it from the bootstrap funder with
-`node contracts/scripts/bootstrap.mjs --network <name> --only fund --fund <ss58>`, or on paseo-v2 from
-the faucet (`nativeFaucetUrl`).
+network's Asset Hub. On previewnet, fund it from the bootstrap funder with
+`node contracts/scripts/bootstrap.mjs --network previewnet --only fund --fund <ss58>`. On paseo-v2 the
+owner is also the bootstrap funder (see "paseo-v2: one secret" below), so fund it from the faucet
+(`nativeFaucetUrl`).
 
 | Network | Owner |
 |---|---|
@@ -54,11 +55,11 @@ the faucet (`nativeFaucetUrl`).
 `.github/workflows/deploy-dot.yml` builds and publishes on manual dispatch (choose the network and a
 required `version`) or on a `dot-v*` tag, which publishes to previewnet with the version from the tag.
 
-- **One environment per network.** In repo Settings > Environments, create `<network>-deploy` (for
-  previewnet: `previewnet-deploy`, for paseo-v2: `paseo-v2-deploy`), restrict its deployment branches and tags to `master` and `dot-v*`,
-  store the owner's mnemonic there as the environment secret **`DOTNS_MNEMONIC`**, and its SS58 address
-  as the environment variable **`DOTNS_OWNER`**. The publish refuses to run unless the mnemonic derives
-  that address.
+- **One environment per network.** In repo Settings > Environments, create `<network>-deploy`
+  (`previewnet-deploy`, `paseo-v2-deploy`), restrict its deployment branches to `master` (plus `dot-v*`
+  tags for previewnet), store the owner's mnemonic there as the environment secret
+  **`DOTNS_MNEMONIC`**, and its SS58 address as the environment variable **`DOTNS_OWNER`**. The publish
+  refuses to run unless the mnemonic derives that address.
 - **After a testnet reset**: the chain has a new genesis. The app and the bootstrap refuse a live genesis
   that differs from `networks.json`, and the build refuses a `networks.json` genesis that differs from
   its `.papi` entry. So:
@@ -66,12 +67,38 @@ required `version`) or on a `dot-v*` tag, which publishes to previewnet with the
      new genesis in `.papi/polkadot-api.json`;
   2. set the network's `genesis` in `networks.json` to the new value (the build fails while it differs
      from the `.papi` entry);
-  3. delete `contracts/scripts/state/<network>.json` and run the bootstrap, which redeploys the
+  3. delete the bootstrap state (`contracts/scripts/state/<network>.json`, or
+     `contracts/deployments/<network>.json` on paseo-v2) and run the bootstrap, which redeploys the
      contracts and writes their new addresses into `networks.json`;
   4. fund the owner account again (`--only fund --fund <owner>`), commit, and rerun this workflow by
      hand: it re-registers the name and republishes.
 - **Pinned CLI.** The publish step runs `bulletin-deploy@0.22.0` because it handles the mnemonic; bump the
   pin in `scripts/deploy-dot.mjs` deliberately after reviewing a release.
+
+## paseo-v2: one secret
+
+On paseo-v2 every key lives in the `paseo-v2-deploy` secret `DOTNS_MNEMONIC`, and no copy exists
+elsewhere. Its root account owns the dotNS name, funds the bootstrap and administers the test assets; the
+bootstrap's EVM keys (the deployer, which administers the factory and owns the tUSD faucet, and four
+trade-history keys) are its BIP-44 accounts. Both workflows sign with it, share one concurrency group,
+and run only from `master`. Anything else that needs these keys, such as refilling the faucet, goes
+through a workflow too.
+
+First setup:
+
+1. Generate a new mnemonic, for example with `subkey generate`. Store it as `DOTNS_MNEMONIC` and its
+   SS58 address (the root sr25519 account, no derivation path) as `DOTNS_OWNER` in `paseo-v2-deploy`,
+   then delete any local copy.
+2. Fund `DOTNS_OWNER` from the faucet: about 425 PAS for the bootstrap, plus 5 PAS for the name deposit
+   and fees.
+3. Run the **Bootstrap network** workflow for `paseo-v2`. It takes about 20 minutes and pushes its
+   progress (`contracts/deployments/paseo-v2.json` and the addresses in `networks.json`) to the branch
+   `bootstrap/paseo-v2`, even when it fails; a rerun resumes from that branch. When it succeeds, open a
+   PR from that branch, merge it, and delete the branch.
+4. Run the **Deploy .dot app** workflow for `paseo-v2`.
+
+After a reset, make one PR with steps 1 to 3 of "After a testnet reset" above (step 3 deletes
+`contracts/deployments/paseo-v2.json`), fund the owner from the faucet again, and run both workflows.
 
 ## Manual publish
 
@@ -96,6 +123,7 @@ never commit it.
 - `apps/trade/icon.svg` / `icon.png`: app icon (PNG is generated from the SVG; the config references the PNG).
 - `apps/trade/public/{manifest.webmanifest,icon-192.png,icon-512.png,favicon-32.png}`: PWA manifest + icons.
 - `.github/workflows/deploy-dot.yml`: CI publish.
+- `.github/workflows/bootstrap.yml`: CI bootstrap, for networks whose keys live in their environment.
 
 ## Known caveat
 

@@ -8,7 +8,7 @@ name: Deploy .dot app
 # Each network deploys from its own GitHub environment, `<network>-deploy`, which holds the secret
 # DOTNS_MNEMONIC (the mnemonic of the account that owns, or will register, the name, funded on that
 # network's Asset Hub) and the variable DOTNS_OWNER (that account's SS58 address). The publish refuses to
-# run unless the mnemonic derives DOTNS_OWNER.
+# run unless the mnemonic derives DOTNS_OWNER. On paseo-v2 the same secret also drives bootstrap.yml.
 
 on:
   workflow_dispatch:
@@ -24,8 +24,9 @@ on:
   push:
     tags: ["dot-v*"]
 
+# Shared with the bootstrap workflow: both sign with the same account, so they never run at once.
 concurrency:
-  group: deploy-dot-${{ github.event.inputs.network || 'previewnet' }}
+  group: chain-${{ github.event.inputs.network || 'previewnet' }}
   cancel-in-progress: false
 
 jobs:
