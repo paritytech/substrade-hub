@@ -197,12 +197,31 @@ function artifactAbi(file, name) {
   return loadJson(resolve(CONTRACTS, `out/${file}/${name}.json`)).abi;
 }
 
-function forge(script, rpcUrl, privateKey, env = {}) {
-  execFileSync(
-    "forge",
-    ["script", `script/${script}`, "--rpc-url", rpcUrl, "--private-key", privateKey, "--broadcast", "--slow"],
-    { cwd: CONTRACTS, stdio: "inherit", env: { ...process.env, ...env } },
-  );
+/** Attempts at a forge broadcast; every attempt after the first resumes the previous one. */
+const FORGE_ATTEMPTS = 3;
+const FORGE_RETRY_MS = 15_000;
+
+/**
+ * Broadcast a forge script. Forge can give up on a transaction whose receipt is not available yet, and
+ * eth-rpc can drop a transaction it accepted. A retry passes `--resume`, which waits for the
+ * transactions already sent and resends those that never landed, so nothing is deployed twice.
+ */
+async function forge(script, rpcUrl, privateKey, env = {}) {
+  const args = ["script", `script/${script}`, "--rpc-url", rpcUrl, "--private-key", privateKey, "--broadcast", "--slow"];
+  for (let attempt = 1; ; attempt++) {
+    try {
+      execFileSync("forge", attempt === 1 ? args : [...args, "--resume"], {
+        cwd: CONTRACTS,
+        stdio: "inherit",
+        env: { ...process.env, ...env },
+      });
+      return;
+    } catch (e) {
+      if (attempt === FORGE_ATTEMPTS) throw e;
+      console.log(`  forge failed (attempt ${attempt} of ${FORGE_ATTEMPTS}); resuming in ${FORGE_RETRY_MS / 1000}s`);
+      await new Promise((r) => setTimeout(r, FORGE_RETRY_MS));
+    }
+  }
 }
 
 /** The address forge recorded for `contractName` in the latest broadcast of `script`. */
@@ -426,7 +445,7 @@ async function main() {
     console.log("\n== factory ==");
     if (state.factory && (await pub.getCode({ address: state.factory }))) console.log(`  deployed at ${state.factory}`);
     else {
-      forge("DeployFactory.s.sol", net.rpcUrl, keyOf("deployer"));
+      await forge("DeployFactory.s.sol", net.rpcUrl, keyOf("deployer"));
       state.factory = broadcastAddress("DeployFactory.s.sol", net.chainId, "DLOBFactory");
       save();
       console.log(`  DLOBFactory ${state.factory}`);
@@ -468,7 +487,7 @@ async function main() {
     needs("assets", "faucet");
     if (state.faucet && (await pub.getCode({ address: state.faucet }))) console.log(`  deployed at ${state.faucet}`);
     else {
-      forge("DeployFaucet.s.sol", net.rpcUrl, keyOf("deployer"), {
+      await forge("DeployFaucet.s.sol", net.rpcUrl, keyOf("deployer"), {
         TUSD_ADDRESS: state.assets[QUOTE.key],
         FAUCET_DRIP: FAUCET.drip.toString(),
         FAUCET_COOLDOWN: String(FAUCET.cooldownSeconds),
