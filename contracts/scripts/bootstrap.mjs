@@ -31,7 +31,7 @@ import { getPolkadotSigner } from "polkadot-api/signer";
 import { getWsProvider } from "polkadot-api/ws";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
-import { WaitForTransactionReceiptTimeoutError, createPublicClient, createWalletClient, defineChain, http, parseAbi, toHex } from "viem";
+import { TransactionReceiptNotFoundError, WaitForTransactionReceiptTimeoutError, createPublicClient, createWalletClient, defineChain, http, parseAbi, toHex } from "viem";
 import { generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -387,7 +387,8 @@ async function main() {
         try {
           return await pub.waitForTransactionReceipt({ hash, timeout: TX_TIMEOUT_MS });
         } catch (e) {
-          if (!(e instanceof WaitForTransactionReceiptTimeoutError)) throw e;
+          // viem also gives up with "receipt not found" when eth-rpc reports a receipt late.
+          if (!(e instanceof WaitForTransactionReceiptTimeoutError || e instanceof TransactionReceiptNotFoundError)) throw e;
         }
         // Still known to the node: pending, so keep waiting.
         if (await pub.getTransaction({ hash }).catch(() => null)) continue;
