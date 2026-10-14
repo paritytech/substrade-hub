@@ -374,7 +374,10 @@ async function main() {
   /**
    * Send a transaction from `role` (`send` receives the nonce to use) and wait for its receipt. eth-rpc
    * can accept a transaction and then lose it: no receipt, and the node no longer knows its hash. A lost
-   * transaction is sent again with the same nonce, so at most one of the copies executes.
+   * transaction is sent again with the same nonce, so at most one of the copies executes. eth-rpc can
+   * also miss a transaction that did land: the nonce is used, but it has no record of the hash. Only
+   * this run signs for `role`, so that transaction is ours; it resolves to null, since its outcome is
+   * unknown.
    */
   const sendAndConfirm = async (role, label, send) => {
     const nonce = await pub.getTransactionCount({ address: addr(role), blockTag: "pending" });
@@ -389,7 +392,8 @@ async function main() {
         // Still known to the node: pending, so keep waiting.
         if (await pub.getTransaction({ hash }).catch(() => null)) continue;
         if ((await pub.getTransactionCount({ address: addr(role) })) > nonce) {
-          throw new Error(`${label}: nonce ${nonce} was used, but ${hash} has no receipt`);
+          console.log(`  ${label}: ${hash} landed (nonce ${nonce} is used), but eth-rpc has no receipt for it`);
+          return null;
         }
         break;
       }
@@ -398,12 +402,12 @@ async function main() {
     }
   };
 
-  /** Send a contract call from `role` and require a successful receipt. */
+  /** Send a contract call from `role` and require a successful receipt, when eth-rpc has one. */
   const write = async (role, address, abi, functionName, fnArgs, value) => {
     const receipt = await sendAndConfirm(role, `${role} ${functionName}`, (nonce) =>
       wallet(role).writeContract({ address, abi, functionName, args: fnArgs, value, nonce }),
     );
-    if (receipt.status !== "success") throw new Error(`${role} ${functionName} reverted (tx ${receipt.transactionHash})`);
+    if (receipt && receipt.status !== "success") throw new Error(`${role} ${functionName} reverted (tx ${receipt.transactionHash})`);
     return receipt;
   };
   const read = (address, abi, functionName, fnArgs = []) => pub.readContract({ address, abi, functionName, args: fnArgs });
@@ -537,7 +541,18 @@ async function main() {
   }
 
   /** Approve `market` for what `orders` need and place them from `role`. */
-  const placeAll = async (role, m, orders, label) => {
+  /**
+   * How many orders of `key` (a seed, history or replenish run of one market) have landed. Saved after
+   * every order, so an interrupted run continues with the next order.
+   */
+  state.progress ??= {};
+  const progressOf = (key) => state.progress[key] ?? 0;
+  const advance = (key) => {
+    state.progress[key] = progressOf(key) + 1;
+    save();
+  };
+
+  const placeAll = async (role, m, orders, label, key) => {
     const market = state.markets[m.key];
     const bids = orders.filter((o) => o.side === 0);
     const asks = orders.filter((o) => o.side === 1);
@@ -546,8 +561,9 @@ async function main() {
       const base = asks.reduce((s, o) => s + BigInt(o.amount) * UNIT, 0n);
       await write(role, state.assets[m.key], ERC20_ABI, "approve", [market, base]);
     }
-    for (const o of orders) {
+    for (const o of orders.slice(progressOf(key))) {
       await write(role, market, dlobAbi(), "placeLimitOrder", [o.side, priceToRaw(o.price), BigInt(o.amount) * UNIT, `0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`, 0, 0n]);
+      advance(key);
       console.log(`  ${label}: ${o.side === 0 ? "bid" : "ask"} ${o.amount} @ ${o.price.toFixed(2)}`);
     }
   };
@@ -563,12 +579,13 @@ async function main() {
         console.log(`  ${m.key}: done`);
         continue;
       }
-      if (step !== "history") await placeAll("deployer", m, ladderOrders(m), `${m.key} ${label}`);
+      if (step !== "history") await placeAll("deployer", m, ladderOrders(m), `${m.key} ${label}`, doneKey);
       else {
         const plan = planHistory(m);
         // Fund each history key from the deployer with what its part of the plan needs.
         const roleOf = (s) => (s.type === "bridge" ? (s.side === 0 ? "makerBid" : "makerAsk") : s.side === 0 ? "buyer" : "seller");
-        for (const role of ["makerBid", "makerAsk", "buyer", "seller"]) {
+        const fundedKey = `${doneKey}:funded`;
+        for (const role of state.done[fundedKey] ? [] : ["makerBid", "makerAsk", "buyer", "seller"]) {
           const mine = plan.filter((s) => roleOf(s) === role);
           const quote = 2n * quoteFor(mine.filter((s) => s.side === 0));
           const base = 2n * mine.filter((s) => s.side === 1).reduce((t, s) => t + BigInt(s.amount) * UNIT, 0n);
@@ -577,8 +594,11 @@ async function main() {
           if (quote > 0n) await write(role, state.assets[QUOTE.key], ERC20_ABI, "approve", [state.markets[m.key], quote]);
           if (base > 0n) await write(role, state.assets[m.key], ERC20_ABI, "approve", [state.markets[m.key], base]);
         }
-        for (const s of plan) {
+        state.done[fundedKey] = true;
+        save();
+        for (const s of plan.slice(progressOf(doneKey))) {
           await write(roleOf(s), state.markets[m.key], dlobAbi(), "placeLimitOrder", [s.side, priceToRaw(s.price), BigInt(s.amount) * UNIT, `0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`, 0, 0n]);
+          advance(doneKey);
           console.log(`  ${m.key} ${s.type}: ${s.side === 0 ? "buy" : "sell"} ${s.amount} @ ${s.price.toFixed(2)}`);
           if (s.type === "trade") await sleep(TRADE_SPACING_MS);
         }
