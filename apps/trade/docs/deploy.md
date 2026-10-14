@@ -8,10 +8,12 @@ SubsTrade Hub publishes per network as a `.dot` app. Each network in
 | Network | dotNS name | Web gateway | `bulletin-deploy --env` |
 |---|---|---|---|
 | previewnet | `substrade-hub.testnet` | `https://substrade-hub.testnet.li` | `preview` |
+| paseo-v2 | `substrade-hub.paseo` | `https://substrade-hub.paseo.li` | `paseo-next-v2` |
 
 The app runs the **same** build in-host and standalone; host mode is auto-detected (see `wallets.md`).
 The contracts the build talks to come from the same `networks.json` entry, so bootstrap the network
-first (`contracts/scripts/bootstrap.mjs`, see the root README).
+first (`contracts/scripts/bootstrap.mjs`, see the root README). A publish refuses a network whose
+`factoryAddress` is still the zero address.
 
 ## Opening the published app
 
@@ -25,10 +27,10 @@ first (`contracts/scripts/bootstrap.mjs`, see the root README).
 `scripts/deploy-dot.mjs` runs a pinned `bulletin-deploy` with the network's environment. It:
 
 1. uploads `dist/` to the network's Bulletin chain. bulletin-deploy stores through its own pool
-   accounts and authorizes them itself where the environment allows it (on previewnet the authorizer is
-   `//Eve`), so the owner account needs no Bulletin authorization;
+   accounts and authorizes them itself where the environment allows it (the authorizer is `//Eve` on
+   previewnet and `//Alice` on paseo-v2), so the owner account needs no Bulletin authorization;
 2. registers the dotNS name for the owner account when the name is free (a 5 PAS storage deposit on
-   previewnet), and otherwise requires the owner to already hold it;
+   both networks), and otherwise requires the owner to already hold it;
 3. writes the root manifest (display name, description, icon) and the app's executable manifest, with
    `appVersion` from `APP_VERSION`, from `bulletin-deploy.config.ts`.
 
@@ -39,11 +41,13 @@ registration needs no proof of personhood.
 
 The owner is the account whose mnemonic is passed as `MNEMONIC`. It must hold native PAS on the
 network's Asset Hub; fund it from the bootstrap funder with
-`node contracts/scripts/bootstrap.mjs --network <name> --only fund --fund <ss58>`.
+`node contracts/scripts/bootstrap.mjs --network <name> --only fund --fund <ss58>`, or on paseo-v2 from
+the faucet (`nativeFaucetUrl`).
 
 | Network | Owner |
 |---|---|
 | previewnet | `5CfNK8oFBuZReoEsYpMeztkrvMGZic1uJTzbSKQK7nvVYnbb` |
+| paseo-v2 | not set up yet |
 
 ## CI publish
 
@@ -51,7 +55,7 @@ network's Asset Hub; fund it from the bootstrap funder with
 required `version`) or on a `dot-v*` tag, which publishes to previewnet with the version from the tag.
 
 - **One environment per network.** In repo Settings > Environments, create `<network>-deploy` (for
-  previewnet: `previewnet-deploy`), restrict its deployment branches and tags to `master` and `dot-v*`,
+  previewnet: `previewnet-deploy`, for paseo-v2: `paseo-v2-deploy`), restrict its deployment branches and tags to `master` and `dot-v*`,
   store the owner's mnemonic there as the environment secret **`DOTNS_MNEMONIC`**, and its SS58 address
   as the environment variable **`DOTNS_OWNER`**. The publish refuses to run unless the mnemonic derives
   that address.

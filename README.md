@@ -84,7 +84,8 @@ node scripts/bootstrap.mjs --network previewnet --only fund --fund <ss58>   # to
 ```
 
 The funder (`FUNDER_URI`, default `//Alice`) pays native funds and administers the test assets, so it
-must hold PAS on that network. Steps are idempotent and record their progress in
+must hold PAS on that network. `//Alice` holds PAS only on previewnet; on paseo-v2, set `FUNDER_URI` to
+an account funded from the network's faucet (about 425 PAS for a full run). Steps are idempotent and record their progress in
 `contracts/scripts/state/<network>.json`, which holds the generated keys and is gitignored; an
 interrupted run resumes where it stopped. Run `node scripts/bootstrap.mjs --help` for every option.
 

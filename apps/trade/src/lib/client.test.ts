@@ -23,7 +23,7 @@ vi.mock("polkadot-api", () => ({
   createClient: vi.fn(() => ({ getTypedApi: () => API, getChainSpecData: chainSpec, destroy: vi.fn() })),
 }));
 vi.mock("polkadot-api/ws", () => ({ getWsProvider: vi.fn(() => WS_PROVIDER) }));
-vi.mock("@polkadot-api/descriptors", () => ({ ah_previewnet: {} }));
+vi.mock("@polkadot-api/descriptors", () => ({ ah_previewnet: {}, ah_paseo_v2: {} }));
 vi.mock("@parity/product-sdk-host", () => ({
   ChainNotSupportedError: NotSupported,
   getHostChainInfo: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock("@parity/product-sdk-host", () => ({
 }));
 vi.mock("./host/detect", () => ({ isInHost: vi.fn() }));
 vi.mock("../config/chains", () => ({
-  activeChain: { name: "Test AH", genesis: `0x${"ab".repeat(32)}`, wsEndpoint: "wss://test" },
+  activeChain: { name: "Test AH", papiEntry: "ah_previewnet", genesis: `0x${"ab".repeat(32)}`, wsEndpoint: "wss://test" },
 }));
 
 import { initChainClient, getTypedApi, destroyClient } from "./client";

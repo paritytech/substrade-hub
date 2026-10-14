@@ -16,7 +16,7 @@ on:
       network:
         description: "Network to publish to (a key of apps/trade/src/config/networks.json)"
         type: choice
-        options: [previewnet]
+        options: [previewnet, paseo-v2]
         default: previewnet
       version:
         description: "App version MAJOR.MINOR.PATCH (published as appVersion)"
