@@ -29,8 +29,8 @@
     "bulletinDeployEnv": "paseo-next-v2",
     "explorerUrl": null,
     "nativeFaucetUrl": "https://faucet.polkadot.io/?parachain=1500",
-    "factoryAddress": "0x0000000000000000000000000000000000000000",
-    "faucetAddress": "0x0000000000000000000000000000000000000000",
+    "factoryAddress": "0xfd6e13f0e3f9690a41b3f3a7605d075849ec01d0",
+    "faucetAddress": "0xe1bc9e4b52ce0ee2950d14737ebd673a78d6860f",
     "knownQuote": {
       "addr": "0x02faf33a00000000000000000000000001200000",
       "symbol": "tUSD",
