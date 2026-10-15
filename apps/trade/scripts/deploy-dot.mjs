@@ -14,12 +14,26 @@
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { getSs58AddressInfo } from "polkadot-api";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { entropyToMiniSecret, mnemonicToEntropy, validateMnemonic } from "@polkadot-labs/hdkd-helpers";
 
-// Pinned: this step handles the owner mnemonic, so the code that runs must be a reviewed release.
-const BULLETIN_DEPLOY = "bulletin-deploy@0.22.0";
+// bulletin-deploy handles the owner mnemonic, so the code that runs must be reviewed: it is an
+// exact-version devDependency, installed from the lockfile with integrity hashes and without install
+// scripts (see pnpm-workspace.yaml). Bump it deliberately.
+const BULLETIN_DEPLOY = fileURLToPath(new URL("../node_modules/.bin/bulletin-deploy", import.meta.url));
+
+/** The environment bulletin-deploy runs with: what it needs, and nothing else from this process. */
+function bulletinDeployEnv() {
+  const names = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM", "CI", "NODE_OPTIONS", "DO_NOT_TRACK"];
+  const keep = (name) =>
+    name !== "GITHUB_TOKEN" &&
+    (names.includes(name) ||
+      ["MNEMONIC", "VITE_NETWORK", "APP_VERSION", "DOTNS_RPC"].includes(name) ||
+      /^(BULLETIN_|GITHUB_|RUNNER_|XDG_)/.test(name));
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => keep(name)));
+}
 
 const networks = JSON.parse(readFileSync(new URL("../src/config/networks.json", import.meta.url), "utf8"));
 const name = process.env.VITE_NETWORK;
@@ -61,8 +75,6 @@ if (owner) {
 }
 
 const args = [
-  "-y",
-  BULLETIN_DEPLOY,
   "--env",
   network.bulletinDeployEnv,
   "--js-merkle",
@@ -72,5 +84,9 @@ const args = [
   network.dotnsName,
 ];
 console.log(`Publishing ${network.dotnsName} to ${network.name} (bulletin-deploy --env ${network.bulletinDeployEnv})`);
-const run = spawnSync("npx", args, { stdio: "inherit", cwd: new URL("..", import.meta.url) });
+const run = spawnSync(BULLETIN_DEPLOY, args, {
+  stdio: "inherit",
+  cwd: new URL("..", import.meta.url),
+  env: bulletinDeployEnv(),
+});
 process.exit(run.status ?? 1);

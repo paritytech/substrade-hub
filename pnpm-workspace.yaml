@@ -3,6 +3,10 @@ packages:
   - contracts
 
 allowBuilds:
+  # The publish step runs bulletin-deploy with the deploy key, so its install script stays off. It
+  # only patches a shutdown crash in @novasamatech/sdk-statement during interactive phone pairing,
+  # which the key-signed publish never does, and bulletin-deploy guards against it when unpatched.
+  bulletin-deploy: false
   esbuild: true
 
 # Security fixes for transitive dependencies whose parents' ranges exclude the patched release.

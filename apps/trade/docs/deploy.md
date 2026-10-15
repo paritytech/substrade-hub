@@ -113,8 +113,11 @@ every network.
   4. fund the owner account again (`--only fund --fund <owner>`), update "Deployed contracts" above
      with the new addresses, commit, and rerun this workflow by hand: it re-registers the name and
      republishes.
-- **Pinned CLI.** The publish step runs `bulletin-deploy@0.22.0` because it handles the mnemonic; bump the
-  pin in `scripts/deploy-dot.mjs` deliberately after reviewing a release.
+- **Locked CLI.** The publish step handles the mnemonic, so `bulletin-deploy` is an exact-version
+  devDependency of `apps/trade` (0.22.0), installed from the lockfile with integrity hashes and with no
+  install scripts (`allowBuilds` in `pnpm-workspace.yaml`). `scripts/deploy-dot.mjs` runs that local
+  copy with only the environment it needs, and the publish and bootstrap jobs do not restore a pnpm
+  cache that other workflows write. Bump the version deliberately after reviewing a release.
 
 ## paseo-v2: one secret
 
