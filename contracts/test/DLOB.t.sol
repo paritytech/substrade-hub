@@ -400,6 +400,47 @@ contract DLOBTest is Test {
         assertEq(o.remainingAmount, 50e6);
     }
 
+    function testReduceBuyRefundsEscrowDifference() public {
+        // At price 0.05, 2,000,002 base escrows 100,001 quote and 1,000,001 base escrows 50,001,
+        // so reducing frees 50,000 (the freed 1,000,001 rounded up on its own would be 50,001).
+        uint256 aliceQuote = quoteToken.balanceOf(alice);
+        vm.prank(alice);
+        uint32 orderId =
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 2e6 + 2, bytes32(0), bytes32(0), 0, 0);
+        assertEq(aliceQuote - quoteToken.balanceOf(alice), 100_001);
+
+        vm.prank(alice);
+        dlob.reduceOrder(orderId, 1e6 + 1, bytes32(0));
+        assertEq(quoteToken.balanceOf(address(dlob)), 50_001, "the remaining escrow stays");
+
+        vm.prank(alice);
+        dlob.cancelOrder(orderId, bytes32(0));
+        assertEq(quoteToken.balanceOf(alice), aliceQuote, "whole escrow back, no more");
+        assertEq(quoteToken.balanceOf(address(dlob)), 0);
+    }
+
+    function testFuzzReduceThenCancelReturnsExactEscrow(
+        uint128 amount,
+        uint128 newAmount,
+        uint96 priceTicks
+    ) public {
+        amount = uint128(bound(amount, 2 * MIN_ORDER_SIZE, 1e15));
+        newAmount = uint128(bound(newAmount, MIN_ORDER_SIZE, amount - 1));
+        uint96 price = uint96(bound(priceTicks, 1, 1e6)) * TICK_SIZE;
+
+        uint256 aliceQuote = quoteToken.balanceOf(alice);
+        vm.prank(alice);
+        uint32 orderId =
+            dlob.placeLimitOrder(DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(alice);
+        dlob.reduceOrder(orderId, newAmount, bytes32(0));
+        vm.prank(alice);
+        dlob.cancelOrder(orderId, bytes32(0));
+
+        assertEq(quoteToken.balanceOf(alice), aliceQuote, "reduce plus cancel return the escrow");
+        assertEq(quoteToken.balanceOf(address(dlob)), 0, "nothing left behind or overpaid");
+    }
+
     function testReduceBelowMinCancels() public {
         vm.prank(alice);
         uint32 orderId =
