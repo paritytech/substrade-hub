@@ -28,7 +28,6 @@ contract DLOBHandler is Test {
     uint256 public ghostTotalActiveBuyEscrow;
     uint256 public ghostTotalActiveSellEscrow;
     uint256 public ghostTotalOrders;
-    uint256 public ghostTotalReduces;
 
     constructor(DLOB _dlob, MockERC20 _base, MockERC20 _quote, address[] memory _users) {
         dlob = _dlob;
@@ -147,9 +146,7 @@ contract DLOBHandler is Test {
         }
 
         vm.prank(o.owner);
-        try dlob.reduceOrder(orderId, newAmount, bytes32(0)) {
-            ghostTotalReduces++;
-        } catch {}
+        try dlob.reduceOrder(orderId, newAmount, bytes32(0)) {} catch {}
     }
 
     /// @notice Get total number of orders placed
@@ -504,7 +501,7 @@ contract DLOBFuzzTest is Test {
     function invariant_QuoteTokenConservation() public view {
         uint256 contractBalance = quoteToken.balanceOf(address(dlob));
 
-        // Contract balance should be >= sum of all active buy order escrows (with rounding tolerance)
+        // Contract balance should be >= the exact escrow of every active buy, rounded up as placed
         uint256 totalActiveBuyEscrow = 0;
         uint256 activeCount = 0;
         uint256 orderCount = handler.getOrderCount();
@@ -515,9 +512,8 @@ contract DLOBFuzzTest is Test {
                     o.status == DLOB.OrderStatus.Active && o.side == DLOB.Side.Buy
                         && o.remainingAmount > 0
                 ) {
-                    // Use floor division (not ceil) since reduce refunds ceil(freedAmount)
-                    // which can leave slightly less than ceil(remainingAmount) in the contract
-                    uint256 quoteAmount = uint256(o.remainingAmount) * uint256(o.price) / PRECISION;
+                    uint256 quoteAmount =
+                        (uint256(o.remainingAmount) * uint256(o.price) + PRECISION - 1) / PRECISION;
                     totalActiveBuyEscrow += quoteAmount;
                     activeCount++;
                 }
@@ -526,14 +522,7 @@ contract DLOBFuzzTest is Test {
             }
         }
 
-        // Allow rounding tolerance: each reduce introduces up to 1 wei gap (ceil refund vs floor escrow)
-        // Each partial fill during matching can also introduce 1 wei gap
-        uint256 tolerance = handler.ghostTotalReduces() + orderCount;
-        assertGe(
-            contractBalance + tolerance,
-            totalActiveBuyEscrow,
-            "Insufficient quote tokens for active buys"
-        );
+        assertGe(contractBalance, totalActiveBuyEscrow, "Insufficient quote tokens for active buys");
     }
 
     /// @notice Invariant: Order IDs are sequential and unique

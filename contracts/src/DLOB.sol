@@ -481,8 +481,14 @@ contract DLOB {
         uint32 nodeId = orderLinks[orderId].priceNodeId;
         if (nodeId != 0) nodes[nodeId].totalAmount -= freedAmount;
 
-        // Refund freed escrow
-        _refundEscrow(orderId, freedAmount, o.side, o.price, o.owner);
+        // Refund what the escrow shrinks by. For a buy, the escrow is rounded up, so the freed amount
+        // rounded up on its own could exceed the difference by one unit.
+        _refundEscrow(
+            orderId,
+            _escrowFor(o.side, oldAmount, o.price) - _escrowFor(o.side, newAmount, o.price),
+            o.side,
+            o.owner
+        );
 
         emit OrderReduced(orderId, oldAmount, newAmount, freedAmount);
     }
@@ -958,16 +964,17 @@ contract DLOB {
         emit ClaimCreated(claimId, orderId, claimType, destParaId, amount);
     }
 
-    function _refundEscrow(
-        uint32 orderId,
-        uint128 refundAmount,
-        Side side,
-        uint96 price,
-        address owner
-    ) internal returns (uint32 claimId) {
-        uint128 refundEscrow = side == Side.Sell
-            ? refundAmount
-            : PriceMath.quoteAmountCeil(refundAmount, price, PRECISION);
+    /// @dev Escrow held for `amount` of an order: base for a sell, quote rounded up for a buy.
+    function _escrowFor(Side side, uint128 amount, uint96 price) internal pure returns (uint128) {
+        return side == Side.Sell ? amount : PriceMath.quoteAmountCeil(amount, price, PRECISION);
+    }
+
+    /// @dev Return `refundEscrow` of the escrowed token (base for a sell, quote for a buy) to the
+    /// owner, or as a refund claim for a cross-chain order.
+    function _refundEscrow(uint32 orderId, uint128 refundEscrow, Side side, address owner)
+        internal
+        returns (uint32 claimId)
+    {
         uint32 destParaId = orderLinks[orderId].destParaId;
 
         if (destParaId == 0) {
@@ -1012,7 +1019,8 @@ contract DLOB {
         _removeOrder(orderId, o.side, o.price);
         totalOrders--;
 
-        uint32 claimId = _refundEscrow(orderId, refundAmount, o.side, o.price, o.owner);
+        uint32 claimId =
+            _refundEscrow(orderId, _escrowFor(o.side, refundAmount, o.price), o.side, o.owner);
 
         emit OrderCancelled(orderId, refundAmount, claimId);
     }
@@ -1032,7 +1040,7 @@ contract DLOB {
 
         _dequeueOrder(orderId, orderLinks[orderId].priceNodeId);
 
-        _refundEscrow(orderId, refundAmount, o.side, o.price, o.owner);
+        _refundEscrow(orderId, _escrowFor(o.side, refundAmount, o.price), o.side, o.owner);
 
         emit OrderExpired(orderId, refundAmount);
     }
