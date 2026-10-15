@@ -285,6 +285,105 @@ contract DLOBTest is Test {
         assertEq(baseToken.balanceOf(alice), balBefore + 300e6);
     }
 
+    // ──────────────────── Market Order Record Tests ─────────────
+
+    /// Cancel, reduce and batch-cancel must all refuse a market order, which never rests.
+    function _assertNotCancellable(address owner, uint32 orderId) internal {
+        assertEq(
+            dlob.getOrder(orderId).remainingAmount, 0, "market order keeps no remaining amount"
+        );
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(DLOB.OrderNotActive.selector, orderId));
+        dlob.cancelOrder(orderId, bytes32(0));
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(DLOB.OrderNotActive.selector, orderId));
+        dlob.reduceOrder(orderId, MIN_ORDER_SIZE, bytes32(0));
+
+        uint32[] memory ids = new uint32[](1);
+        ids[0] = orderId;
+        uint256 baseBefore = baseToken.balanceOf(address(dlob));
+        uint256 quoteBefore = quoteToken.balanceOf(address(dlob));
+        vm.prank(owner);
+        dlob.batchCancelOrders(ids, bytes32(0));
+        assertEq(baseToken.balanceOf(address(dlob)), baseBefore, "batch cancel moved no base");
+        assertEq(quoteToken.balanceOf(address(dlob)), quoteBefore, "batch cancel moved no quote");
+    }
+
+    function testUnfilledMarketSellCannotBeCancelled() public {
+        // A resting ask puts base escrow in the market.
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint32 orderId = dlob.nextOrderId();
+        uint256 aliceBase = baseToken.balanceOf(alice);
+        vm.prank(alice);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        _assertNotCancellable(alice, orderId);
+        assertEq(baseToken.balanceOf(alice), aliceBase, "unfilled sell returned exactly once");
+        assertEq(baseToken.balanceOf(address(dlob)), 300e6, "resting ask's escrow untouched");
+    }
+
+    function testPartlyFilledMarketSellCannotBeCancelled() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 40e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(charlie);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint32 orderId = dlob.nextOrderId();
+        uint256 aliceBase = baseToken.balanceOf(alice);
+        vm.prank(alice);
+        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        assertEq(filled, 40e6);
+
+        _assertNotCancellable(alice, orderId);
+        assertEq(aliceBase - baseToken.balanceOf(alice), 40e6, "paid only the filled base");
+        assertEq(baseToken.balanceOf(address(dlob)), 300e6, "resting ask's escrow untouched");
+    }
+
+    function testFilledMarketSellCannotBeCancelled() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(charlie);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint32 orderId = dlob.nextOrderId();
+        vm.prank(alice);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        _assertNotCancellable(alice, orderId);
+        assertEq(baseToken.balanceOf(address(dlob)), 300e6, "resting ask's escrow untouched");
+    }
+
+    function testMarketBuyCannotBeCancelled() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 50e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(charlie);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint32 orderId = dlob.nextOrderId();
+        vm.prank(alice);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        _assertNotCancellable(alice, orderId);
+    }
+
+    function testRestingOrderStillCancellableAfterMarketOrders() public {
+        vm.prank(bob);
+        uint32 restingId =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(alice);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+
+        uint256 bobBase = baseToken.balanceOf(bob);
+        vm.prank(bob);
+        dlob.cancelOrder(restingId, bytes32(0));
+        assertEq(baseToken.balanceOf(bob) - bobBase, 200e6, "refunds the unfilled 200e6");
+        assertEq(baseToken.balanceOf(address(dlob)), 0, "market holds no base afterwards");
+    }
+
     // ──────────────────── Reduce Order Tests ─────────────────
 
     function testReduceLocalOrder() public {

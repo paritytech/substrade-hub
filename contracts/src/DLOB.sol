@@ -403,6 +403,8 @@ contract DLOB {
         }
 
         filledAmount = amount - remaining;
+        // A market order never rests: nothing of it is left to cancel or reduce.
+        orders[orderId].remainingAmount = 0;
 
         // Slippage check
         if (minAmountOut > 0 && filledAmount < minAmountOut) revert SlippageExceeded();
@@ -428,8 +430,7 @@ contract DLOB {
     /// @notice Cancel a resting order.
     function cancelOrder(uint32 orderId, bytes32 originAccount) external nonReentrant {
         Order storage o = orders[orderId];
-        if (o.status != OrderStatus.Active) revert OrderNotActive(orderId);
-        if (o.remainingAmount == 0) revert OrderNotActive(orderId);
+        if (!_isResting(orderId)) revert OrderNotActive(orderId);
         if (msg.sender != o.owner) revert NotOrderOwner();
         if (originAccount != o.originAccount) revert WrongOriginAccount();
 
@@ -446,7 +447,7 @@ contract DLOB {
             Order storage o = orders[oid];
 
             // Skip silently if not cancellable
-            if (o.status != OrderStatus.Active || o.remainingAmount == 0) continue;
+            if (!_isResting(oid)) continue;
             if (msg.sender != o.owner) continue;
             if (originAccount != o.originAccount) continue;
 
@@ -460,8 +461,7 @@ contract DLOB {
         nonReentrant
     {
         Order storage o = orders[orderId];
-        if (o.status != OrderStatus.Active) revert OrderNotActive(orderId);
-        if (o.remainingAmount == 0) revert OrderNotActive(orderId);
+        if (!_isResting(orderId)) revert OrderNotActive(orderId);
         if (msg.sender != o.owner) revert NotOrderOwner();
         if (originAccount != o.originAccount) revert WrongOriginAccount();
         if (newAmount == 0) revert ReduceToZero();
@@ -970,6 +970,14 @@ contract DLOB {
                 ClaimType.Refund
             );
         }
+    }
+
+    /// @dev An order rests on the book when it is active, has an unfilled amount, and was inserted
+    /// into a price level. Market orders are never inserted, so they never qualify.
+    function _isResting(uint32 orderId) internal view returns (bool) {
+        Order storage o = orders[orderId];
+        return o.status == OrderStatus.Active && o.remainingAmount != 0
+            && orderLinks[orderId].priceNodeId != 0;
     }
 
     function _cancelOrderInternal(
