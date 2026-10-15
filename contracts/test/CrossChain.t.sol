@@ -550,13 +550,13 @@ contract CrossChainTest is Test {
         uint32 claimId = dlob.nextClaimId() - 1;
         assertEq(dlob.getPendingClaim(claimId).destParaId, PARA_1000);
 
-        // Alice redirects
+        // Alice redirects to another chain; the beneficiary stays her settlement account
         vm.prank(alice);
-        dlob.redirectClaim(claimId, ALICE_ORIGIN, PARA_3000, CHARLIE_SETTLEMENT);
+        dlob.redirectClaim(claimId, ALICE_ORIGIN, PARA_3000);
 
         DLOB.PendingClaim memory claim = dlob.getPendingClaim(claimId);
         assertEq(claim.destParaId, PARA_3000);
-        assertEq(claim.beneficiary, CHARLIE_SETTLEMENT);
+        assertEq(claim.beneficiary, ALICE_SETTLEMENT);
     }
 
     function testRedirectClaimWrongOwner() public {
@@ -574,7 +574,7 @@ contract CrossChainTest is Test {
 
         vm.prank(bob);
         vm.expectRevert(DLOB.NotOrderOwner.selector);
-        dlob.redirectClaim(claimId, BOB_ORIGIN, PARA_3000, BOB_SETTLEMENT);
+        dlob.redirectClaim(claimId, BOB_ORIGIN, PARA_3000);
     }
 
     function testRedirectClaimThenSettle() public {
@@ -592,7 +592,7 @@ contract CrossChainTest is Test {
 
         // Redirect
         vm.prank(alice);
-        dlob.redirectClaim(claimId, ALICE_ORIGIN, PARA_3000, CHARLIE_SETTLEMENT);
+        dlob.redirectClaim(claimId, ALICE_ORIGIN, PARA_3000);
 
         // Settle
         mockXcm.setShouldRevert(false);
@@ -616,10 +616,34 @@ contract CrossChainTest is Test {
 
         uint32 claimId = dlob.nextClaimId() - 1;
 
-        // Admin redirects (test contract is admin via factory)
+        // Admin redirects (test contract is admin via factory), and may change the beneficiary
         dlob.adminRedirectClaim(claimId, PARA_3000, CHARLIE_SETTLEMENT);
 
         assertEq(dlob.getPendingClaim(claimId).destParaId, PARA_3000);
+        assertEq(dlob.getPendingClaim(claimId).beneficiary, CHARLIE_SETTLEMENT);
+    }
+
+    /// Two traders behind one shared sender (a parachain's sovereign account) are told apart only by
+    /// originAccount. Presenting the victim's originAccount, the other can cancel and redirect, but
+    /// the refund still goes to the victim's settlement account.
+    function testRedirectByForgedOwnerKeepsBeneficiary() public {
+        address sovereign = alice;
+        vm.prank(sovereign);
+        uint32 victimOrder = dlob.placeLimitOrder{value: 1e9}(
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+        );
+
+        // The other trader, behind the same sender, presents the victim's originAccount.
+        vm.prank(sovereign);
+        dlob.cancelOrder(victimOrder, ALICE_ORIGIN);
+        uint32 claimId = dlob.nextClaimId() - 1;
+        vm.prank(sovereign);
+        dlob.redirectClaim(claimId, ALICE_ORIGIN, PARA_3000);
+
+        DLOB.PendingClaim memory claim = dlob.getPendingClaim(claimId);
+        assertEq(uint8(claim.claimType), uint8(DLOB.ClaimType.Refund));
+        assertEq(claim.destParaId, PARA_3000);
+        assertEq(claim.beneficiary, ALICE_SETTLEMENT, "refund still goes to the victim");
     }
 
     // ================== ASSET ID EXTRACTION ==================

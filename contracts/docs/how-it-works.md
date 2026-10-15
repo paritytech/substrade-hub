@@ -10,7 +10,7 @@ SubsTrade Hub runs an entire limit order book on-chain: order placement, matchin
 - **Cross-chain settlement via XCM.** Matched tokens are delivered to any Polkadot parachain using XCM reserve transfers. Traders on remote parachains place and settle orders without leaving their home chain. A single extrinsic handles token transfer, approval, and order placement atomically.
 - **Pending claim fallback.** If inline XCM delivery fails (e.g., destination chain congested, HRMP channel full), a `PendingClaim` is created instead of reverting. Funds remain safe on Asset Hub; anyone can call `claimSettlement()` later to retry, or `redirectClaim()` to reroute to a different destination. No funds are ever lost.
 - **Limit and market orders.** `placeLimitOrder()` rests on the book at a specific price with an optional expiry timestamp; `placeMarketOrder()` fills immediately against resting orders with a `minAmountOut` slippage protection parameter. Market orders never rest on the book.
-- **Order management.** Cancel individual orders or batch cancel multiple orders in one transaction. `reduceOrder()` shrinks a resting order's amount without losing its place in the FIFO queue. `redirectClaim()` lets owners change the settlement destination of a pending claim.
+- **Order management.** Cancel individual orders or batch cancel multiple orders in one transaction. `reduceOrder()` shrinks a resting order's amount without losing its place in the FIFO queue. `redirectClaim()` lets owners move a pending claim to another destination parachain.
 - **Lazy expiry.** Orders with an expiry timestamp are not removed by a keeper or cron job. Instead, expired orders are skipped and cleaned up during matching when the engine encounters them, and anyone can clear expired orders at a price level with `purgeExpired()`. Zero off-chain infrastructure required.
 - **Self-trade prevention.** The matching engine checks both `msg.sender` and `originAccount` (the trader's Substrate AccountId32). If an incoming order would match against a resting order from the same owner and the same origin account, the transaction reverts with `SelfTrade`. This prevents wash trading while still allowing the same entity to trade from different parachains.
 - **Red-Black Tree price levels.** Bid and ask prices are stored in a self-balancing red-black tree, giving O(log n) insert and remove with O(1) best bid/ask lookup. Each tree node holds a FIFO queue (doubly-linked list) of orders at that price level.
@@ -49,7 +49,7 @@ Beyond placement and cancellation, the DLOB supports:
 
 - **`reduceOrder()`:** Shrink a resting order's amount without cancelling it, keeping its place in the FIFO queue. If the new amount falls below `minOrderSize`, the order is cancelled automatically instead.
 - **`batchCancelOrders()`:** Cancel multiple orders in a single transaction to save gas.
-- **`redirectClaim()`:** Change the destination parachain and beneficiary of a `PendingClaim` before settling it. Useful if the original destination is unreachable.
+- **`redirectClaim()`:** Change the destination parachain of a `PendingClaim` before settling it. Useful if the original destination is unreachable. The beneficiary stays the order's settlement account; only `adminRedirectClaim()` can change it.
 
 ## Cross-Chain Flow
 
@@ -205,7 +205,7 @@ An order with pending claims cannot be cancelled; the `HasPendingClaims` error p
 
 ### Claim Redirect
 
-If a destination chain becomes unreachable (e.g., HRMP channel closed), the claim owner can call `redirectClaim(claimId, originAccount, newDestParaId, newBeneficiary)` to reroute delivery to a different parachain. The factory admin can also redirect any claim via `adminRedirectClaim()` as a safety measure.
+If a destination chain becomes unreachable (e.g., HRMP channel closed), the claim owner can call `redirectClaim(claimId, originAccount, newDestParaId)` to reroute delivery to a different parachain, for the same beneficiary. The factory admin can also redirect any claim, including its beneficiary, via `adminRedirectClaim()` as a safety measure.
 
 ## Destination Chain Requirements
 

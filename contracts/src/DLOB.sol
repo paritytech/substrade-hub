@@ -586,23 +586,23 @@ contract DLOB {
         if (!sent) revert TransferFailed();
     }
 
-    /// @notice Redirect a PendingClaim to a different destination.
-    function redirectClaim(
-        uint32 claimId,
-        bytes32 originAccount,
-        uint32 newDestParaId,
-        bytes32 newBeneficiary
-    ) external nonReentrant {
+    /// @notice Redirect a PendingClaim to a different destination parachain, for the same beneficiary.
+    function redirectClaim(uint32 claimId, bytes32 originAccount, uint32 newDestParaId)
+        external
+        nonReentrant
+    {
         PendingClaim storage claim = pendingClaims[claimId];
         if (claim.amount == 0) revert ClaimNotFound();
         Order storage o = orders[claim.orderId];
         if (msg.sender != o.owner) revert NotOrderOwner();
         if (originAccount != o.originAccount) revert WrongOriginAccount();
 
+        // Only the destination chain changes. The beneficiary stays the order's settlement account,
+        // so a redirect, even by a caller that shares the owner's msg.sender, still pays the trader.
+        // Changing the beneficiary takes adminRedirectClaim.
         claim.destParaId = newDestParaId;
-        claim.beneficiary = newBeneficiary;
 
-        emit ClaimRedirected(claimId, newDestParaId, newBeneficiary);
+        emit ClaimRedirected(claimId, newDestParaId, claim.beneficiary);
     }
 
     /// @notice Admin emergency redirect.
