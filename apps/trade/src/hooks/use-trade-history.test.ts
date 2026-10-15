@@ -1,10 +1,18 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { encodeAbiParameters, encodeEventTopics, fromHex } from "viem";
 import { dlobAbi } from "../abi/dlob";
 
 vi.mock("../lib/client", () => ({ getTypedApi: vi.fn() }));
+vi.mock("../lib/host/detect", () => ({ isInHost: () => false }));
 
-import { blockChunks, decodeTradesInBlock, estimateTimestamps } from "./use-trade-history";
+import {
+  ANCHOR_BLOCKS,
+  anchorBlocks,
+  blockChunks,
+  decodeTradesInBlock,
+  estimateTimestamps,
+  fetchEvmTrades,
+} from "./use-trade-history";
 
 const MARKET = "0x109088bd0e237449fde1a5b884c86f0559aae3a1";
 const OTHER = "0x0000000000000000000000000000000000000abc";
@@ -70,5 +78,75 @@ describe("blockChunks", () => {
   it("returns a single chunk for a short span and none for an empty one", () => {
     expect(blockChunks(5, 7, 300_000)).toEqual([[5, 7]]);
     expect(blockChunks(8, 7, 300_000)).toEqual([]);
+  });
+});
+
+describe("anchorBlocks", () => {
+  it("keeps every block when there are at most `n`", () => {
+    expect(anchorBlocks([1, 2, 3], 8)).toEqual([1, 2, 3]);
+  });
+
+  it("picks `n` evenly spaced blocks, including the first and the last", () => {
+    const blocks = Array.from({ length: 100 }, (_, i) => i);
+    const picked = anchorBlocks(blocks, 5);
+    expect(picked).toEqual([0, 25, 50, 74, 99]);
+  });
+});
+
+describe("fetchEvmTrades", () => {
+  const hex = (n: number) => `0x${n.toString(16)}`;
+  /** One Trade log per block from `first`, `count` blocks in all. */
+  function tradeLogs(first: number, count: number) {
+    const topics = encodeEventTopics({ abi: dlobAbi, eventName: "Trade", args: { buyOrderId: 1, sellOrderId: 2 } });
+    const data = encodeAbiParameters([{ type: "uint96" }, { type: "uint128" }], [221n * 10n ** 18n, 5_000_000n]);
+    return Array.from({ length: count }, (_, i) => ({
+      data,
+      topics,
+      blockNumber: hex(first + i),
+      transactionHash: `0x${(first + i).toString(16).padStart(64, "0")}`,
+      transactionIndex: "0x1",
+    }));
+  }
+
+  /** An eth-rpc stub at block `head` serving `logs`; returns the methods it was called with. */
+  function stubEthRpc(head: number, logs: unknown[]) {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        expect(init.signal).toBeInstanceOf(AbortSignal);
+        const { method, params } = JSON.parse(init.body as string) as { method: string; params: unknown[] };
+        calls.push(method);
+        const result =
+          method === "eth_blockNumber"
+            ? hex(head)
+            : method === "eth_getLogs"
+              ? logs
+              : { timestamp: hex(1_700_000_000 + 2 * parseInt(params[0] as string, 16)) };
+        return { json: async () => ({ result }) };
+      }),
+    );
+    return calls;
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("requests a bounded number of block timestamps however many blocks hold trades", async () => {
+    const calls = stubEthRpc(10_000, tradeLogs(5_000, 500));
+    const trades = await fetchEvmTrades("0x00000000000000000000000000000000000000b1");
+    expect(trades).toHaveLength(500);
+    expect(calls.filter((m) => m === "eth_getBlockByNumber").length).toBeLessThanOrEqual(ANCHOR_BLOCKS + 1);
+    // Estimated timestamps follow the anchors' block rate (2 s per block in this stub).
+    expect(trades[123]!.timestamp).toBe(1_700_000_000 + 2 * 5_123);
+  });
+
+  it("fails when eth-rpc does not answer in time, so the next poll retries", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      }),
+    );
+    await expect(fetchEvmTrades("0x00000000000000000000000000000000000000b2")).rejects.toThrow("timed out");
   });
 });

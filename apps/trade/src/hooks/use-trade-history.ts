@@ -76,11 +76,29 @@ export function estimateTimestamps(blocks: number[], known: Map<number, number>)
   return out;
 }
 
+/**
+ * Most blocks whose timestamp is requested per fetch: the first and last block holding a trade and
+ * evenly spaced ones between them. The other blocks' timestamps are estimated from these.
+ */
+export const ANCHOR_BLOCKS = 8;
+
+/** `n` evenly spaced entries of `blocks` (sorted), always including the first and the last. */
+export function anchorBlocks<T>(blocks: readonly T[], n: number): T[] {
+  if (blocks.length <= n) return [...blocks];
+  const picked = new Set<T>();
+  for (let i = 0; i < n; i++) picked.add(blocks[Math.round((i * (blocks.length - 1)) / (n - 1))]!);
+  return [...picked];
+}
+
+/** How long one eth-rpc request may take before it fails; the next poll retries it. */
+const ETH_RPC_TIMEOUT_MS = 30_000;
+
 async function ethRpc(method: string, params: unknown[] = []): Promise<unknown> {
   const res = await fetch(activeChain.rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    signal: AbortSignal.timeout(ETH_RPC_TIMEOUT_MS),
   });
   const json = (await res.json()) as { result?: unknown; error?: { message: string } };
   if (json.error) throw new Error(json.error.message);
@@ -103,7 +121,7 @@ const evmCache = new Map<string, Cached>();
  * window in `LOG_CHUNK_BLOCKS` chunks; later calls fetch only the blocks since the previous one, since
  * past logs never change.
  */
-async function fetchEvmTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]> {
+export async function fetchEvmTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]> {
   if (isInHost() && !(await requestRemoteAccess())) {
     throw new Error("network access to eth-rpc was not granted by the host");
   }
@@ -125,13 +143,15 @@ async function fetchEvmTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]> 
     ])) as EthLog[];
     logs.push(...chunk);
   }
+  // Only the newest trades are kept, so only their blocks need a timestamp.
+  logs.splice(0, Math.max(0, logs.length - MAX_TRADES));
 
-  // Batch the unique block timestamps (seconds) so candles bucket on wall-clock time. Pruned nodes
-  // cannot answer for old blocks, so those are estimated from the blocks that did answer.
+  // Timestamps (seconds) let candles bucket on wall-clock time. Only a few anchor blocks are requested,
+  // and the rest are estimated from them; pruned nodes cannot answer for old blocks either.
   const uniqueBlocks = [...new Set(logs.map((l) => l.blockNumber))];
   const known = new Map<number, number>();
   await Promise.all(
-    [...uniqueBlocks, blockHex].map(async (bn) => {
+    [...anchorBlocks(uniqueBlocks, ANCHOR_BLOCKS), blockHex].map(async (bn) => {
       const block = (await ethRpc("eth_getBlockByNumber", [bn, false]).catch(() => null)) as
         | { timestamp?: string }
         | null;
