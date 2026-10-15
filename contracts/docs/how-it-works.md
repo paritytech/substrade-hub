@@ -11,7 +11,7 @@ SubsTrade Hub runs an entire limit order book on-chain: order placement, matchin
 - **Pending claim fallback.** If inline XCM delivery fails (e.g., destination chain congested, HRMP channel full), a `PendingClaim` is created instead of reverting. Funds remain safe on Asset Hub; anyone can call `claimSettlement()` later to retry, or `redirectClaim()` to reroute to a different destination. No funds are ever lost.
 - **Limit and market orders.** `placeLimitOrder()` rests on the book at a specific price with an optional expiry timestamp; `placeMarketOrder()` fills immediately against resting orders with a `minAmountOut` slippage protection parameter. Market orders never rest on the book.
 - **Order management.** Cancel individual orders or batch cancel multiple orders in one transaction. `reduceOrder()` shrinks a resting order's amount without losing its place in the FIFO queue. `redirectClaim()` lets owners change the settlement destination of a pending claim.
-- **Lazy expiry.** Orders with an expiry timestamp are not removed by a keeper or cron job. Instead, expired orders are skipped and cleaned up during matching when the engine encounters them. Zero off-chain infrastructure required.
+- **Lazy expiry.** Orders with an expiry timestamp are not removed by a keeper or cron job. Instead, expired orders are skipped and cleaned up during matching when the engine encounters them, and anyone can clear expired orders at a price level with `purgeExpired()`. Zero off-chain infrastructure required.
 - **Self-trade prevention.** The matching engine checks both `msg.sender` and `originAccount` (the trader's Substrate AccountId32). If an incoming order would match against a resting order from the same owner and the same origin account, the transaction reverts with `SelfTrade`. This prevents wash trading while still allowing the same entity to trade from different parachains.
 - **Red-Black Tree price levels.** Bid and ask prices are stored in a self-balancing red-black tree, giving O(log n) insert and remove with O(1) best bid/ask lookup. Each tree node holds a FIFO queue (doubly-linked list) of orders at that price level.
 
@@ -37,7 +37,7 @@ The matching engine runs inline during order placement. When a new order crosses
 2. Each fill transfers tokens between the maker and taker. Buy orders always execute at the **ask price** (the maker's price), so buyers may get a better price than their limit
 3. If a buy order fills at a price lower than its limit, the excess quote tokens are refunded to the buyer immediately
 4. The engine stops after **50 fills** (`MAX_FILLS_PER_TX`). If the incoming order still has remaining amount, it rests on the book at its limit price
-5. Expired orders encountered during the walk are skipped and lazily removed; they don't count toward the 50-fill cap
+5. Expired orders encountered during the walk are skipped and lazily removed; each one counts toward the 50-fill cap, so a backlog of expired orders cannot make one transaction's work unbounded. `purgeExpired(side, price, maxOrders)` removes expired orders at one price level in bounded batches
 
 ### Self-Trade Prevention
 

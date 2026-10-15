@@ -543,6 +543,94 @@ contract DLOBTest is Test {
         assertEq(uint8(bobOrder.status), uint8(DLOB.OrderStatus.Cancelled));
     }
 
+    // ──────────────────── Expired Order Backlog Tests ─────────────
+
+    uint256 constant MAX_FILLS_PER_TX = 50;
+
+    /// Charlie rests `n` minimum-size asks at `price`, all expiring at `expiry`; returns the first id.
+    function _expiringAsks(uint256 n, uint96 price, uint64 expiry) internal returns (uint32 first) {
+        first = dlob.nextOrderId();
+        for (uint256 i = 0; i < n; i++) {
+            vm.prank(charlie);
+            dlob.placeLimitOrder(
+                DLOB.Side.Sell, price, MIN_ORDER_SIZE, bytes32(0), bytes32(0), 0, expiry
+            );
+        }
+    }
+
+    function _countCancelled(uint32 first, uint256 n) internal view returns (uint256 cancelled) {
+        for (uint32 id = first; id < first + n; id++) {
+            if (dlob.getOrder(id).status == DLOB.OrderStatus.Cancelled) cancelled++;
+        }
+    }
+
+    function testExpiredCleanupCountsTowardFillCap() public {
+        vm.warp(1000);
+        uint32 first = _expiringAsks(60, 50e15, 1500);
+        vm.prank(bob); // live liquidity behind the expired level
+        dlob.placeLimitOrder(DLOB.Side.Sell, 51e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        vm.warp(2000);
+
+        // The first taker transaction does at most MAX_FILLS_PER_TX units of work: here, all expiries.
+        vm.prank(alice);
+        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, 0, bytes32(0), bytes32(0), 0);
+        assertEq(filled, 0, "the cap is spent on expired orders");
+        assertEq(_countCancelled(first, 60), MAX_FILLS_PER_TX, "exactly the cap is cleaned up");
+
+        // The next one finishes the cleanup and reaches the live ask.
+        vm.prank(alice);
+        filled = dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, 0, bytes32(0), bytes32(0), 0);
+        assertEq(filled, 10e6, "fills once the backlog is gone");
+        assertEq(_countCancelled(first, 60), 60);
+    }
+
+    function testLargeExpiredBacklogStaysBoundedPerTransaction() public {
+        vm.warp(1000);
+        uint32 first = _expiringAsks(400, 50e15, 1500);
+        vm.warp(2000);
+
+        vm.prank(alice);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, 0, bytes32(0), bytes32(0), 0);
+        assertEq(_countCancelled(first, 400), MAX_FILLS_PER_TX, "one transaction, one cap of work");
+    }
+
+    function testPurgeExpiredRemovesOnlyExpiredOrders() public {
+        vm.warp(1000);
+        uint32 first = _expiringAsks(3, 50e15, 1500);
+        vm.prank(bob);
+        uint32 live = dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 7e6, bytes32(0), bytes32(0), 0, 0);
+        _expiringAsks(2, 50e15, 1500);
+        vm.warp(2000);
+
+        uint256 charlieBase = baseToken.balanceOf(charlie);
+        vm.prank(alice); // anyone can purge
+        assertEq(dlob.purgeExpired(DLOB.Side.Sell, 50e15, 2), 2, "examines at most maxOrders");
+        vm.prank(alice);
+        assertEq(dlob.purgeExpired(DLOB.Side.Sell, 50e15, 100), 3, "skips the live order");
+
+        assertEq(_countCancelled(first, 6), 5, "every expired order removed");
+        assertEq(uint8(dlob.getOrder(live).status), uint8(DLOB.OrderStatus.Active));
+        assertEq(baseToken.balanceOf(charlie) - charlieBase, 5 * MIN_ORDER_SIZE, "owners refunded");
+        assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, 50e15), 7e6, "only the live order remains");
+    }
+
+    function testPurgeExpiredRemovesEmptyLevel() public {
+        vm.warp(1000);
+        _expiringAsks(4, 50e15, 1500);
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 52e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        vm.warp(2000);
+
+        dlob.purgeExpired(DLOB.Side.Sell, 50e15, 100);
+        assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, 50e15), 0);
+        (, uint96 bestAsk) = dlob.getBestPrices();
+        assertEq(bestAsk, 52e15, "best ask moves past the purged level");
+    }
+
+    function testPurgeExpiredUnknownLevelIsNoop() public {
+        assertEq(dlob.purgeExpired(DLOB.Side.Buy, 50e15, 10), 0);
+    }
+
     // ──────────────────── View Tests ──────────────────────────
 
     function testGetSpread() public {
