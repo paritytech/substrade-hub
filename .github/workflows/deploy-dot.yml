@@ -2,8 +2,9 @@ name: Deploy .dot app
 
 # Builds the trading UI for one network and publishes it to that network's Bulletin chain, pointing the
 # network's dotNS name (apps/trade/src/config/networks.json `dotnsName`) at the new bundle and
-# registering the name when it is free. Manual by default; a `dot-v*` tag publishes to previewnet.
-# After a testnet reset, rerun it by hand to restore the name. See apps/trade/docs/deploy.md.
+# registering the name when it is free. release.yml calls it for every network when a `dot-v*` tag is
+# pushed; run it by hand to publish one network, for example to restore the name after a testnet reset.
+# See apps/trade/docs/deploy.md.
 #
 # Each network deploys from its own GitHub environment, `<network>-deploy`, which holds the secret
 # DOTNS_MNEMONIC (the mnemonic of the account that owns, or will register, the name, funded on that
@@ -21,26 +22,33 @@ on:
       version:
         description: "App version MAJOR.MINOR.PATCH (published as appVersion)"
         required: true
-  push:
-    tags: ["dot-v*"]
-
-# Shared with the bootstrap workflow: both sign with the same account, so they never run at once.
-concurrency:
-  group: chain-${{ github.event.inputs.network || 'previewnet' }}
-  cancel-in-progress: false
+  workflow_call:
+    inputs:
+      network:
+        description: "Network to publish to (a key of apps/trade/src/config/networks.json)"
+        type: string
+        required: true
+      version:
+        description: "App version MAJOR.MINOR.PATCH (published as appVersion)"
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 jobs:
   publish:
-    name: Build & publish (${{ github.event.inputs.network || 'previewnet' }})
+    name: Build & publish (${{ inputs.network }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Shared with the bootstrap workflow: both sign with the same account, so they never run at once.
+    concurrency:
+      group: chain-${{ inputs.network }}
+      cancel-in-progress: false
     # Protected environment: gates DOTNS_MNEMONIC behind the branch rules set in repo settings.
-    environment: ${{ github.event.inputs.network || 'previewnet' }}-deploy
+    environment: ${{ inputs.network }}-deploy
     env:
-      VITE_NETWORK: ${{ github.event.inputs.network || 'previewnet' }}
+      VITE_NETWORK: ${{ inputs.network }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -60,20 +68,16 @@ jobs:
       - name: Generate PAPI descriptors
         run: pnpm --filter @substrade-hub/trade exec papi generate
 
-      # Version comes from the tag (dot-v1.2.3 -> 1.2.3) or the workflow_dispatch input. Validate here so
-      # a malformed value fails before we publish.
+      # Version comes from the input (release.yml passes the tag's version). Validate here so a malformed
+      # value fails before we publish.
       - name: Resolve app version
         id: ver
         # Never interpolate the untrusted input into the script body. Pass it via env, then validate
-        # before use. GITHUB_EVENT_NAME / GITHUB_REF_NAME are trusted runner defaults.
+        # before use.
         env:
-          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            V="${GITHUB_REF_NAME#dot-v}"
-          else
-            V="$INPUT_VERSION"
-          fi
+          V="$INPUT_VERSION"
           if ! printf '%s' "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::version '$V' is not MAJOR.MINOR.PATCH"; exit 1
           fi

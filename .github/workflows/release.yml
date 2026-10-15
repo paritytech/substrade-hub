@@ -1,0 +1,79 @@
+name: Release
+
+# Publishes a release of the trading UI to every network in apps/trade/src/config/networks.json when a
+# `dot-vX.Y.Z` tag is pushed on a commit of master, then creates the GitHub Release with notes
+# generated from the merged PRs. The "Protect dot-v release tags" ruleset limits who can push such a
+# tag. Each network publishes through deploy-dot.yml from its own `<network>-deploy` environment, whose
+# deployment rules must allow `dot-v*` tags. See apps/trade/docs/deploy.md.
+
+on:
+  push:
+    tags: ["dot-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check the tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      networks: ${{ steps.check.outputs.networks }}
+      published: ${{ steps.check.outputs.published }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      # GITHUB_REF_NAME and GITHUB_SHA are trusted runner defaults; the tag name is validated before use.
+      - name: Check the version, and that the tag is on master
+        id: check
+        run: |
+          V="${GITHUB_REF_NAME#dot-v}"
+          if ! printf '%s' "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag $GITHUB_REF_NAME is not dot-vMAJOR.MINOR.PATCH"; exit 1
+          fi
+          git fetch -q origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on master"; exit 1
+          fi
+          PREV=$(git tag --list 'dot-v*' --sort=-v:refname | grep -vxF "$GITHUB_REF_NAME" | head -1 || true)
+          if [ -n "$PREV" ] && [ "$(printf '%s\n%s\n' "${PREV#dot-v}" "$V" | sort -V | tail -1)" != "$V" ]; then
+            echo "::error::$V is not newer than the previous release $PREV"; exit 1
+          fi
+          NETWORKS=apps/trade/src/config/networks.json
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "networks=$(jq -c 'keys' "$NETWORKS")" >> "$GITHUB_OUTPUT"
+          echo "published=$(jq -r 'to_entries | map("`\(.value.dotnsName)` (\(.value.name))") | join(", ")' "$NETWORKS")" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish
+    needs: check
+    strategy:
+      # Every network publishes even when another fails; rerun the failed ones before the release.
+      fail-fast: false
+      matrix:
+        network: ${{ fromJSON(needs.check.outputs.networks) }}
+    uses: ./.github/workflows/deploy-dot.yml
+    with:
+      network: ${{ matrix.network }}
+      version: ${{ needs.check.outputs.version }}
+    secrets: inherit
+
+  release:
+    name: Create the GitHub Release
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PUBLISHED: ${{ needs.check.outputs.published }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "SubsTrade Hub $VERSION" --generate-notes \
+            --notes "Published as $PUBLISHED."
