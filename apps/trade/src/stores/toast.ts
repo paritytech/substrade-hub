@@ -80,14 +80,12 @@ export const useToastStore = create<ToastState>((set) => {
   };
 });
 
-/** How long a placed transaction's toast waits for finality before it is dismissed anyway. */
-const FINALITY_TOAST_MS = 90_000;
-
 /**
  * Show a transaction's steps on toast `id`. While it is signed and submitted the toast stays pending with
- * `pending` ("Placing buy order"). With `done` ("Buy order placed"), inclusion marks it a success that
- * waits for finality, and finality confirms it; without `done` (an intermediate step such as an approval)
- * the toast stays pending throughout and finality is not shown. A toast closed by the user stays closed.
+ * `pending` ("Placing buy order"). With `done` ("Buy order placed"), inclusion marks it a success; without
+ * `done` (an intermediate step such as an approval) the toast stays pending. Finality is not shown: the
+ * transaction library reports no failure after inclusion, so a finality step could only ever confirm. A
+ * toast closed by the user stays closed.
  */
 export function txProgressToast(
   id: number,
@@ -98,11 +96,8 @@ export function txProgressToast(
     if (step === "signed") updateToast(id, "pending", `${labels.pending}: signed...`);
     else if (step === "submitted") updateToast(id, "pending", `${labels.pending}: submitted...`);
     else if (step === "in-block") {
-      if (labels.done) {
-        updateToast(id, "success", `${labels.done}. Awaiting finality...`, { durationMs: FINALITY_TOAST_MS });
-      } else {
-        updateToast(id, "pending", `${labels.pending}: included in a block...`);
-      }
-    } else if (labels.done) updateToast(id, "success", `${labels.done}. Confirmed.`);
+      if (labels.done) updateToast(id, "success", labels.done);
+      else updateToast(id, "pending", `${labels.pending}: included in a block...`);
+    }
   };
 }

@@ -10,7 +10,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("txProgressToast", () => {
-  it("walks a placed transaction from pending to confirmed", () => {
+  it("walks a placed transaction from pending to success at inclusion", () => {
     const id = useToastStore.getState().addToast("pending", "Placing buy order: waiting for signature...");
     const progress = txProgressToast(id, { pending: "Placing buy order", done: "Buy order placed" });
 
@@ -19,13 +19,11 @@ describe("txProgressToast", () => {
     progress("submitted");
     expect(toast(id)).toMatchObject({ type: "pending", message: "Placing buy order: submitted..." });
     progress("in-block");
-    expect(toast(id)).toMatchObject({ type: "success", message: "Buy order placed. Awaiting finality..." });
+    expect(toast(id)).toMatchObject({ type: "success", message: "Buy order placed" });
 
-    // Waiting for finality outlasts the usual success duration.
-    vi.advanceTimersByTime(30_000);
-    expect(toast(id)).toBeDefined();
+    // Finality leaves the success as it is, and the toast closes after the usual duration.
     progress("finalized");
-    expect(toast(id)).toMatchObject({ type: "success", message: "Buy order placed. Confirmed." });
+    expect(toast(id)).toMatchObject({ type: "success", message: "Buy order placed" });
     vi.advanceTimersByTime(5_000);
     expect(toast(id)).toBeUndefined();
   });
