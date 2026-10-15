@@ -132,15 +132,18 @@ First setup:
    then delete any local copy.
 2. Fund `DOTNS_OWNER` from the faucet: about 425 PAS for the bootstrap, plus 5 PAS for the name deposit
    and fees.
-3. Run the **Bootstrap network** workflow for `paseo-v2`. It takes about 20 minutes and pushes its
-   progress (`contracts/deployments/paseo-v2.json` and the addresses in `networks.json`) to the branch
-   `bootstrap/paseo-v2`, even when it fails; a rerun resumes from that branch. When it succeeds, open a
-   PR from that branch, add the new addresses to "Deployed contracts" in it, merge it, and delete the
-   branch.
+3. Run the **Bootstrap network** workflow for `paseo-v2`. It takes about 20 minutes. Every run keeps its
+   progress (`contracts/deployments/paseo-v2.json`) as a workflow artifact, even when it fails, and a
+   rerun resumes from the newest progress kept by a bootstrap run on `master` since the deployment
+   record last changed. It also pushes the progress and the addresses in `networks.json` to the branch
+   `bootstrap/paseo-v2`, which the bootstrap itself never reads. When it succeeds, open a PR from that
+   branch, add the new addresses to "Deployed contracts" in it, merge it, and delete the branch.
 4. Run the **Deploy .dot app** workflow for `paseo-v2`.
 
 After a reset, make one PR with steps 1 to 3 of "After a testnet reset" above (step 3 deletes
-`contracts/deployments/paseo-v2.json`), fund the owner from the faucet again, and run both workflows.
+`contracts/deployments/paseo-v2.json`, so the next bootstrap ignores every earlier run's progress),
+fund the owner from the faucet again, and run both workflows. A redeploy of new contracts on the same
+chain works the same way: deleting the deployment record makes the bootstrap start fresh.
 
 ## Manual publish
 

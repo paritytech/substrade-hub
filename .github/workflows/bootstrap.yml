@@ -8,10 +8,12 @@ name: Bootstrap network
 # the .dot publish uses: its root account funds the run and owns the test assets and the dotNS name,
 # and the EVM keys are its BIP-44 accounts. Fund that account (DOTNS_OWNER) before the first run.
 #
-# The run's progress, contracts/deployments/<network>.json, holds no secret. It is pushed with
-# networks.json to the branch `bootstrap/<network>` even when the run fails, and the next run resumes
-# from that file (its `config` step rewrites the addresses in networks.json from it). Open a PR from the
-# branch once the run succeeds.
+# The run's progress, contracts/deployments/<network>.json, holds no secret. Every run keeps it as the
+# artifact `bootstrap-state-<network>`, even when it fails, and the next run resumes from the newest one
+# kept by a bootstrap run on master, the reviewed workflow. Only runs started after the last commit that
+# changed the deployment record count, so a new deployment, whose PR deletes or replaces the record,
+# starts fresh. The progress and the addresses in networks.json are also pushed to the branch
+# `bootstrap/<network>`, for the PR that brings them to master; the bootstrap never reads that branch.
 
 on:
   workflow_dispatch:
@@ -35,6 +37,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read # find and download the progress kept by earlier runs
   contents: write
 
 jobs:
@@ -50,15 +53,29 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: recursive
+          fetch-depth: 0 # the history of the deployment record decides which runs can be resumed
 
-      - name: Resume from the bootstrap branch
+      - name: Resume from an earlier run on master
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if git fetch --depth=1 origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" 2>/dev/null; then
-            git checkout "origin/$BRANCH" -- "contracts/deployments/$NETWORK.json"
-            echo "Resuming from $BRANCH"
-          else
-            echo "No $BRANCH branch; starting fresh"
-          fi
+          FILE="contracts/deployments/$NETWORK.json"
+          SINCE=$(git log -1 --format=%ct -- "$FILE")
+          echo "Deployment record last changed: ${SINCE:-never} (unix time)"
+          RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow bootstrap.yml --branch master \
+            --event workflow_dispatch --limit 100 --json databaseId,createdAt \
+            --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID)
+                   | select((.createdAt | fromdateiso8601) > ${SINCE:-0})]
+                  | sort_by(.createdAt) | reverse | .[].databaseId")
+          for RUN in $RUNS; do
+            DIR=$(mktemp -d)
+            if gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name "bootstrap-state-$NETWORK" --dir "$DIR" 2>/dev/null; then
+              cp "$DIR/$NETWORK.json" "$FILE"
+              echo "Resuming from the progress of run $RUN"
+              exit 0
+            fi
+          done
+          echo "No earlier progress since the last deployment record; starting from the committed state"
 
       - name: Install foundry-polkadot
         env:
@@ -105,6 +122,15 @@ jobs:
             args+=(--fund "$account")
           done
           node scripts/bootstrap.mjs "${args[@]}"
+
+      - name: Keep the progress for the next run
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bootstrap-state-${{ github.event.inputs.network }}
+          path: contracts/deployments/${{ github.event.inputs.network }}.json
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Push the progress to the bootstrap branch
         if: always()
