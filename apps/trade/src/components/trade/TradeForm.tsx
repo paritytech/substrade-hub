@@ -7,7 +7,11 @@ import { useMarketStore } from "../../stores/market";
 import { usePlaceOrder } from "../../hooks/use-place-order";
 import { useBestPrices } from "../../hooks/use-best-prices";
 import { useOrderBook } from "../../hooks/use-order-book";
-import { DEFAULT_SLIPPAGE_BPS, estimateMarketOrder } from "../../lib/market-order";
+import {
+  DEFAULT_SLIPPAGE_BPS,
+  MAX_PRICE_IMPACT_BPS,
+  estimateMarketOrder,
+} from "../../lib/market-order";
 import { useTokenBalance } from "../../hooks/use-token-balance";
 import { FundingNotice } from "../wallet/FundingNotice";
 import {
@@ -37,7 +41,7 @@ export function TradeForm() {
     e.preventDefault();
     if (!amount) return;
     placeOrder.mutate(
-      { side, orderType, price, amount },
+      { side, orderType, price, amount, limitPrice: marketEstimate?.limitPrice },
       { onSuccess: () => reset() },
     );
   };
@@ -69,6 +73,7 @@ export function TradeForm() {
     }
   }
   const slippagePercent = Number(DEFAULT_SLIPPAGE_BPS) / 100;
+  const maxImpactPercent = Number(MAX_PRICE_IMPACT_BPS) / 100;
 
   const isBuy = side === Side.Buy;
   // Cheap UX hint: a market order fills against the opposite side, so disable submit when that side is
@@ -170,7 +175,8 @@ export function TradeForm() {
           {marketEstimate.fillable < marketAmount && (
             <div className="mt-1.5 text-text-secondary">
               Only <Amount value={marketEstimate.fillable} decimals={baseDecimals} />{" "}
-              {market?.base.symbol} can fill at the prices shown; the rest is returned unfilled.
+              {market?.base.symbol} can fill within {maxImpactPercent}% of the best price; the rest
+              is returned unfilled.
             </div>
           )}
         </div>
@@ -193,7 +199,7 @@ export function TradeForm() {
 
       <button
         type="submit"
-        disabled={!h160 || !amount || noLiquidity}
+        disabled={!h160 || !amount || noLiquidity || (orderType === "market" && !marketEstimate)}
         className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium text-white disabled:opacity-60 ${buttonColor}`}
       >
         {placeOrder.isPending && <Spinner className="h-4 w-4" />}

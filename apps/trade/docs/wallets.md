@@ -96,10 +96,12 @@ a signing problem, and it affects the EVM path identically.
 ### A market order filled only part of its amount
 
 Before sending a market order, the app prices it against the book and shows what you pay (or receive),
-the average price, and a price limit: the worst price it reaches plus a 1% slippage tolerance. The
-contract stops matching at that limit, so if the book moved or holds only orders at worse prices, the
-rest of the amount is returned unfilled and you never pay beyond the limit. A buy approves only the
-amount times that limit. The form also warns when the visible book cannot fill the whole amount.
+the average price, and a price limit: the worst price it reaches plus a 1% slippage tolerance, never
+more than 10% from the best price. Orders resting beyond that 10% are not filled, so an order at an
+extreme price cannot fill yours. The order carries exactly the limit shown, and the contract stops
+matching there: if the book moved or holds only orders at worse prices, the rest of the amount is
+returned unfilled. A buy approves only the amount times that limit. The form warns when the book
+cannot fill the whole amount within 10% of the best price.
 
 ### "No sell-side liquidity to fill this market order" (or "buy-side")
 

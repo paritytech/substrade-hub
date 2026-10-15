@@ -18,6 +18,8 @@ interface PlaceOrderParams {
   orderType: "limit" | "market";
   price: string;
   amount: string;
+  /** Market orders: the price limit the form displayed, so the order carries what the user saw. */
+  limitPrice?: bigint;
 }
 
 export function usePlaceOrder() {
@@ -99,8 +101,8 @@ export function usePlaceOrder() {
           const escrowToken =
             params.side === Side.Buy ? market.quote.addr : market.base.addr;
 
-          // Price the order against the current book: the limit lets it move at most the slippage
-          // tolerance past the worst level the estimate reaches, and bounds what a buy can spend.
+          // The order carries the limit the form displayed; it also bounds what a buy can spend. The
+          // fresh book only confirms there is something to fill (and prices orders sent without a form).
           const opposite = params.side === Side.Buy ? Side.Sell : Side.Buy;
           const estimate = estimateMarketOrder(
             params.side,
@@ -112,7 +114,8 @@ export function usePlaceOrder() {
               `No ${params.side === Side.Buy ? "sell-side" : "buy-side"} liquidity to fill this market order right now. Place a limit order instead.`,
             );
           }
-          const approveAmount = marketApproveAmount(params.side, amount, estimate.limitPrice);
+          const limitPrice = params.limitPrice ?? estimate.limitPrice;
+          const approveAmount = marketApproveAmount(params.side, amount, limitPrice);
 
           const currentAllowance = (await readContract(
             erc20Abi,
@@ -136,7 +139,7 @@ export function usePlaceOrder() {
           const marketArgs = [
             params.side,
             amount,
-            estimate.limitPrice,
+            limitPrice,
             0n,
             originAccount,
             ZERO_BYTES32,
