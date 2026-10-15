@@ -1,4 +1,4 @@
-import { useUserOrders } from "../../hooks/use-user-orders";
+import { SCAN_WINDOW, useUserOrders } from "../../hooks/use-user-orders";
 import { useCancelOrder } from "../../hooks/use-cancel-order";
 import { useMarketStore } from "../../stores/market";
 import { Side } from "../../types/market";
@@ -8,7 +8,8 @@ import { Spinner } from "../ui/Spinner";
 export function OpenOrders() {
   const market = useMarketStore((s) => s.selectedMarket);
   const priceDecimals = tickToDisplayDecimals(market?.tickSize ?? 10n ** 18n);
-  const { data: orders, isLoading } = useUserOrders();
+  const { data, isLoading } = useUserOrders();
+  const orders = data?.orders;
   const cancelOrder = useCancelOrder();
 
   return (
@@ -22,6 +23,12 @@ export function OpenOrders() {
           <span className="text-xs text-text-muted">({orders.length})</span>
         )}
       </div>
+
+      {data?.hasGap && (
+        <p className="border-b border-border px-3 py-1.5 text-xs text-text-muted">
+          Open orders placed from another device before the last {SCAN_WINDOW} orders may not be listed.
+        </p>
+      )}
 
       <div className="overflow-auto text-xs">
         <table className="w-full">
