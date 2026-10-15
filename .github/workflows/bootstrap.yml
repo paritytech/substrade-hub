@@ -70,6 +70,7 @@ jobs:
           for RUN in $RUNS; do
             DIR=$(mktemp -d)
             if gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name "bootstrap-state-$NETWORK" --dir "$DIR" 2>/dev/null; then
+              mkdir -p "$(dirname "$FILE")" # gone from master once its last record is deleted
               cp "$DIR/$NETWORK.json" "$FILE"
               echo "Resuming from the progress of run $RUN"
               exit 0
