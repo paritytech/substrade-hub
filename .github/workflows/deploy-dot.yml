@@ -88,6 +88,7 @@ jobs:
       - name: Publish to Bulletin and point the dotNS name at it
         working-directory: apps/trade
         env:
+          DO_NOT_TRACK: "1" # no telemetry from the job that holds the deploy key
           MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
           DOTNS_OWNER: ${{ vars.DOTNS_OWNER }}
           APP_VERSION: ${{ steps.ver.outputs.app_version }}

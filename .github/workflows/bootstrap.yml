@@ -106,6 +106,7 @@ jobs:
         working-directory: contracts
         # Inputs reach the script through env and are validated, never interpolated into it.
         env:
+          DO_NOT_TRACK: "1" # no telemetry from the job that holds the deploy key
           DEPLOY_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
           STEP: ${{ github.event.inputs.step }}
           FUND: ${{ github.event.inputs.fund }}
