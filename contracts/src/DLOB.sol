@@ -487,6 +487,31 @@ contract DLOB {
         emit OrderReduced(orderId, oldAmount, newAmount, freedAmount);
     }
 
+    /// @notice Remove expired orders at one price level, refunding their owners. Anyone can call it,
+    /// so a backlog of expired orders can be cleared in bounded batches.
+    /// @param maxOrders Maximum number of orders examined, expired or not.
+    /// @return purged Number of expired orders removed.
+    function purgeExpired(Side side, uint96 price, uint32 maxOrders)
+        external
+        nonReentrant
+        returns (uint32 purged)
+    {
+        uint32 nodeId = side == Side.Buy ? bidPriceToNode[price] : askPriceToNode[price];
+        if (nodeId == 0) return 0;
+
+        uint32 orderId = nodes[nodeId].orderHead;
+        for (uint32 examined = 0; orderId != 0 && examined < maxOrders; examined++) {
+            uint32 next = orderLinks[orderId].next;
+            uint64 expiry = orders[orderId].expireTimestamp;
+            if (expiry != 0 && uint64(block.timestamp) >= expiry) {
+                _expireOrder(orderId);
+                purged++;
+            }
+            orderId = next;
+        }
+        if (nodes[nodeId].orderCount == 0) _removeLevel(nodeId, side, price);
+    }
+
     /// @notice Execute a cross-chain settlement (fill or refund).
     function claimSettlement(uint32 claimId) external payable nonReentrant {
         PendingClaim storage claim = pendingClaims[claimId];
@@ -711,11 +736,13 @@ contract DLOB {
                 Order storage maker = orders[makerOrderId];
                 uint32 nextMaker = orderLinks[makerOrderId].next;
 
-                // Lazy expiry
+                // Lazy expiry. Counts toward MAX_FILLS_PER_TX, so expired orders cannot make one
+                // transaction's work unbounded.
                 if (maker.expireTimestamp != 0 && uint64(block.timestamp) >= maker.expireTimestamp)
                 {
                     _expireOrder(makerOrderId);
                     makerOrderId = nextMaker;
+                    fillCount++;
                     continue;
                 }
 
@@ -747,13 +774,7 @@ contract DLOB {
             }
 
             // If price level empty, remove from tree
-            if (askNode.orderCount == 0) {
-                uint96 removedPrice = askNode.price;
-                delete askPriceToNode[removedPrice];
-                askTreeRoot = RedBlackTree.remove(nodes, askTreeRoot, bestAskNodeId);
-                emit PriceLevelRemoved(removedPrice, Side.Sell);
-                _updateBestAsk();
-            }
+            if (askNode.orderCount == 0) _removeLevel(bestAskNodeId, Side.Sell, askNode.price);
         }
         return (remaining, quoteUsed);
     }
@@ -775,11 +796,13 @@ contract DLOB {
                 Order storage maker = orders[makerOrderId];
                 uint32 nextMaker = orderLinks[makerOrderId].next;
 
-                // Lazy expiry
+                // Lazy expiry. Counts toward MAX_FILLS_PER_TX, so expired orders cannot make one
+                // transaction's work unbounded.
                 if (maker.expireTimestamp != 0 && uint64(block.timestamp) >= maker.expireTimestamp)
                 {
                     _expireOrder(makerOrderId);
                     makerOrderId = nextMaker;
+                    fillCount++;
                     continue;
                 }
 
@@ -810,13 +833,7 @@ contract DLOB {
             }
 
             // If price level empty, remove from tree
-            if (bidNode.orderCount == 0) {
-                uint96 removedPrice = bidNode.price;
-                delete bidPriceToNode[removedPrice];
-                bidTreeRoot = RedBlackTree.remove(nodes, bidTreeRoot, bestBidNodeId);
-                emit PriceLevelRemoved(removedPrice, Side.Buy);
-                _updateBestBid();
-            }
+            if (bidNode.orderCount == 0) _removeLevel(bestBidNodeId, Side.Buy, bidNode.price);
         }
         return remaining;
     }
@@ -1087,18 +1104,21 @@ contract DLOB {
         _dequeueOrder(orderId, nodeId);
         nodes[nodeId].orderCount--;
 
-        if (nodes[nodeId].orderCount == 0) {
-            if (side == Side.Buy) {
-                delete bidPriceToNode[price];
-                bidTreeRoot = RedBlackTree.remove(nodes, bidTreeRoot, nodeId);
-                _updateBestBid();
-            } else {
-                delete askPriceToNode[price];
-                askTreeRoot = RedBlackTree.remove(nodes, askTreeRoot, nodeId);
-                _updateBestAsk();
-            }
-            emit PriceLevelRemoved(price, side);
+        if (nodes[nodeId].orderCount == 0) _removeLevel(nodeId, side, price);
+    }
+
+    /// @dev Remove an empty price level from its tree and refresh the best price.
+    function _removeLevel(uint32 nodeId, Side side, uint96 price) internal {
+        if (side == Side.Buy) {
+            delete bidPriceToNode[price];
+            bidTreeRoot = RedBlackTree.remove(nodes, bidTreeRoot, nodeId);
+            _updateBestBid();
+        } else {
+            delete askPriceToNode[price];
+            askTreeRoot = RedBlackTree.remove(nodes, askTreeRoot, nodeId);
+            _updateBestAsk();
         }
+        emit PriceLevelRemoved(price, side);
     }
 
     // --- Queue operations ---
