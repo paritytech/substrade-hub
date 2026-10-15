@@ -294,6 +294,118 @@ contract CrossChainTest is Test {
         dlob.claimSettlement(99999);
     }
 
+    // ================== CLAIM FEE ACCOUNTING ==================
+
+    /// Alice's filled cross-chain buy whose inline settlement failed, leaving a Fill claim with the
+    /// reserve restored.
+    function _stuckFillClaim(uint256 reserve) internal returns (uint32 orderId, uint32 claimId) {
+        mockXcm.setShouldRevert(true);
+        vm.prank(alice);
+        orderId = dlob.placeLimitOrder{value: reserve}(
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+        );
+        vm.prank(bob);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        claimId = dlob.nextClaimId() - 1;
+        mockXcm.setShouldRevert(false);
+        assertEq(dlob.getOrderFeeReserve(orderId), reserve, "reserve restored after failed XCM");
+    }
+
+    // DOT flows are measured on the market's balance: on pallet-revive the caller also pays fees, and
+    // the mock XCM keeps the settlement DOT in the market, so the market's balance changes by exactly
+    // msg.value minus the refund.
+
+    function testClaimLeavesUnusedReserveToOwner() public {
+        (uint32 orderId, uint32 claimId) = _stuckFillClaim(5e9);
+
+        uint256 marketBefore = address(dlob).balance;
+        vm.prank(charlie);
+        dlob.claimSettlement(claimId);
+        assertEq(address(dlob).balance, marketBefore, "caller receives none of the reserve");
+        assertEq(dlob.getOrderFeeReserve(orderId), 4e9, "reserve minus one fee stays recorded");
+
+        vm.prank(alice);
+        dlob.withdrawExcessFeeReserve(orderId);
+        assertEq(marketBefore - address(dlob).balance, 4e9, "owner withdraws the rest once");
+        assertGe(
+            address(dlob).balance, dlob.totalFeeReserveBalance(), "DOT covers recorded reserves"
+        );
+    }
+
+    function testClaimRefundsOnlyUnusedMsgValue() public {
+        (uint32 orderId, uint32 claimId) = _stuckFillClaim(5e9);
+
+        uint256 marketBefore = address(dlob).balance;
+        vm.prank(charlie);
+        dlob.claimSettlement{value: 2e9}(claimId);
+        assertEq(
+            address(dlob).balance, marketBefore, "whole msg.value refunded when the reserve pays"
+        );
+        assertEq(dlob.getOrderFeeReserve(orderId), 4e9);
+    }
+
+    function testClaimTopsUpShortReserveFromMsgValue() public {
+        (uint32 orderId, uint32 claimId) = _stuckFillClaim(1e9);
+        factory.setMinCrossChainFee(3e9); // the reserve now covers only part of the fee
+
+        vm.prank(charlie);
+        vm.expectRevert(DLOB.InsufficientClaimFee.selector);
+        dlob.claimSettlement{value: 1.5e9}(claimId);
+
+        uint256 marketBefore = address(dlob).balance;
+        vm.prank(charlie);
+        dlob.claimSettlement{value: 5e9}(claimId);
+        assertEq(address(dlob).balance - marketBefore, 2e9, "caller pays only the missing part");
+        assertEq(dlob.getOrderFeeReserve(orderId), 0, "reserve used up");
+        assertGe(
+            address(dlob).balance, dlob.totalFeeReserveBalance(), "DOT covers recorded reserves"
+        );
+    }
+
+    function testFuzzClaimFeeAccounting(uint256 reserve, uint256 fee, uint256 value) public {
+        reserve = bound(reserve, 1e9, 1e13);
+        fee = bound(fee, 1e9, 2e13);
+        value = bound(value, 0, 3e13);
+        (uint32 orderId, uint32 claimId) = _stuckFillClaim(reserve);
+        factory.setMinCrossChainFee(uint128(fee));
+
+        uint256 fromReserve = reserve >= fee ? fee : reserve;
+        uint256 fromValue = fee - fromReserve;
+
+        uint256 marketBefore = address(dlob).balance;
+        vm.prank(charlie);
+        if (value < fromValue) {
+            vm.expectRevert(DLOB.InsufficientClaimFee.selector);
+            dlob.claimSettlement{value: value}(claimId);
+            return;
+        }
+        dlob.claimSettlement{value: value}(claimId);
+
+        assertEq(
+            address(dlob).balance - marketBefore,
+            fromValue,
+            "caller pays only what the reserve lacks"
+        );
+        assertEq(dlob.getOrderFeeReserve(orderId), reserve - fromReserve, "reserve charged once");
+        assertGe(
+            address(dlob).balance, dlob.totalFeeReserveBalance(), "DOT covers recorded reserves"
+        );
+
+        if (reserve > fromReserve) {
+            uint256 beforeWithdraw = address(dlob).balance;
+            vm.prank(alice);
+            dlob.withdrawExcessFeeReserve(orderId);
+            assertEq(
+                beforeWithdraw - address(dlob).balance,
+                reserve - fromReserve,
+                "owner gets the rest once"
+            );
+        }
+        assertGe(
+            address(dlob).balance, dlob.totalFeeReserveBalance(), "DOT covers recorded reserves"
+        );
+    }
+
     // ================== FEE RESERVE LIFECYCLE ==================
 
     function testFeeReserveDeductedPerFill() public {
