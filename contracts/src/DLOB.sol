@@ -495,23 +495,20 @@ contract DLOB {
         uint128 dotForXcm;
         if (claim.claimType == ClaimType.Fill) {
             uint128 feePerSettle = factory.minCrossChainFee();
-            uint128 availableFee = orderFeeReserve[claim.orderId] + uint128(msg.value);
-            if (availableFee < feePerSettle) revert InsufficientClaimFee();
+            uint128 reserve = orderFeeReserve[claim.orderId];
 
-            // Deduct from order reserve first, then msg.value
-            if (orderFeeReserve[claim.orderId] >= feePerSettle) {
-                orderFeeReserve[claim.orderId] -= feePerSettle;
-                totalFeeReserveBalance -= feePerSettle;
-            } else {
-                uint128 fromReserve = orderFeeReserve[claim.orderId];
-                orderFeeReserve[claim.orderId] = 0;
-                totalFeeReserveBalance -= fromReserve;
-                // Remainder comes from msg.value (already in contract)
-            }
+            // The fee comes from the order's reserve first, then from msg.value.
+            uint128 fromReserve = reserve >= feePerSettle ? feePerSettle : reserve;
+            uint128 fromValue = feePerSettle - fromReserve;
+            if (uint128(msg.value) < fromValue) revert InsufficientClaimFee();
+
+            orderFeeReserve[claim.orderId] = reserve - fromReserve;
+            totalFeeReserveBalance -= fromReserve;
             dotForXcm = feePerSettle;
 
-            // Refund excess msg.value
-            uint128 excess = availableFee - feePerSettle;
+            // Refund only the unused part of msg.value. What is left of the reserve stays recorded
+            // for the order's owner (withdrawExcessFeeReserve).
+            uint128 excess = uint128(msg.value) - fromValue;
             if (excess > 0) {
                 (bool sent,) = payable(msg.sender).call{value: excess}("");
                 if (!sent) revert TransferFailed();
