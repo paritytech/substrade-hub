@@ -114,6 +114,18 @@ describe("submitReviveCall", () => {
     expect(mockApi.tx.Revive.call.mock.calls[0]![0].value).toBe(123n);
   });
 
+  it("dry-runs at the best block, where the previous write already landed", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    mockApi.tx.Revive.call.mockReturnValue(
+      watch([
+        { type: "signed", txHash: "0xhash" },
+        { type: "txBestBlocksState", txHash: "0xhash", found: true, ok: true, block: { hash: "0xblk" }, events: [] },
+      ]),
+    );
+    await submit();
+    expect(mockApi.apis.ReviveApi.call.mock.calls[0]![6]).toEqual({ at: "best" });
+  });
+
   it("rejects if the tx is submitted but never included (timeout, no hang)", async () => {
     vi.useFakeTimers();
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());

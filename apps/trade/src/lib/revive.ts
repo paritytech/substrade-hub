@@ -166,6 +166,8 @@ export async function submitReviveCall(
 
   // 1. Dry-run: sizes weight + storage deposit AND surfaces contract reverts before we sign.
   //    ReviveApi.call lazily maps the origin, so this works even for an unmapped account.
+  //    It runs at the best block: writes resolve on best-block inclusion, so a call that depends on
+  //    the previous write (an order after its approve) would revert against the finalized state.
   const dry = await api.apis.ReviveApi.call(
     params.originSs58 as SS58String,
     dest,
@@ -173,6 +175,7 @@ export async function submitReviveCall(
     undefined, // gas_limit
     undefined, // storage_deposit_limit
     data,
+    { at: "best" },
   );
 
   if (!dry.result.success) {
