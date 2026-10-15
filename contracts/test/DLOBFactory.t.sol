@@ -230,6 +230,15 @@ contract DLOBFactoryTest is Test {
         assertTrue(_create(TokenConfig(WETH, hex"0102"), _tc(USDT)) != address(0));
     }
 
+    function testQuoteLocationCheckedWhateverTheBase() public {
+        // A non-precompile base has no location of its own; the quote must still be checked.
+        vm.expectRevert(DLOBFactory.TrustBackedLocation.selector);
+        _create(_tc(address(baseToken)), TokenConfig(TNVDA, hex"0102"));
+
+        vm.expectRevert(DLOBFactory.MissingForeignLocation.selector);
+        _create(_tc(address(baseToken)), _tc(WETH));
+    }
+
     function testForeignLocationOfTheOtherTokenReverts() public {
         // WETH configured with USDT's own location would settle WETH legs in USDT.
         bytes memory usdtLocation =

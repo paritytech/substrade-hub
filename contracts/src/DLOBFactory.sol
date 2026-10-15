@@ -80,7 +80,8 @@ contract DLOBFactory is IDLOBFactory {
         if (maxOrderSize < minOrderSize) revert MaxBelowMin();
         if (msg.value < marketCreationDeposit) revert InsufficientDeposit();
         bytes memory baseLocation = _location(base);
-        if (baseLocation.length != 0 && keccak256(baseLocation) == keccak256(_location(quote))) {
+        bytes memory quoteLocation = _location(quote); // validated whatever the base is
+        if (baseLocation.length != 0 && keccak256(baseLocation) == keccak256(quoteLocation)) {
             revert SameLocation();
         }
 
