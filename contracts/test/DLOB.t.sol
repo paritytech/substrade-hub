@@ -319,7 +319,7 @@ contract DLOBTest is Test {
         uint32 orderId = dlob.nextOrderId();
         uint256 aliceBase = baseToken.balanceOf(alice);
         vm.prank(alice);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         _assertNotCancellable(alice, orderId);
         assertEq(baseToken.balanceOf(alice), aliceBase, "unfilled sell returned exactly once");
@@ -335,7 +335,8 @@ contract DLOBTest is Test {
         uint32 orderId = dlob.nextOrderId();
         uint256 aliceBase = baseToken.balanceOf(alice);
         vm.prank(alice);
-        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        uint128 filled =
+            dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
         assertEq(filled, 40e6);
 
         _assertNotCancellable(alice, orderId);
@@ -351,7 +352,7 @@ contract DLOBTest is Test {
 
         uint32 orderId = dlob.nextOrderId();
         vm.prank(alice);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         _assertNotCancellable(alice, orderId);
         assertEq(baseToken.balanceOf(address(dlob)), 300e6, "resting ask's escrow untouched");
@@ -365,7 +366,7 @@ contract DLOBTest is Test {
 
         uint32 orderId = dlob.nextOrderId();
         vm.prank(alice);
-        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
 
         _assertNotCancellable(alice, orderId);
     }
@@ -375,7 +376,7 @@ contract DLOBTest is Test {
         uint32 restingId =
             dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
         vm.prank(alice);
-        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
 
         uint256 bobBase = baseToken.balanceOf(bob);
         vm.prank(bob);
@@ -614,13 +615,17 @@ contract DLOBTest is Test {
 
         // The first taker transaction does at most MAX_FILLS_PER_TX units of work: here, all expiries.
         vm.prank(alice);
-        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, 0, bytes32(0), bytes32(0), 0);
+        uint128 filled = dlob.placeMarketOrder(
+            DLOB.Side.Buy, 10e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0
+        );
         assertEq(filled, 0, "the cap is spent on expired orders");
         assertEq(_countCancelled(first, 60), MAX_FILLS_PER_TX, "exactly the cap is cleaned up");
 
         // The next one finishes the cleanup and reaches the live ask.
         vm.prank(alice);
-        filled = dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, 0, bytes32(0), bytes32(0), 0);
+        filled = dlob.placeMarketOrder(
+            DLOB.Side.Buy, 10e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0
+        );
         assertEq(filled, 10e6, "fills once the backlog is gone");
         assertEq(_countCancelled(first, 60), 60);
     }
@@ -631,7 +636,7 @@ contract DLOBTest is Test {
         vm.warp(2000);
 
         vm.prank(alice);
-        dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
         assertEq(_countCancelled(first, 400), MAX_FILLS_PER_TX, "one transaction, one cap of work");
     }
 
@@ -762,7 +767,9 @@ contract DLOBTest is Test {
         if (fillN > 0) {
             uint128 buyAmount = uint128(fillN * orderSize);
             vm.prank(alice);
-            dlob.placeMarketOrder(DLOB.Side.Buy, buyAmount, 0, bytes32(uint256(999)), bytes32(0), 0);
+            dlob.placeMarketOrder(
+                DLOB.Side.Buy, buyAmount, type(uint96).max, 0, bytes32(uint256(999)), bytes32(0), 0
+            );
         }
 
         uint128 depth = dlob.getDepthAtPrice(DLOB.Side.Sell, price);
@@ -812,7 +819,7 @@ contract DLOBTest is Test {
         assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, price), 300e6);
 
         vm.prank(alice);
-        dlob.placeMarketOrder(DLOB.Side.Buy, 150e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 150e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
 
         assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, price), 150e6);
 

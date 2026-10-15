@@ -606,6 +606,11 @@ export const dlobAbi = [
         "internalType": "uint128"
       },
       {
+        "name": "limitPrice",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
         "name": "minAmountOut",
         "type": "uint128",
         "internalType": "uint128"
@@ -637,6 +642,35 @@ export const dlobAbi = [
   },
   {
     "type": "function",
+    "name": "purgeExpired",
+    "inputs": [
+      {
+        "name": "side",
+        "type": "uint8",
+        "internalType": "enum DLOB.Side"
+      },
+      {
+        "name": "price",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "maxOrders",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "purged",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "redirectClaim",
     "inputs": [
       {
@@ -653,11 +687,6 @@ export const dlobAbi = [
         "name": "newDestParaId",
         "type": "uint32",
         "internalType": "uint32"
-      },
-      {
-        "name": "newBeneficiary",
-        "type": "bytes32",
-        "internalType": "bytes32"
       }
     ],
     "outputs": [],

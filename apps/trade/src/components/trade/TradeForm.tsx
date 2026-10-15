@@ -6,6 +6,8 @@ import { useWalletStore } from "../../stores/wallet";
 import { useMarketStore } from "../../stores/market";
 import { usePlaceOrder } from "../../hooks/use-place-order";
 import { useBestPrices } from "../../hooks/use-best-prices";
+import { useOrderBook } from "../../hooks/use-order-book";
+import { DEFAULT_SLIPPAGE_BPS, estimateMarketOrder } from "../../lib/market-order";
 import { useTokenBalance } from "../../hooks/use-token-balance";
 import { FundingNotice } from "../wallet/FundingNotice";
 import {
@@ -26,6 +28,8 @@ export function TradeForm() {
   const market = useMarketStore((s) => s.selectedMarket);
   const placeOrder = usePlaceOrder();
   const { data: bestPrices } = useBestPrices();
+  // A market order fills against the opposite side: asks for a buy, bids for a sell.
+  const { data: oppositeBook } = useOrderBook(side === Side.Buy ? Side.Sell : Side.Buy);
   const { data: quoteBalance } = useTokenBalance(market?.quote.addr, h160 ?? undefined);
   const { data: baseBalance } = useTokenBalance(market?.base.addr, h160 ?? undefined);
 
@@ -52,6 +56,19 @@ export function TradeForm() {
       // Invalid input
     }
   }
+
+  // Market orders: estimate against the visible book, with the price limit the order will carry.
+  let marketEstimate: ReturnType<typeof estimateMarketOrder> = null;
+  let marketAmount = 0n;
+  if (orderType === "market" && amount && oppositeBook) {
+    try {
+      marketAmount = parseTokenAmount(amount, baseDecimals);
+      if (marketAmount > 0n) marketEstimate = estimateMarketOrder(side, marketAmount, oppositeBook);
+    } catch {
+      // Invalid input
+    }
+  }
+  const slippagePercent = Number(DEFAULT_SLIPPAGE_BPS) / 100;
 
   const isBuy = side === Side.Buy;
   // Cheap UX hint: a market order fills against the opposite side, so disable submit when that side is
@@ -129,6 +146,33 @@ export function TradeForm() {
               {estimatedTotal} {market?.quote.symbol}
             </span>
           </div>
+        </div>
+      )}
+
+      {marketEstimate && (
+        <div className="rounded-lg border border-border bg-surface-overlay px-3 py-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-text-primary">{isBuy ? "You pay about" : "You receive about"}</span>
+            <span className="text-sm font-medium text-text-primary">
+              {formatTokenAmount(marketEstimate.quote, quoteDecimals, priceDecimals)} {market?.quote.symbol}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-text-secondary">
+            <span>Average price</span>
+            <span>{formatTokenAmount(marketEstimate.averagePrice, 18, priceDecimals)}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-text-secondary">
+            <span>
+              {isBuy ? "Pays at most" : "Sells at least at"} ({slippagePercent}% slippage)
+            </span>
+            <span>{formatTokenAmount(marketEstimate.limitPrice, 18, priceDecimals)}</span>
+          </div>
+          {marketEstimate.fillable < marketAmount && (
+            <div className="mt-1.5 text-text-secondary">
+              Only <Amount value={marketEstimate.fillable} decimals={baseDecimals} />{" "}
+              {market?.base.symbol} can fill at the prices shown; the rest is returned unfilled.
+            </div>
+          )}
         </div>
       )}
 

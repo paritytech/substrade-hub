@@ -89,7 +89,8 @@ contract CrossChainTest is Test {
         dlob.placeLimitOrder(DLOB.Side.Buy, PRICE, 100e6, bytes32(0), bytes32(0), 0, 0);
 
         vm.prank(bob);
-        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        uint128 filled =
+            dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         assertEq(filled, 100e6);
         assertEq(mockXcm.getExecuteCallCount(), 0, "No XCM for local orders");
@@ -108,7 +109,8 @@ contract CrossChainTest is Test {
 
         // Bob: local sell matches
         vm.prank(bob);
-        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        uint128 filled =
+            dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
         assertEq(filled, 100e6);
 
         // Bob gets quote via ERC20
@@ -133,7 +135,9 @@ contract CrossChainTest is Test {
 
         // Alice: local buy matches
         vm.prank(alice);
-        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+        uint128 filled = dlob.placeMarketOrder(
+            DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0
+        );
         assertEq(filled, 100e6);
 
         // Alice gets base via ERC20
@@ -154,7 +158,7 @@ contract CrossChainTest is Test {
         // Bob: cross-chain sell matches
         vm.prank(bob);
         uint128 filled = dlob.placeMarketOrder{value: 1e9}(
-            DLOB.Side.Sell, 100e6, 0, BOB_ORIGIN, BOB_SETTLEMENT, PARA_2000
+            DLOB.Side.Sell, 100e6, 0, 0, BOB_ORIGIN, BOB_SETTLEMENT, PARA_2000
         );
         assertEq(filled, 100e6);
 
@@ -176,7 +180,8 @@ contract CrossChainTest is Test {
 
         // Bob: local sell matches — inline XCM fails, fallback to claim
         vm.prank(bob);
-        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        uint128 filled =
+            dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
         assertEq(filled, 100e6, "Order should still fill");
 
         // Fee reserve NOT consumed (inline failed)
@@ -199,7 +204,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
 
@@ -227,7 +232,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
 
@@ -249,7 +254,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
 
@@ -275,7 +280,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
 
@@ -305,7 +310,7 @@ contract CrossChainTest is Test {
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
         claimId = dlob.nextClaimId() - 1;
         mockXcm.setShouldRevert(false);
         assertEq(dlob.getOrderFeeReserve(orderId), reserve, "reserve restored after failed XCM");
@@ -418,12 +423,12 @@ contract CrossChainTest is Test {
 
         // Fill 1: 100e6
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
         assertEq(dlob.getOrderFeeReserve(buyId), 1e9, "1e9 after first fill");
 
         // Fill 2: 100e6
         vm.prank(charlie);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
         assertEq(dlob.getOrderFeeReserve(buyId), 0, "0 after second fill");
     }
 
@@ -435,7 +440,7 @@ contract CrossChainTest is Test {
 
         // Fill completely
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         // 5e9 - 1e9 = 4e9 excess
         assertEq(dlob.getOrderFeeReserve(buyId), 4e9);
@@ -460,7 +465,7 @@ contract CrossChainTest is Test {
 
         // Partial fill
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         (bool canWithdraw,) = dlob.canWithdrawExcessFeeReserve(buyId);
         assertFalse(canWithdraw);
@@ -478,7 +483,7 @@ contract CrossChainTest is Test {
 
         // Fill completely — uses exactly 1e9 fee
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         assertEq(dlob.getOrderFeeReserve(buyId), 0);
 
@@ -545,7 +550,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
         assertEq(dlob.getPendingClaim(claimId).destParaId, PARA_1000);
@@ -568,7 +573,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
 
@@ -586,7 +591,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
 
@@ -612,7 +617,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
 
@@ -674,7 +679,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         // Verify PendingClaim was created
         uint32 claimId = dlob.nextClaimId() - 1;
@@ -718,7 +723,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
         uint128 feeReserveBefore = dlob.getOrderFeeReserve(buyId);
@@ -748,10 +753,10 @@ contract CrossChainTest is Test {
 
         // Two separate sellers fill partially
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         vm.prank(charlie);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         // Should have 2 pending claims (inline XCM failed for each fill)
         uint32 lastClaimId = dlob.nextClaimId() - 1;
@@ -786,7 +791,7 @@ contract CrossChainTest is Test {
         );
 
         vm.prank(bob);
-        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
 
         uint32 claimId = dlob.nextClaimId() - 1;
 

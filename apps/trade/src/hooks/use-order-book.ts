@@ -5,7 +5,7 @@ import { useMarketStore } from "../stores/market";
 import { Side, type OrderBookLevel } from "../types/market";
 import { POLL_INTERVAL_MS, MAX_OB_LEVELS } from "../config/constants";
 
-async function fetchOrderBook(
+export async function fetchOrderBook(
   marketAddr: `0x${string}`,
   side: Side,
   levels: number,

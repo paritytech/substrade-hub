@@ -2,13 +2,12 @@ import { WAD } from "../config/constants";
 import { Side } from "../types/market";
 
 /**
- * Approve amount for a MARKET order. A sell escrows exactly `amount` base tokens, so approve exactly
- * that; a buy pays a fill-dependent amount of quote (no limit price), so approve the available quote
- * balance until a slippage-bounded estimate is wired in. Prevents the previous full-balance approval
- * for sells.
+ * Approve amount for a MARKET order. A sell escrows exactly `amount` base tokens. A buy pays each fill
+ * at a price no higher than `limitPrice` (the contract stops matching there), so it can spend at most
+ * `amount × limitPrice` quote, rounded up.
  */
-export function marketApproveAmount(side: Side, amount: bigint, quoteBalance: bigint): bigint {
-  return side === Side.Sell ? amount : quoteBalance;
+export function marketApproveAmount(side: Side, amount: bigint, limitPrice: bigint): bigint {
+  return side === Side.Sell ? amount : quoteAmountCeil(amount, limitPrice);
 }
 
 /**

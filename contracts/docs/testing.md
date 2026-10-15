@@ -62,7 +62,7 @@ forge test --match-test "testFuzz" -vv
 | ------------------- | ----- | ------------------------------------------------------------------------ |
 | `DLOB.t.sol`        | 32    | Order placement, cancellation, reduction, matching, expiry, depth integrity, views, admin |
 | `DLOBFactory.t.sol` | 17    | Market creation, duplicate prevention, parameter validation, admin config |
-| `Matching.t.sol`    | 15    | Multi-level fills, market orders, max fills cap, self-trade, slippage, buyer refunds, pull validation |
+| `Matching.t.sol`    | 19    | Multi-level fills, market orders and their limit price, max fills cap, self-trade, slippage, buyer refunds, pull validation |
 | `CrossChain.t.sol`  | 25    | Inline XCM, claim fallback, fee reserve lifecycle, claim redirect, XCM failure recovery (see [how it works](how-it-works.md)) |
 | `GasReport.t.sol`   | 12    | Gas benchmarks for all core operations                                   |
 | `DLOB.fuzz.t.sol`   | 15    | 7 fuzz tests (257 runs) + 8 stateful invariants (128k calls each)        |
