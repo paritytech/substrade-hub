@@ -12,18 +12,16 @@ describe("feeWarningThreshold (chain-derived, not hardcoded)", () => {
   });
 });
 
-describe("marketApproveAmount (exact-escrow guard)", () => {
-  it("a sell approves exactly the base amount, ignoring the balance", () => {
-    expect(marketApproveAmount(Side.Sell, 100n, 999_999n)).toBe(100n);
+describe("marketApproveAmount (bounded by the order)", () => {
+  const WAD = 10n ** 18n;
+
+  it("a sell approves exactly the base amount", () => {
+    expect(marketApproveAmount(Side.Sell, 100n, 5n * WAD)).toBe(100n);
   });
 
-  it("a buy approves the available quote balance (quote is fill-dependent)", () => {
-    expect(marketApproveAmount(Side.Buy, 100n, 5_000n)).toBe(5_000n);
-  });
-
-  it("never returns the whole balance for a sell (regression: no full-balance approval)", () => {
-    const balance = 1_000_000n;
-    expect(marketApproveAmount(Side.Sell, 42n, balance)).not.toBe(balance);
+  it("a buy approves amount x limit price, rounded up", () => {
+    expect(marketApproveAmount(Side.Buy, 100n * WAD, 5n * WAD / 100n)).toBe(5n * WAD);
+    expect(marketApproveAmount(Side.Buy, 3n, WAD / 2n)).toBe(2n); // 1.5 rounds up
   });
 });
 

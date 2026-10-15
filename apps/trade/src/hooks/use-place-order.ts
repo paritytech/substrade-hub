@@ -9,12 +9,17 @@ import { quoteAmountCeil, marketApproveAmount } from "../lib/format";
 import { parseTokenAmount } from "../lib/format";
 import { Side } from "../types/market";
 import { activeChain } from "../config/chains";
+import { MAX_OB_LEVELS } from "../config/constants";
+import { estimateMarketOrder } from "../lib/market-order";
+import { fetchOrderBook } from "./use-order-book";
 
 interface PlaceOrderParams {
   side: Side;
   orderType: "limit" | "market";
   price: string;
   amount: string;
+  /** Market orders: the price limit the form displayed, so the order carries what the user saw. */
+  limitPrice?: bigint;
 }
 
 export function usePlaceOrder() {
@@ -96,13 +101,21 @@ export function usePlaceOrder() {
           const escrowToken =
             params.side === Side.Buy ? market.quote.addr : market.base.addr;
 
-          // Sells escrow exactly `amount`; buys read the quote balance (fill-dependent). See
-          // marketApproveAmount for the exact-escrow rationale.
-          const quoteBalance =
-            params.side === Side.Buy
-              ? ((await readContract(erc20Abi, "balanceOf", [h160], escrowToken)) as bigint)
-              : 0n;
-          const approveAmount = marketApproveAmount(params.side, amount, quoteBalance);
+          // The order carries the limit the form displayed; it also bounds what a buy can spend. The
+          // fresh book only confirms there is something to fill (and prices orders sent without a form).
+          const opposite = params.side === Side.Buy ? Side.Sell : Side.Buy;
+          const estimate = estimateMarketOrder(
+            params.side,
+            amount,
+            await fetchOrderBook(market.address, opposite, MAX_OB_LEVELS),
+          );
+          if (!estimate) {
+            throw new Error(
+              `No ${params.side === Side.Buy ? "sell-side" : "buy-side"} liquidity to fill this market order right now. Place a limit order instead.`,
+            );
+          }
+          const limitPrice = params.limitPrice ?? estimate.limitPrice;
+          const approveAmount = marketApproveAmount(params.side, amount, limitPrice);
 
           const currentAllowance = (await readContract(
             erc20Abi,
@@ -126,6 +139,7 @@ export function usePlaceOrder() {
           const marketArgs = [
             params.side,
             amount,
+            limitPrice,
             0n,
             originAccount,
             ZERO_BYTES32,

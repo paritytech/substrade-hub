@@ -409,12 +409,27 @@ export const dlobFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "MissingForeignLocation",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotAdmin",
     "inputs": []
   },
   {
     "type": "error",
+    "name": "SameLocation",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "SameToken",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TrustBackedLocation",
     "inputs": []
   },
   {

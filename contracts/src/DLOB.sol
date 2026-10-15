@@ -344,10 +344,14 @@ contract DLOB {
         }
     }
 
-    /// @notice Place a market order.
+    /// @notice Place a market order: fill immediately against the opposite side, never rest.
+    /// @param limitPrice Worst price accepted: the highest ask a buy takes, or the lowest bid a sell
+    /// takes. Matching stops there, so a resting order at an extreme price cannot fill it.
+    /// @param minAmountOut Minimum base amount filled, or 0 for no minimum.
     function placeMarketOrder(
         Side side,
         uint128 amount,
+        uint96 limitPrice,
         uint128 minAmountOut,
         bytes32 originAccount,
         bytes32 settlementAccount,
@@ -396,10 +400,9 @@ contract DLOB {
         // Match
         uint128 remaining = amount;
         if (side == Side.Buy) {
-            (remaining,) =
-                _matchBuy(orderId, type(uint96).max, remaining, originAccount, destParaId, 0);
+            (remaining,) = _matchBuy(orderId, limitPrice, remaining, originAccount, destParaId, 0);
         } else {
-            remaining = _matchSell(orderId, 0, remaining, originAccount, destParaId, 0);
+            remaining = _matchSell(orderId, limitPrice, remaining, originAccount, destParaId, 0);
         }
 
         filledAmount = amount - remaining;

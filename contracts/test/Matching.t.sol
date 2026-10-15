@@ -74,6 +74,66 @@ contract MatchingTest is Test {
     }
 
     /// @notice Test that a buy order fills against multiple price levels
+    // ──────────────────── Market Order Limit Price ─────────────────
+
+    function testMarketBuyStopsAtLimitPrice() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(charlie); // an ask at an extreme price behind the normal level
+        dlob.placeLimitOrder(DLOB.Side.Sell, 1000e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint256 aliceQuote = quoteToken.balanceOf(alice);
+        vm.prank(alice);
+        uint128 filled =
+            dlob.placeMarketOrder(DLOB.Side.Buy, 50e6, 60e15, 0, bytes32(0), bytes32(0), 0);
+
+        assertEq(filled, 10e6, "fills only up to the limit price");
+        assertEq(
+            aliceQuote - quoteToken.balanceOf(alice), 10e6 * 50e15 / PRECISION, "pays 0.05 each"
+        );
+        assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, 1000e15), 100e6, "extreme ask untouched");
+    }
+
+    function testMarketSellStopsAtLimitPrice() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(charlie); // a bid at the minimum tick behind the normal level
+        dlob.placeLimitOrder(DLOB.Side.Buy, TICK_SIZE, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        uint256 aliceBase = baseToken.balanceOf(alice);
+        vm.prank(alice);
+        uint128 filled =
+            dlob.placeMarketOrder(DLOB.Side.Sell, 50e6, 40e15, 0, bytes32(0), bytes32(0), 0);
+
+        assertEq(filled, 10e6, "fills only down to the limit price");
+        assertEq(aliceBase - baseToken.balanceOf(alice), 10e6, "unfilled base returned");
+        assertEq(
+            dlob.getDepthAtPrice(DLOB.Side.Buy, TICK_SIZE), 100e6, "minimum-tick bid untouched"
+        );
+    }
+
+    function testMarketOrderFillsAtExactlyTheLimitPrice() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+
+        vm.prank(alice);
+        uint128 filled =
+            dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, 50e15, 0, bytes32(0), bytes32(0), 0);
+        assertEq(filled, 10e6, "the limit is inclusive");
+    }
+
+    function testMarketOrderLimitAppliesBeforeMinAmountOut() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(charlie);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 1000e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        // The limit stops the fill at 10e6, below the 50e6 minimum, so the order reverts.
+        vm.prank(alice);
+        vm.expectRevert(DLOB.SlippageExceeded.selector);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 50e6, 60e15, 50e6, bytes32(0), bytes32(0), 0);
+    }
+
     function testMultiLevelFill() public {
         // Bob places sell orders at different prices
         // Sell 100e6 base at 50e15
@@ -155,6 +215,7 @@ contract MatchingTest is Test {
         uint128 filled = dlob.placeMarketOrder(
             DLOB.Side.Buy,
             200e6,
+            type(uint96).max,
             0, // minAmountOut = 0 (no slippage protection)
             bytes32(0),
             bytes32(0),
@@ -178,6 +239,7 @@ contract MatchingTest is Test {
         uint128 filled = dlob.placeMarketOrder(
             DLOB.Side.Buy,
             100e6,
+            type(uint96).max,
             0, // minAmountOut = 0 (no slippage protection)
             bytes32(0),
             bytes32(0),
@@ -451,7 +513,7 @@ contract MatchingTest is Test {
 
         vm.prank(dave);
         vm.expectRevert(); // safeTransferFrom will revert due to no allowance
-        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
     }
 
     /// @notice Market buy succeeds after approval and deducts correct amount.
@@ -470,7 +532,9 @@ contract MatchingTest is Test {
         uint256 daveBaseBefore = baseToken.balanceOf(dave);
 
         vm.prank(dave);
-        uint128 filled = dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+        uint128 filled = dlob.placeMarketOrder(
+            DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0
+        );
 
         assertEq(filled, 100e6, "Should fill 100e6");
         assertEq(baseToken.balanceOf(dave) - daveBaseBefore, 100e6, "Dave receives base");
@@ -499,7 +563,7 @@ contract MatchingTest is Test {
 
         vm.prank(dave);
         vm.expectRevert(); // Will fail on safeTransferFrom during first fill
-        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 0, bytes32(0), bytes32(0), 0);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
 
         // Balances unchanged — atomic revert
         assertEq(quoteToken.balanceOf(dave), daveQuoteBefore, "No quote dust left");
@@ -518,6 +582,7 @@ contract MatchingTest is Test {
         dlob.placeMarketOrder(
             DLOB.Side.Buy,
             100e6,
+            type(uint96).max,
             150e6, // minAmountOut > available liquidity
             bytes32(0),
             bytes32(0),
