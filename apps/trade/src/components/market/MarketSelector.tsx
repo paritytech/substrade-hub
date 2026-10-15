@@ -6,7 +6,7 @@ import { Spinner } from "../ui/Spinner";
 export function MarketSelector() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const { data: markets, isLoading } = useMarkets();
+  const { data: markets, isLoading, isError } = useMarkets();
   const { selectedMarket, selectMarket } = useMarketStore();
 
   useEffect(() => {
@@ -52,9 +52,9 @@ export function MarketSelector() {
         </svg>
       </button>
 
-      {open && markets && (
+      {open && (markets || isError) && (
         <div className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-border bg-surface-raised py-1 shadow-xl">
-          {markets.map((m) => (
+          {markets?.map((m) => (
             <button
               key={m.address}
               onClick={() => {
@@ -70,7 +70,12 @@ export function MarketSelector() {
               {m.base.symbol}/{m.quote.symbol}
             </button>
           ))}
-          {markets.length === 0 && (
+          {!markets && (
+            <div className="px-4 py-2 text-sm text-text-muted">
+              Couldn't load the markets
+            </div>
+          )}
+          {markets?.length === 0 && (
             <div className="px-4 py-2 text-sm text-text-muted">
               No markets found
             </div>

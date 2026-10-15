@@ -5,7 +5,7 @@ import { dlobFactoryAbi } from "../abi/dlob-factory";
 import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
 import { activeChain } from "../config/chains";
-import { filterKnownQuoteMarkets, isNonZeroAddress } from "../lib/markets";
+import { isKnownQuote, isNonZeroAddress } from "../lib/markets";
 import type { MarketInfo, TokenInfo } from "../types/market";
 
 /**
@@ -45,7 +45,59 @@ async function fetchTokenInfo(addr: `0x${string}`): Promise<TokenInfo> {
   return { addr, name, symbol, decimals };
 }
 
-async function fetchMarkets(): Promise<MarketInfo[]> {
+/** Most markets the list reads. Markets past it are not shown. */
+export const MAX_MARKETS = 50;
+
+/**
+ * Load market `index` of the factory. Returns null for a market quoted in another token: only markets
+ * quoted in the known tUSD are shown, so other markets never reach a token lookup.
+ */
+async function fetchMarket(factory: `0x${string}`, index: bigint): Promise<MarketInfo | null> {
+  const marketAddr = (await readContract(
+    dlobFactoryAbi,
+    "getMarketAt",
+    [index],
+    factory,
+  )) as `0x${string}`;
+
+  // getMarketInfo returns (address base, address quote, uint96 tick, uint96 minSize, uint128 maxSize)
+  const info = (await readContract(
+    dlobAbi,
+    "getMarketInfo",
+    [],
+    marketAddr,
+  )) as [
+    `0x${string}`, // base address
+    `0x${string}`, // quote address
+    bigint, // tickSize
+    bigint, // minOrderSize
+    bigint, // maxOrderSize
+  ];
+
+  const [baseAddr, quoteAddr, tickSize, minOrderSize, maxOrderSize] = info;
+  if (!isKnownQuote(quoteAddr, activeChain.knownQuote.addr)) return null;
+
+  const [base, quote] = await Promise.all([
+    fetchTokenInfo(baseAddr),
+    fetchTokenInfo(quoteAddr),
+  ]);
+
+  return {
+    address: marketAddr,
+    base,
+    quote,
+    tickSize,
+    minOrderSize,
+    maxOrderSize,
+  };
+}
+
+/**
+ * Load the factory's markets concurrently, each on its own: a market that fails to load is skipped
+ * and the others are still shown. Fails only when the count cannot be read or every market failed,
+ * so an outage reads as an error instead of an empty exchange.
+ */
+export async function fetchMarkets(): Promise<MarketInfo[]> {
   const factory = activeChain.factoryAddress;
   // Not deployed on this network yet (see networks.json): no markets, and no call to the zero address.
   if (!isNonZeroAddress(factory)) return [];
@@ -55,48 +107,25 @@ async function fetchMarkets(): Promise<MarketInfo[]> {
     [],
     factory,
   )) as bigint;
+  const shown = count < BigInt(MAX_MARKETS) ? Number(count) : MAX_MARKETS;
 
+  const results = await Promise.allSettled(
+    Array.from({ length: shown }, (_, i) => fetchMarket(factory, BigInt(i))),
+  );
   const markets: MarketInfo[] = [];
-  for (let i = 0n; i < count; i++) {
-    const marketAddr = (await readContract(
-      dlobFactoryAbi,
-      "getMarketAt",
-      [i],
-      factory,
-    )) as `0x${string}`;
-
-    // getMarketInfo returns (address base, address quote, uint96 tick, uint96 minSize, uint128 maxSize)
-    const info = (await readContract(
-      dlobAbi,
-      "getMarketInfo",
-      [],
-      marketAddr,
-    )) as [
-      `0x${string}`, // base address
-      `0x${string}`, // quote address
-      bigint, // tickSize
-      bigint, // minOrderSize
-      bigint, // maxOrderSize
-    ];
-
-    const [baseAddr, quoteAddr, tickSize, minOrderSize, maxOrderSize] = info;
-
-    const [base, quote] = await Promise.all([
-      fetchTokenInfo(baseAddr),
-      fetchTokenInfo(quoteAddr),
-    ]);
-
-    markets.push({
-      address: marketAddr,
-      base,
-      quote,
-      tickSize,
-      minOrderSize,
-      maxOrderSize,
-    });
+  let failed = 0;
+  for (const [i, r] of results.entries()) {
+    if (r.status === "fulfilled") {
+      if (r.value) markets.push(r.value);
+    } else {
+      failed++;
+      console.warn(`[markets] skipped market #${i}:`, r.reason);
+    }
   }
-
-  return filterKnownQuoteMarkets(markets, activeChain.knownQuote.addr);
+  if (shown > 0 && failed === shown) {
+    throw new Error("Could not load any market", { cause: (results[0] as PromiseRejectedResult).reason });
+  }
+  return markets;
 }
 
 export function useMarkets() {

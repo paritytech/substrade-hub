@@ -67,7 +67,7 @@ function FaucetCard() {
 }
 
 function MarketsCard() {
-  const { data: markets, isLoading } = useMarkets();
+  const { data: markets, isLoading, isError, refetch } = useMarkets();
   const selectMarket = useMarketStore((s) => s.selectMarket);
   const setView = useViewStore((s) => s.setView);
 
@@ -82,6 +82,13 @@ function MarketsCard() {
       {isLoading ? (
         <div className="flex justify-center py-4">
           <Spinner className="h-4 w-4" />
+        </div>
+      ) : isError && !markets ? (
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <p className="text-sm text-text-muted">Couldn't load the markets.</p>
+          <button onClick={() => void refetch()} className="text-xs text-brand">
+            Retry
+          </button>
         </div>
       ) : !markets || markets.length === 0 ? (
         <p className="mt-1 text-sm text-text-muted">No markets available yet.</p>
