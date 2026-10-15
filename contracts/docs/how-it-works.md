@@ -83,7 +83,7 @@ Asset Hub manages two categories of assets, each with its own pallet and ERC20 p
 
 ### Configuring XCM Locations
 
-Markets are created via `DLOBFactory.createMarket()`, which takes a `TokenConfig` struct for each token:
+Markets are created via `DLOBFactory.createMarket()`, which only the factory admin can call. It takes a `TokenConfig` struct for each token:
 
 ```solidity
 struct TokenConfig {
@@ -92,7 +92,7 @@ struct TokenConfig {
 }
 ```
 
-**Trust-backed assets** (prefix `0x0120`): leave `xcmLocation` empty. The contract derives the location automatically:
+**Trust-backed assets** (prefix `0x0120`): leave `xcmLocation` empty; the factory rejects a location for them. The contract derives the location automatically:
 
 ```
 Location { parents: 0, interior: X2(PalletInstance(50), GeneralIndex(assetId)) }

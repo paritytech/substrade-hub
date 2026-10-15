@@ -7,12 +7,13 @@ pragma solidity ^0.8.20;
 /// Two modes depending on `xcmLocation`:
 ///
 /// 1. **Trust-backed asset** (registered in `pallet-assets`, ERC20 precompile prefix 0x0120):
-///    Leave `xcmLocation` empty. The contract derives the XCM Location on-chain
+///    Leave `xcmLocation` empty (the factory rejects one). The contract derives the XCM Location on-chain
 ///    from the precompile address:
 ///    `Location { parents: 0, interior: X2(PalletInstance(50), GeneralIndex(assetId)) }`
 ///
 /// 2. **Foreign asset** (ERC20 precompile prefix 0x0220, or other):
-///    Provide the SCALE-encoded XCM Location that identifies the asset on-chain.
+///    Provide the SCALE-encoded XCM Location that identifies the asset on-chain (the factory
+///    rejects a foreign precompile without one).
 ///    The contract stores it as-is and uses it for cross-chain settlement.
 ///
 ///    WARNING: The contract cannot validate that a foreign asset location is correct.

@@ -9,6 +9,7 @@ import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockXcm} from "../src/mocks/MockXcm.sol";
 import {MockSystem} from "../src/mocks/MockSystem.sol";
 import {TokenConfig} from "../src/types/TokenConfig.sol";
+import {XcmBuilder} from "../src/libraries/XcmBuilder.sol";
 
 contract DLOBFactoryTest is Test {
     DLOBFactory public factory;
@@ -181,6 +182,65 @@ contract DLOBFactoryTest is Test {
             MIN_ORDER_SIZE,
             MIN_ORDER_SIZE - 1
         );
+    }
+
+    // ──────────────────── Admin-Only Creation and XCM Locations ─────────
+
+    // Precompile addresses: trust-backed assets end in 0x01200000, foreign assets in 0x02200000,
+    // with the asset id or index in the top 4 bytes.
+    address constant USDT = 0x000007c000000000000000000000000001200000; // trust-backed, id 1984
+    address constant TNVDA = 0x02FaF33B00000000000000000000000001200000; // trust-backed
+    address constant WETH = 0x0000000500000000000000000000000002200000; // foreign, index 5
+    address constant WBTC = 0x0000000600000000000000000000000002200000; // foreign, index 6
+
+    function _create(TokenConfig memory base, TokenConfig memory quote) internal returns (address) {
+        return factory.createMarket(base, quote, TICK_SIZE, MIN_ORDER_SIZE, MAX_ORDER_SIZE);
+    }
+
+    function testCreateMarketNotAdmin() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(DLOBFactory.NotAdmin.selector);
+        _create(_tc(address(baseToken)), _tc(address(quoteToken)));
+    }
+
+    function testCreateMarketFollowsAdminTransfer() public {
+        address newAdmin = address(0xCAFE);
+        factory.transferAdmin(newAdmin);
+
+        vm.expectRevert(DLOBFactory.NotAdmin.selector);
+        _create(_tc(address(baseToken)), _tc(address(quoteToken)));
+
+        vm.prank(newAdmin);
+        assertTrue(_create(_tc(address(baseToken)), _tc(address(quoteToken))) != address(0));
+    }
+
+    function testTrustBackedPairCreatesWithDerivedLocations() public {
+        assertTrue(_create(_tc(TNVDA), _tc(USDT)) != address(0));
+    }
+
+    function testTrustBackedTokenRejectsLocation() public {
+        vm.expectRevert(DLOBFactory.TrustBackedLocation.selector);
+        _create(TokenConfig(TNVDA, hex"0102"), _tc(USDT));
+    }
+
+    function testForeignTokenNeedsLocation() public {
+        vm.expectRevert(DLOBFactory.MissingForeignLocation.selector);
+        _create(_tc(WETH), _tc(USDT));
+
+        assertTrue(_create(TokenConfig(WETH, hex"0102"), _tc(USDT)) != address(0));
+    }
+
+    function testForeignLocationOfTheOtherTokenReverts() public {
+        // WETH configured with USDT's own location would settle WETH legs in USDT.
+        bytes memory usdtLocation =
+            XcmBuilder.buildPalletAssetLocation(XcmBuilder.ASSETS_PALLET_INDEX, 1984);
+        vm.expectRevert(DLOBFactory.SameLocation.selector);
+        _create(TokenConfig(WETH, usdtLocation), _tc(USDT));
+    }
+
+    function testSameForeignLocationsRevert() public {
+        vm.expectRevert(DLOBFactory.SameLocation.selector);
+        _create(TokenConfig(WETH, hex"0102"), TokenConfig(WBTC, hex"0102"));
     }
 
     // ──────────────────── Unidirectional Market Key Tests ─────────────
