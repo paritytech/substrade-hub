@@ -457,7 +457,13 @@ async function main() {
       const existing = await api.query.Assets.Asset.getValue(a.id);
       if (existing) {
         if (!samePublicKey(existing.owner, funder.publicKey)) throw new Error(`Asset ${a.id} (${a.key}) exists and is owned by ${existing.owner}`);
-        console.log(`  ${a.key} (${a.id}): exists`);
+        // A fresh state brings a new deployer, which holds none of an asset created by an earlier run.
+        const held = (await api.query.Assets.Account.getValue(a.id, deployerSs58))?.balance ?? 0n;
+        if (held >= a.supply) console.log(`  ${a.key} (${a.id}): exists`);
+        else {
+          const mint = api.tx.Assets.mint({ id: a.id, beneficiary: { type: "Id", value: deployerSs58 }, amount: a.supply - held });
+          await submit(mint, funder, `${a.key} (${a.id}) exists; mint ${(a.supply - held) / UNIT} to the deployer`);
+        }
         continue;
       }
       const calls = [
