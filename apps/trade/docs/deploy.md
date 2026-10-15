@@ -68,14 +68,36 @@ key: it administers the factory and owns the tUSD faucet.
 | tMU token | `0x02faf48a00000000000000000000000001200000` | `0x02faf48a00000000000000000000000001200000` |
 | Admin | `0x49260dE7F3Bb7C7658E1aabb7fA6Fa91171DfCd0` | `0xa2b6183fBb377fB2079749a4dC0221774d179627` |
 
+## Releases
+
+A release publishes the same version to every network in `networks.json`. To make one, push a
+`dot-vX.Y.Z` tag on a commit of `master`:
+
+```bash
+git fetch origin && git tag dot-v1.3.0 origin/master && git push origin dot-v1.3.0
+```
+
+Only admins and maintainers can push a `dot-v*` tag (the "Protect dot-v release tags" ruleset). The
+tag starts `.github/workflows/release.yml`, which:
+
+1. checks that the tag is `dot-vMAJOR.MINOR.PATCH`, points at a commit of `master`, and is newer than
+   the previous release;
+2. publishes every network through `deploy-dot.yml`, in parallel, with the version from the tag;
+3. once every network has published, creates the GitHub Release, with notes generated from the PRs
+   merged since the previous release.
+
+If a network fails, the GitHub Release is not created: rerun the failed jobs of the run, and the
+release follows once they pass.
+
 ## CI publish
 
-`.github/workflows/deploy-dot.yml` builds and publishes on manual dispatch (choose the network and a
-required `version`) or on a `dot-v*` tag, which publishes to previewnet with the version from the tag.
+`.github/workflows/deploy-dot.yml` publishes one network. Run it by hand (choose the network and a
+required `version`), for example to restore the name after a testnet reset; `release.yml` calls it for
+every network.
 
 - **One environment per network.** In repo Settings > Environments, create `<network>-deploy`
-  (`previewnet-deploy`, `paseo-v2-deploy`), restrict its deployment branches to `master` (plus `dot-v*`
-  tags for previewnet), store the owner's mnemonic there as the environment secret
+  (`previewnet-deploy`, `paseo-v2-deploy`), restrict its deployment branches and tags to `master` and
+  `dot-v*` (a release runs on the tag), store the owner's mnemonic there as the environment secret
   **`DOTNS_MNEMONIC`**, and its SS58 address as the environment variable **`DOTNS_OWNER`**. The publish
   refuses to run unless the mnemonic derives that address.
 - **After a testnet reset**: the chain has a new genesis. The app and the bootstrap refuse a live genesis
@@ -142,7 +164,8 @@ never commit it.
 - `apps/trade/scripts/deploy-dot.mjs`: runs the pinned `bulletin-deploy` for `VITE_NETWORK`.
 - `apps/trade/icon.svg` / `icon.png`: app icon (PNG is generated from the SVG; the config references the PNG).
 - `apps/trade/public/{manifest.webmanifest,icon-192.png,icon-512.png,favicon-32.png}`: PWA manifest + icons.
-- `.github/workflows/deploy-dot.yml`: CI publish.
+- `.github/workflows/release.yml`: release on a `dot-v*` tag, to every network.
+- `.github/workflows/deploy-dot.yml`: CI publish of one network.
 - `.github/workflows/bootstrap.yml`: CI bootstrap, for networks whose keys live in their environment.
 
 ## Known caveat
