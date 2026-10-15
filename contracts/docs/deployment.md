@@ -111,7 +111,7 @@ See [how it works](how-it-works.md#supported-asset-types) for details on asset t
 
 ### Creating a Market
 
-Markets are created via `createMarket()`, which takes a `TokenConfig` struct for each token:
+Markets are created via `createMarket()`, which only the factory admin can call (the deployer, until `transferAdmin`). It takes a `TokenConfig` struct for each token:
 
 ```solidity
 struct TokenConfig {
@@ -120,7 +120,7 @@ struct TokenConfig {
 }
 ```
 
-For trust-backed assets, leave `xcmLocation` empty. For foreign assets, provide the SCALE-encoded XCM Location (see [Configuring XCM Locations](how-it-works.md#configuring-xcm-locations)).
+For trust-backed assets, leave `xcmLocation` empty: the factory rejects a location for them, and the market derives it. For foreign assets, provide the SCALE-encoded XCM Location (see [Configuring XCM Locations](how-it-works.md#configuring-xcm-locations)); the factory rejects a foreign asset without one.
 
 ```bash
 cast send <FACTORY_ADDRESS> \
@@ -154,6 +154,7 @@ The factory normalizes market keys by sorting token addresses: `createMarket(A, 
 
 `createMarket()` reverts if:
 
+- The caller is not the factory admin → `NotAdmin`
 - `baseToken == quoteToken` → `SameToken`
 - Either token is `address(0)` → `ZeroAddress`
 - `tickSize == 0` → `ZeroTickSize`
@@ -161,6 +162,9 @@ The factory normalizes market keys by sorting token addresses: `createMarket(A, 
 - `maxOrderSize < minOrderSize` → `MaxBelowMin`
 - Market already exists → `MarketExists`
 - `msg.value < marketCreationDeposit` → `InsufficientDeposit`
+- A trust-backed asset (precompile prefix `0x0120`) comes with an `xcmLocation` → `TrustBackedLocation`
+- A foreign asset (precompile prefix `0x0220`) comes without one → `MissingForeignLocation`
+- Both tokens resolve to the same XCM location → `SameLocation`
 
 ## Interacting with the Contract
 

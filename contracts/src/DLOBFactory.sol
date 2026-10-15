@@ -8,6 +8,7 @@ import {ISystem} from "./interfaces/ISystem.sol";
 import {IDLOBFactory} from "./interfaces/IDLOBFactory.sol";
 import {DLOB} from "./DLOB.sol";
 import {TokenConfig} from "./types/TokenConfig.sol";
+import {XcmBuilder} from "./libraries/XcmBuilder.sol";
 
 /// @title DLOBFactory
 /// @notice Market registry and fee configuration for the DLOB protocol.
@@ -45,6 +46,9 @@ contract DLOBFactory is IDLOBFactory {
     error ZeroTickSize();
     error ZeroMinOrderSize();
     error MaxBelowMin();
+    error TrustBackedLocation();
+    error MissingForeignLocation();
+    error SameLocation();
 
     // ──────────────────────── Constructor ─────────────────────────
 
@@ -57,7 +61,8 @@ contract DLOBFactory is IDLOBFactory {
 
     // ──────────────────────── Market Creation ────────────────────
 
-    /// @notice Create a new DLOB market for a token pair.
+    /// @notice Create a new DLOB market for a token pair. Admin only: the XCM locations a market
+    /// stores decide which asset its cross-chain legs move, and the pair can be created once.
     /// @param base Base token configuration. See `TokenConfig` for details on `xcmLocation`.
     /// @param quote Quote token configuration.
     function createMarket(
@@ -67,12 +72,18 @@ contract DLOBFactory is IDLOBFactory {
         uint96 minOrderSize,
         uint128 maxOrderSize
     ) external payable returns (address dlob) {
+        if (msg.sender != admin) revert NotAdmin();
         if (base.token == quote.token) revert SameToken();
         if (base.token == address(0) || quote.token == address(0)) revert ZeroAddress();
         if (tickSize == 0) revert ZeroTickSize();
         if (minOrderSize == 0) revert ZeroMinOrderSize();
         if (maxOrderSize < minOrderSize) revert MaxBelowMin();
         if (msg.value < marketCreationDeposit) revert InsufficientDeposit();
+        bytes memory baseLocation = _location(base);
+        bytes memory quoteLocation = _location(quote); // validated whatever the base is
+        if (baseLocation.length != 0 && keccak256(baseLocation) == keccak256(quoteLocation)) {
+            revert SameLocation();
+        }
 
         (address tokenA, address tokenB) =
             base.token < quote.token ? (base.token, quote.token) : (quote.token, base.token);
@@ -116,6 +127,25 @@ contract DLOBFactory is IDLOBFactory {
         if (newAdmin == address(0)) revert ZeroAddress();
         emit AdminTransferred(admin, newAdmin);
         admin = newAdmin;
+    }
+
+    // ──────────────────────── Internal ─────────────────────────────
+
+    /// @dev The XCM location a market will use for `t`, or empty when the market derives it from a
+    /// non-precompile token (tests and local tokens; XCM cannot move those). A trust-backed asset
+    /// (precompile prefix 0x0120, in the address's low bytes) always uses the location derived
+    /// from its asset id, and a foreign asset (prefix 0x0220) must be given one, since it cannot be
+    /// derived.
+    function _location(TokenConfig calldata t) internal pure returns (bytes memory) {
+        uint128 low = uint128(uint160(t.token));
+        if (low == 0x01200000) {
+            if (t.xcmLocation.length != 0) revert TrustBackedLocation();
+            return XcmBuilder.buildPalletAssetLocation(
+                XcmBuilder.ASSETS_PALLET_INDEX, uint128(uint160(t.token) >> 128)
+            );
+        }
+        if (low == 0x02200000 && t.xcmLocation.length == 0) revert MissingForeignLocation();
+        return t.xcmLocation;
     }
 
     // ──────────────────────── View Functions ─────────────────────
