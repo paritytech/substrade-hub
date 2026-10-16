@@ -1,4 +1,4 @@
-import { SCAN_WINDOW, useUserOrders } from "../../hooks/use-user-orders";
+import { useUserOrders } from "../../hooks/use-user-orders";
 import { useCancelOrder } from "../../hooks/use-cancel-order";
 import { useMarketStore } from "../../stores/market";
 import { Side } from "../../types/market";
@@ -24,9 +24,9 @@ export function OpenOrders() {
         )}
       </div>
 
-      {data?.hasGap && (
+      {data?.scanningOlder && (
         <p className="border-b border-border px-3 py-1.5 text-xs text-text-muted">
-          Open orders placed from another device before the last {SCAN_WINDOW} orders may not be listed.
+          Still checking older orders…
         </p>
       )}
 

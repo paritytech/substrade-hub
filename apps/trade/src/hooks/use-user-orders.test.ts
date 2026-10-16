@@ -4,7 +4,7 @@ const { readContract } = vi.hoisted(() => ({ readContract: vi.fn() }));
 vi.mock("../lib/contract", () => ({ readContract }));
 vi.mock("../config/chains", () => ({ activeChain: { name: "testnet" } }));
 
-import { fetchUserOrders, SCAN_WINDOW } from "./use-user-orders";
+import { BACKFILL_BATCH, fetchUserOrders, SCAN_WINDOW, takeBackfill } from "./use-user-orders";
 
 const H160 = "0xbbfa164356c66a791c4c5e2596fe5486594c6c68" as const;
 const ORIGIN = `0x${"ab".repeat(32)}` as const;
@@ -52,21 +52,43 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("fetchUserOrders", () => {
-  it("reads only the newest ids on a first load, and reports the skipped ones", async () => {
+  it("reads the newest ids and the newest skipped ones on a first load", async () => {
     const m = nextMarket();
     const reads = chain(1200, [100, 1000]);
-    const { orders, hasGap } = await fetchUserOrders(m, ACCOUNT);
-    expect(reads).toHaveLength(SCAN_WINDOW);
-    expect(Math.min(...reads)).toBe(1200 - SCAN_WINDOW + 1);
+    const { orders, scanningOlder } = await fetchUserOrders(m, ACCOUNT);
+    expect(reads).toHaveLength(SCAN_WINDOW + BACKFILL_BATCH);
+    expect(Math.min(...reads)).toBe(1200 - SCAN_WINDOW - BACKFILL_BATCH + 1);
     expect(orders.map((o) => o.orderId)).toEqual([1000]);
-    expect(hasGap).toBe(true);
+    expect(scanningOlder).toBe(true);
   });
 
-  it("reads every id of a small market and reports no gap", async () => {
+  it("finds an order the first load skipped once the backfill reaches it", async () => {
+    const m = nextMarket();
+    chain(1200, [100, 1000]);
+    await fetchUserOrders(m, ACCOUNT); // ids 501..1200 read; 1..500 left
+    chain(1200, [100, 1000]);
+    await fetchUserOrders(m, ACCOUNT); // 301..500
+    const reads = chain(1200, [100, 1000]);
+    const { orders, scanningOlder } = await fetchUserOrders(m, ACCOUNT); // 101..300
+    expect(orders.map((o) => o.orderId)).toEqual([1000]);
+    expect(scanningOlder).toBe(true);
+    expect(reads).toHaveLength(BACKFILL_BATCH + 1); // the backfill batch and the tracked order 1000
+
+    chain(1200, [100, 1000]);
+    const last = await fetchUserOrders(m, ACCOUNT); // 1..100
+    expect(last.orders.map((o) => o.orderId)).toEqual([100, 1000]);
+    expect(last.scanningOlder).toBe(false);
+
+    const after = chain(1200, [100, 1000]);
+    await fetchUserOrders(m, ACCOUNT);
+    expect(after.sort((a, b) => a - b)).toEqual([100, 1000]);
+  });
+
+  it("reads every id of a small market at once", async () => {
     chain(30, [3, 20]);
-    const { orders, hasGap } = await fetchUserOrders(nextMarket(), ACCOUNT);
+    const { orders, scanningOlder } = await fetchUserOrders(nextMarket(), ACCOUNT);
     expect(orders.map((o) => o.orderId)).toEqual([3, 20]);
-    expect(hasGap).toBe(false);
+    expect(scanningOlder).toBe(false);
   });
 
   it("later reads only the new ids and the account's open orders", async () => {
@@ -111,26 +133,37 @@ describe("fetchUserOrders", () => {
     expect((await fetchUserOrders(m, ACCOUNT)).orders.map((o) => o.orderId)).toEqual([4]);
   });
 
-  it("after a long absence reads at most the window plus the tracked orders, and keeps them", async () => {
+  it("after a long absence reads at most the window, the backfill batch and the tracked orders", async () => {
     const m = nextMarket();
     chain(150, [10]);
     await fetchUserOrders(m, ACCOUNT);
 
-    const reads = chain(10_150, [10]);
-    const { orders, hasGap } = await fetchUserOrders(m, ACCOUNT);
-    expect(reads).toHaveLength(SCAN_WINDOW + 1);
+    const reads = chain(10_150, [10, 5_000]);
+    const { orders, scanningOlder } = await fetchUserOrders(m, ACCOUNT);
+    expect(reads).toHaveLength(SCAN_WINDOW + BACKFILL_BATCH + 1);
     expect(orders.map((o) => o.orderId)).toEqual([10]);
-    expect(hasGap).toBe(true);
+    expect(scanningOlder).toBe(true);
   });
 
   it("resumes from the saved state after a reload", async () => {
     const m = nextMarket();
     const key = `substrade:open-orders:testnet:${m}:${H160}:${ORIGIN}`.toLowerCase();
-    store.set(key, JSON.stringify({ lastScannedId: 80, tracked: [12], hasGap: false }));
+    store.set(key, JSON.stringify({ lastScannedId: 80, tracked: [12], unread: [[30, 31]] }));
     const reads = chain(82, [12]);
     const { orders } = await fetchUserOrders(m, ACCOUNT);
-    expect(reads.sort((a, b) => a - b)).toEqual([12, 81, 82]);
+    expect(reads.sort((a, b) => a - b)).toEqual([12, 30, 31, 81, 82]);
     expect(orders.map((o) => o.orderId)).toEqual([12]);
+    expect(JSON.parse(store.get(key)!)).toEqual({ lastScannedId: 82, tracked: [12], unread: [] });
+  });
+
+  it("starts over from a state saved in an older format", async () => {
+    const m = nextMarket();
+    const key = `substrade:open-orders:testnet:${m}:${H160}:${ORIGIN}`.toLowerCase();
+    store.set(key, JSON.stringify({ lastScannedId: 80, tracked: [12], hasGap: true }));
+    const reads = chain(82, [12, 40]);
+    const { orders } = await fetchUserOrders(m, ACCOUNT);
+    expect(reads).toHaveLength(82);
+    expect(orders.map((o) => o.orderId)).toEqual([12, 40]);
   });
 
   it("starts over when the market has fewer orders than were read (a reset)", async () => {
@@ -170,5 +203,15 @@ describe("fetchUserOrders", () => {
     const reads = chain(6, [1]);
     expect((await fetchUserOrders(m, ACCOUNT)).orders.map((o) => o.orderId)).toEqual([1]);
     expect(reads.sort((a, b) => a - b)).toEqual([1, 6]);
+  });
+});
+
+describe("takeBackfill", () => {
+  it("takes the newest unread ids first, across ranges", () => {
+    expect(takeBackfill([[1, 3], [10, 12]], 4)).toEqual({ ids: [12, 11, 10, 3], left: [[1, 2]] });
+  });
+
+  it("returns everything when fewer ids are left than the batch", () => {
+    expect(takeBackfill([[5, 6]], 200)).toEqual({ ids: [6, 5], left: [] });
   });
 });
