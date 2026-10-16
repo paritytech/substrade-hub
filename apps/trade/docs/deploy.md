@@ -83,11 +83,35 @@ tag starts `.github/workflows/release.yml`, which:
 1. checks that the tag is `dot-vMAJOR.MINOR.PATCH`, points at a commit of `master`, and is newer than
    the previous release;
 2. publishes every network through `deploy-dot.yml`, in parallel, with the version from the tag;
-3. once every network has published, creates the GitHub Release, with notes generated from the PRs
-   merged since the previous release.
+3. once every network has published, creates the GitHub Release (see below).
 
 If a network fails, the GitHub Release is not created: rerun the failed jobs of the run, and the
 release follows once they pass.
+
+### Release notes and assets
+
+`apps/trade/scripts/release/notes.mjs` reads every network back from the chain and writes:
+
+- the notes header: where the release is live (each dotNS name, its dot.li link and the CID its
+  contenthash points at) and whether the contracts changed since the previous release;
+- `release-manifest.json`: the version, the commit and, per network, the dotNS name, gateway URL,
+  CID, eth-rpc URL and dotNS content resolver;
+- `deployments.json`: per network, the factory, faucet, quote token and every market the factory lists.
+
+GitHub's notes for the merged PRs follow the header, and both files are attached to the release. To
+add highlights or breaking changes, commit `release-notes/<version>.md` before tagging: its text goes
+above the header.
+
+### Verifying a release
+
+```bash
+pnpm install --frozen-lockfile
+node apps/trade/scripts/release/verify.mjs --tag dot-v1.3.0
+```
+
+It downloads the release's two files with `gh`, then checks each network: the dotNS name points at the
+release's CID, and the factory lists the recorded markets, each with code. A later release moves the
+names to a newer build, so an older release then fails the CID check.
 
 ## CI publish
 

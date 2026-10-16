@@ -12,6 +12,7 @@ const valid = {
   chainId: 420420417,
   dotnsName: "app.testnet",
   bulletinDeployEnv: "preview",
+  dotnsContentResolver: ZERO,
   explorerUrl: null,
   nativeFaucetUrl: null,
   factoryAddress: ZERO,

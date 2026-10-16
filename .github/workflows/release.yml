@@ -1,10 +1,12 @@
 name: Release
 
 # Publishes a release of the trading UI to every network in apps/trade/src/config/networks.json when a
-# `dot-vX.Y.Z` tag is pushed on a commit of master, then creates the GitHub Release with notes
-# generated from the merged PRs. The "Protect dot-v release tags" ruleset limits who can push such a
-# tag. Each network publishes through deploy-dot.yml from its own `<network>-deploy` environment, whose
-# deployment rules must allow `dot-v*` tags. See apps/trade/docs/deploy.md.
+# `dot-vX.Y.Z` tag is pushed on a commit of master, then creates the GitHub Release: a header read
+# from the chain (each network's published CID and contracts, see apps/trade/scripts/release/) above
+# notes generated from the merged PRs, with release-manifest.json and deployments.json attached. The
+# "Protect dot-v release tags" ruleset limits who can push such a tag. Each network publishes through
+# deploy-dot.yml from its own `<network>-deploy` environment, whose deployment rules must allow
+# `dot-v*` tags. See apps/trade/docs/deploy.md.
 
 on:
   push:
@@ -20,7 +22,6 @@ jobs:
     outputs:
       version: ${{ steps.check.outputs.version }}
       networks: ${{ steps.check.outputs.networks }}
-      published: ${{ steps.check.outputs.published }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -45,7 +46,6 @@ jobs:
           NETWORKS=apps/trade/src/config/networks.json
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "networks=$(jq -c 'keys' "$NETWORKS")" >> "$GITHUB_OUTPUT"
-          echo "published=$(jq -r 'to_entries | map("`\(.value.dotnsName)` (\(.value.name))") | join(", ")' "$NETWORKS")" >> "$GITHUB_OUTPUT"
 
   publish:
     name: Publish
@@ -68,12 +68,47 @@ jobs:
     permissions:
       contents: write
     steps:
+      # No persisted credentials: the install below runs dependency code, and the token is only handed to
+      # the steps that need it.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @substrade-hub/trade
+
+      # Reads each network's dotNS contenthash and contracts back from the chain. The previous release's
+      # deployments.json gives the "contracts changed" line; a release made before that asset existed
+      # falls back to its networks.json.
+      - name: Build the notes and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV=$(git tag --list 'dot-v*' --sort=-v:refname | grep -vxF "$GITHUB_REF_NAME" | head -1 || true)
+          ARGS=(--tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --out release)
+          if [ -n "$PREV" ]; then
+            ARGS+=(--previous-tag "$PREV")
+            mkdir -p previous
+            if gh release download "$PREV" --repo "$GITHUB_REPOSITORY" -D previous -p deployments.json 2>/dev/null; then
+              ARGS+=(--previous-deployments previous/deployments.json)
+            else
+              git show "$PREV:apps/trade/src/config/networks.json" > previous/networks.json
+              ARGS+=(--previous-networks previous/networks.json)
+            fi
+          fi
+          node apps/trade/scripts/release/notes.mjs "${ARGS[@]}"
+
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.check.outputs.version }}
-          PUBLISHED: ${{ needs.check.outputs.published }}
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "SubsTrade Hub $VERSION" --generate-notes \
-            --notes "Published as $PUBLISHED."
+            --title "SubsTrade Hub $VERSION" --generate-notes --notes-file release/notes.md \
+            release/release-manifest.json release/deployments.json
