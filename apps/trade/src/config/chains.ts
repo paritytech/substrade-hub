@@ -22,6 +22,11 @@ export interface ChainConfig {
   dotnsName: string;
   /** The `bulletin-deploy --env` preset that publishes to this network (see scripts/deploy-dot.mjs). */
   bulletinDeployEnv: string;
+  /**
+   * dotNS content resolver on this network, which holds `dotnsName`'s contenthash. Only the release
+   * scripts (scripts/release/) read it, to check which build the name points at.
+   */
+  dotnsContentResolver: `0x${string}`;
   /** Subscan-style explorer base URL; `null` when the network has none (explorer links are hidden). */
   explorerUrl: string | null;
   /**
@@ -51,6 +56,7 @@ const FIELDS = [
   "chainId",
   "dotnsName",
   "bulletinDeployEnv",
+  "dotnsContentResolver",
   "explorerUrl",
   "nativeFaucetUrl",
   "factoryAddress",
@@ -114,6 +120,7 @@ export function parseNetwork(network: string, raw: unknown): ChainConfig {
     chainId: r.chainId,
     dotnsName: r.dotnsName,
     bulletinDeployEnv: r.bulletinDeployEnv,
+    dotnsContentResolver: address(network, "dotnsContentResolver", r.dotnsContentResolver),
     explorerUrl: r.explorerUrl === null ? null : url(network, "explorerUrl", r.explorerUrl, ["https:"]),
     nativeFaucetUrl:
       r.nativeFaucetUrl === null ? null : url(network, "nativeFaucetUrl", r.nativeFaucetUrl, ["https:"]),
