@@ -89,7 +89,7 @@ Source: `src/DLOB.sol`, `src/DLOBFactory.sol`, `src/libraries/` (`RedBlackTree`,
 
 | Rule | Detail |
 |------|--------|
-| Price units | 18-decimal fixed-point everywhere (`rawPrice = humanPrice × 1e18`), regardless of token decimals. Must be an exact multiple of the market's `tickSize` or it reverts `NotTickAligned`. |
+| Price units | Quote raw units per base raw unit, scaled by 1e18: `rawPrice = humanPrice × 10^(18 + quoteDecimals − baseDecimals)`, so `humanPrice × 1e18` only when both tokens share decimals. The app lists only such markets. Must be an exact multiple of the market's `tickSize` or it reverts `NotTickAligned`. |
 | Amount units | The **base token's native decimals**. |
 | DOT units | 10 decimals (1 DOT = 1e10 Planck) — used for fee reserves and factory params. |
 | Local vs cross-chain | Decided by `destParaId`. `0` = local (direct ERC20 transfers, no `msg.value`). Non-zero = cross-chain (XCM settlement, requires a DOT fee reserve `msg.value >= factory.minCrossChainFee()`). |

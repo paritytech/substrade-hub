@@ -5,12 +5,12 @@
 ## Market Parameters
 
 Each market is created with three parameters that control price precision and order sizing.
-All values are integers, no floating-point. Prices use **18-decimal fixed-point**; amounts use the **base token's native decimals**.
+All values are integers, no floating-point. Prices are **quote raw units per base raw unit, in 18-decimal fixed-point** (see [Price Calculation](#price-calculation)); amounts use the **base token's native decimals**.
 
 
 | Parameter      | Type      | Unit                   | Description                                                                |
 | -------------- | --------- | ---------------------- | -------------------------------------------------------------------------- |
-| `tickSize`     | `uint96`  | 18-decimal fixed-point | Minimum price increment. All limit prices must be multiples of this value. |
+| `tickSize`     | `uint96`  | Price (raw)            | Minimum price increment. All limit prices must be multiples of this value. |
 | `minOrderSize` | `uint96`  | Base token raw units   | Smallest allowed order amount. Orders below this are rejected.             |
 | `maxOrderSize` | `uint128` | Base token raw units   | Largest allowed order amount. Orders above this are rejected.              |
 
@@ -19,17 +19,19 @@ All values are integers, no floating-point. Prices use **18-decimal fixed-point*
 
 All limit order prices must be exact multiples of `tickSize`. The contract checks this with `price % tickSize == 0` and reverts with `NotTickAligned` if it fails. A smaller tick size allows finer price granularity but increases the number of possible price levels.
 
-For example, with `tickSize = 10000000000000000` (0.01 in 18-decimal):
+For example, for two tokens with the same decimals and `tickSize = 10000000000000000` (0.01):
 - `5148250000000000000000` ($5,148.25): valid (multiple of tick)
 - `5148255000000000000000` ($5,148.255): reverts with `NotTickAligned`
 
 ### Price Calculation
 
-Prices are stored as 18-decimal fixed-point values. The formula to convert a human-readable price to the raw value:
+A raw price is the quote raw units paid for one base raw unit, scaled by 10¹⁸. The formula to convert a human-readable price (quote tokens per base token) to the raw value:
 
 ```
-rawPrice = humanPrice × 10¹⁸
+rawPrice = humanPrice × 10^(18 + quoteDecimals − baseDecimals)
 ```
+
+When both tokens have the same decimals, this is `humanPrice × 10¹⁸`.
 
 Quote amounts (how much quote token to escrow for a buy order) are calculated as:
 
@@ -57,13 +59,13 @@ The contract uses ceiling division when escrowing quote tokens for buy orders to
 
 | Parameter      | Human value | Raw value              | Calculation   |
 | -------------- | ----------- | ---------------------- | ------------- |
-| `tickSize`     | $0.10       | `100000000000000000`   | 0.10 × 10¹⁸  |
+| `tickSize`     | $0.10       | `100000`               | 0.10 × 10⁶ (10¹⁸⁺⁶⁻¹⁸) |
 | `minOrderSize` | 0.01 ETH    | `10000000000000000`    | 0.01 × 10¹⁸  |
 | `maxOrderSize` | 100 ETH     | `100000000000000000000`| 100 × 10¹⁸   |
 
-Note that `minOrderSize` and `maxOrderSize` always use the **base token's native decimals**, while `tickSize` always uses 18-decimal fixed-point regardless of token decimals.
+Note that `minOrderSize` and `maxOrderSize` always use the **base token's native decimals**, while `tickSize` is a price and follows the price formula above.
 
-> **Why 18 decimals for price?** Prices are stored in 18-decimal fixed-point regardless of the tokens' native decimals. This ensures uniform precision across all markets and avoids rounding errors for tokens with few decimals.
+> **Why the 10¹⁸ scale?** It keeps prices exact when one base raw unit is worth a fraction of a quote raw unit, as with tokens of equal decimals. Different decimals shift the scale by 10^(quoteDecimals − baseDecimals), and the contract does no other decimal conversion. The trading app lists only markets whose base and quote tokens have the same decimals.
 
 ## Factory Parameters
 
