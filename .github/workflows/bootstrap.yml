@@ -62,12 +62,20 @@ jobs:
           FILE="contracts/deployments/$NETWORK.json"
           SINCE=$(git log -1 --format=%ct -- "$FILE")
           echo "Deployment record last changed: ${SINCE:-never} (unix time)"
+          # `--branch master` matches the run's head_branch name, which a tag named master also reports, so
+          # each candidate must also have run a commit of master.
+          git fetch -q origin master
           RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow bootstrap.yml --branch master \
-            --event workflow_dispatch --limit 100 --json databaseId,createdAt \
+            --event workflow_dispatch --limit 100 --json databaseId,createdAt,headSha \
             --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID)
                    | select((.createdAt | fromdateiso8601) > ${SINCE:-0})]
-                  | sort_by(.createdAt) | reverse | .[].databaseId")
-          for RUN in $RUNS; do
+                  | sort_by(.createdAt) | reverse | .[] | \"\\(.databaseId) \\(.headSha)\"")
+          while read -r RUN SHA; do
+            [ -n "$RUN" ] || continue
+            if ! git merge-base --is-ancestor "$SHA" origin/master 2>/dev/null; then
+              echo "Skipping run $RUN: its commit $SHA is not on master"
+              continue
+            fi
             DIR=$(mktemp -d)
             if gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name "bootstrap-state-$NETWORK" --dir "$DIR" 2>/dev/null; then
               mkdir -p "$(dirname "$FILE")" # gone from master once its last record is deleted
@@ -75,21 +83,25 @@ jobs:
               echo "Resuming from the progress of run $RUN"
               exit 0
             fi
-          done
+          done <<< "$RUNS"
           echo "No earlier progress since the last deployment record; starting from the committed state"
 
+      # The archive is pinned by SHA-256, so a replaced release asset fails the run before forge, which
+      # receives the deployer key, ever runs. Bump V and SHA256 together, and keep the version in step
+      # with lint.yml and test.yml.
       - name: Install foundry-polkadot
         env:
-          FOUNDRY_DIR: ${{ github.workspace }}/.foundry
-        # Pinned installer and release, so every run installs the same forge.
+          V: v1.5.1
+          SHA256: c01fd8bcab0177232791b776098c7e55d97824c712095299351dd69c51c32f02
         run: |
-          curl -sSf -L -o /usr/local/bin/foundryup \
-            https://raw.githubusercontent.com/paritytech/foundry-polkadot/2375d9bef7479b5496e45959c95bdc38aab6f845/foundryup/foundryup
-          chmod +x /usr/local/bin/foundryup
-          mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
-          export PATH="$FOUNDRY_DIR/bin:$PATH"
-          foundryup --install v1.5.1
-          echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
+          DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$DIR/bin"
+          curl -sSfL -o "$DIR/foundry.tar.gz" \
+            "https://github.com/paritytech/foundry-polkadot/releases/download/$V/foundry_${V}_linux_amd64.tar.gz"
+          echo "$SHA256  $DIR/foundry.tar.gz" | sha256sum -c -
+          tar -xzf "$DIR/foundry.tar.gz" -C "$DIR/bin" forge
+          echo "$DIR/bin" >> "$GITHUB_PATH"
+          "$DIR/bin/forge" --version
 
       - name: Install pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0

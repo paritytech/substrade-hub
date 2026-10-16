@@ -123,7 +123,7 @@ Precompiles live at fixed addresses:
 ## Conventions & CI notes
 
 - **CI scope.** Workflows run Foundry build/test/fmt, e2e `cargo fmt`, and a Lychee link check over `*.md` and `contracts/src/**/*.sol` (`.github/workflows/{lint,test,e2e,check-links}.yml`). The full e2e `cargo test` job is commented out — too slow on standard runners.
-- **forge version.** CI installs foundry-polkadot **v1.5.1** with a `foundryup` pinned to a commit (in `lint.yml`, `test.yml` and `bootstrap.yml`). `forge fmt` output differs between forge versions, so format with v1.5.1 locally; if `forge fmt --check` fails on files you didn't touch, check your local forge version first. Bump the version in all three workflows together.
+- **forge version.** CI installs foundry-polkadot **v1.5.1**: `lint.yml` and `test.yml` with a `foundryup` pinned to a commit, and `bootstrap.yml` (which hands forge the deployer key) from the release archive pinned by SHA-256. `forge fmt` output differs between forge versions, so format with v1.5.1 locally; if `forge fmt --check` fails on files you didn't touch, check your local forge version first. Bump the version in all three workflows together, with the archive's SHA-256 in `bootstrap.yml`.
 - **Signed commits.** `commit.gpgsign = true` — commits require the configured signing key.
 - **Dependabot** is enabled; broad dependency bumps may supersede its open PRs.
 
