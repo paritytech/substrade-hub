@@ -202,6 +202,17 @@ const TX_TIMEOUT_MS = 60_000;
 const TX_ATTEMPTS = 3;
 
 /** Attempts at a forge broadcast; every attempt after the first resumes the previous one. */
+/**
+ * The environment forge runs with: the system basics and forge's own settings, plus what a script reads
+ * (passed per call). Never DEPLOY_MNEMONIC, FUNDER_URI or anything else from this process: forge only
+ * needs the deployer key it gets as an argument.
+ */
+function forgeEnv(extra = {}) {
+  const keep = (name) =>
+    ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM", "CI", "NO_COLOR"].includes(name) || name.startsWith("FOUNDRY_");
+  return { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => keep(name))), ...extra };
+}
+
 const FORGE_ATTEMPTS = 3;
 const FORGE_RETRY_MS = 15_000;
 
@@ -217,7 +228,7 @@ async function forge(script, rpcUrl, privateKey, env = {}) {
       execFileSync("forge", attempt === 1 ? args : [...args, "--resume"], {
         cwd: CONTRACTS,
         stdio: "inherit",
-        env: { ...process.env, ...env },
+        env: forgeEnv(env),
       });
       return;
     } catch (e) {
@@ -479,7 +490,11 @@ async function main() {
 
   if (run("factory") || run("markets") || run("faucet") || run("seed") || run("history") || run("replenish")) {
     // Quiet: a full build prints forge-lint notes for the whole tree, which drown the bootstrap log.
-    execFileSync("forge", ["build", "--quiet"], { cwd: CONTRACTS, stdio: ["ignore", "ignore", "inherit"] });
+    execFileSync("forge", ["build", "--quiet"], {
+      cwd: CONTRACTS,
+      stdio: ["ignore", "ignore", "inherit"],
+      env: forgeEnv(),
+    });
   }
   const factoryAbi = () => artifactAbi("DLOBFactory.sol", "DLOBFactory");
   const dlobAbi = () => artifactAbi("DLOB.sol", "DLOB");
