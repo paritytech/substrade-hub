@@ -37,20 +37,35 @@ permissions:
   contents: read
 
 jobs:
-  publish:
-    name: Build & publish (${{ inputs.network }})
+  # Holds no secret: everything that runs build tooling (Vite, its plugins, tsc, the PAPI CLI) runs here,
+  # so none of it can read the deploy key. It hands the built app to the publish job as an artifact.
+  build:
+    name: Build (${{ inputs.network }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Shared with the bootstrap workflow: both sign with the same account, so they never run at once.
-    concurrency:
-      group: chain-${{ inputs.network }}
-      cancel-in-progress: false
-    # Protected environment: gates DOTNS_MNEMONIC behind the branch rules set in repo settings.
-    environment: ${{ inputs.network }}-deploy
+    timeout-minutes: 15
+    outputs:
+      app_version: ${{ steps.ver.outputs.app_version }}
     env:
       VITE_NETWORK: ${{ inputs.network }}
     steps:
+      # Version comes from the input (release.yml passes the tag's version). Validate it first, so a
+      # malformed value fails before anything is installed or built.
+      - name: Resolve app version
+        id: ver
+        # Never interpolate the untrusted input into the script body. Pass it via env, then validate
+        # before use.
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          V="$INPUT_VERSION"
+          if ! printf '%s' "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version '$V' is not MAJOR.MINOR.PATCH"; exit 1
+          fi
+          echo "app_version=$V" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -67,23 +82,53 @@ jobs:
       - name: Generate PAPI descriptors
         run: pnpm --filter @substrade-hub/trade exec papi generate
 
-      # Version comes from the input (release.yml passes the tag's version). Validate here so a malformed
-      # value fails before we publish.
-      - name: Resolve app version
-        id: ver
-        # Never interpolate the untrusted input into the script body. Pass it via env, then validate
-        # before use.
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          V="$INPUT_VERSION"
-          if ! printf '%s' "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::version '$V' is not MAJOR.MINOR.PATCH"; exit 1
-          fi
-          echo "app_version=$V" >> "$GITHUB_OUTPUT"
-
       - name: Build
         run: pnpm --filter @substrade-hub/trade build
+
+      - name: Upload the built app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ inputs.network }}
+          path: apps/trade/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish (${{ inputs.network }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Shared with the bootstrap workflow: both sign with the same account, so they never run at once.
+    concurrency:
+      group: chain-${{ inputs.network }}
+      cancel-in-progress: false
+    # Protected environment: gates DOTNS_MNEMONIC behind the branch rules set in repo settings.
+    environment: ${{ inputs.network }}-deploy
+    env:
+      VITE_NETWORK: ${{ inputs.network }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # No install scripts and no build here: before the publish step, no dependency code runs in the job
+      # that holds the deploy key. The publish step itself runs deploy-dot.mjs and bulletin-deploy.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @substrade-hub/trade --ignore-scripts
+
+      - name: Download the built app
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist-${{ inputs.network }}
+          path: apps/trade/dist
 
       - name: Publish to Bulletin and point the dotNS name at it
         working-directory: apps/trade
@@ -91,7 +136,7 @@ jobs:
           DO_NOT_TRACK: "1" # no telemetry from the job that holds the deploy key
           MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
           DOTNS_OWNER: ${{ vars.DOTNS_OWNER }}
-          APP_VERSION: ${{ steps.ver.outputs.app_version }}
+          APP_VERSION: ${{ needs.build.outputs.app_version }}
         run: |
           if [ -z "$MNEMONIC" ]; then
             echo "::error::DOTNS_MNEMONIC secret is not set in the $VITE_NETWORK-deploy environment"; exit 1

@@ -137,6 +137,10 @@ every network.
   4. fund the owner account again (`--only fund --fund <owner>`), update "Deployed contracts" above
      with the new addresses, commit, and rerun this workflow by hand: it re-registers the name and
      republishes.
+- **Build and publish are separate jobs.** The build job holds no secret: it installs, generates the
+  descriptors and builds, then uploads `dist/` as an artifact. The publish job, in the `<network>-deploy`
+  environment, installs with `--ignore-scripts`, downloads that `dist/` and publishes it, so no build
+  tooling runs where the mnemonic is.
 - **Locked CLI.** The publish step handles the mnemonic, so `bulletin-deploy` is an exact-version
   devDependency of `apps/trade` (0.22.0), installed from the lockfile with integrity hashes and with no
   install scripts (`allowBuilds` in `pnpm-workspace.yaml`). `scripts/deploy-dot.mjs` runs that local

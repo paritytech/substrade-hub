@@ -24,14 +24,20 @@ import { entropyToMiniSecret, mnemonicToEntropy, validateMnemonic } from "@polka
 // scripts (see pnpm-workspace.yaml). Bump it deliberately.
 const BULLETIN_DEPLOY = fileURLToPath(new URL("../node_modules/.bin/bulletin-deploy", import.meta.url));
 
-/** The environment bulletin-deploy runs with: what it needs, and nothing else from this process. */
+/**
+ * The environment bulletin-deploy runs with: what it needs, and nothing else from this process. Of the
+ * runner's variables it gets GITHUB_OUTPUT, where it writes the CID, and the read-only run metadata it
+ * reports; never a token, and never the files that change later steps' environment (GITHUB_ENV,
+ * GITHUB_PATH).
+ */
 function bulletinDeployEnv() {
-  const names = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM", "CI", "NODE_OPTIONS", "DO_NOT_TRACK"];
-  const keep = (name) =>
-    name !== "GITHUB_TOKEN" &&
-    (names.includes(name) ||
-      ["MNEMONIC", "VITE_NETWORK", "APP_VERSION", "DOTNS_RPC"].includes(name) ||
-      /^(BULLETIN_|GITHUB_|RUNNER_|XDG_)/.test(name));
+  const names = [
+    "PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM", "CI", "DO_NOT_TRACK",
+    "MNEMONIC", "VITE_NETWORK", "APP_VERSION", "DOTNS_RPC",
+    "GITHUB_OUTPUT", "GITHUB_ACTIONS", "GITHUB_REPOSITORY", "GITHUB_SERVER_URL", "GITHUB_RUN_ID",
+    "GITHUB_RUN_ATTEMPT", "GITHUB_WORKFLOW", "GITHUB_JOB", "GITHUB_SHA", "GITHUB_REF_NAME", "GITHUB_HEAD_REF",
+  ];
+  const keep = (name) => names.includes(name) || /^(BULLETIN_|RUNNER_|XDG_)/.test(name);
   return Object.fromEntries(Object.entries(process.env).filter(([name]) => keep(name)));
 }
 
