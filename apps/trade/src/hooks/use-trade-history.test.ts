@@ -5,8 +5,11 @@ import { dlobAbi } from "../abi/dlob";
 vi.mock("../lib/client", () => ({ getTypedApi: vi.fn() }));
 vi.mock("../lib/host/detect", () => ({ isInHost: () => false }));
 
+import { getTypedApi } from "../lib/client";
 import {
   ANCHOR_BLOCKS,
+  MAX_LOG_RESULTS,
+  fetchHostTrades,
   anchorBlocks,
   blockChunks,
   decodeTradesInBlock,
@@ -105,28 +108,41 @@ describe("fetchEvmTrades", () => {
       blockNumber: hex(first + i),
       transactionHash: `0x${(first + i).toString(16).padStart(64, "0")}`,
       transactionIndex: "0x1",
+      logIndex: "0x0",
     }));
   }
 
-  /** An eth-rpc stub at block `head` serving `logs`; returns the methods it was called with. */
-  function stubEthRpc(head: number, logs: unknown[]) {
+  /**
+   * An eth-rpc stub at block `head` serving `logs` (one per block, in block order). Like eth-rpc, a log
+   * query returns at most `MAX_LOG_RESULTS` logs of its span, the oldest. Returns the methods it was
+   * called with, and the span of each log query.
+   */
+  function stubEthRpc(head: number, logs: ReturnType<typeof tradeLogs>) {
     const calls: string[] = [];
+    const spans: Array<[number, number]> = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string, init: RequestInit) => {
         expect(init.signal).toBeInstanceOf(AbortSignal);
         const { method, params } = JSON.parse(init.body as string) as { method: string; params: unknown[] };
         calls.push(method);
+        const logsIn = ({ fromBlock, toBlock }: { fromBlock: string; toBlock: string }) => {
+          const [from, to] = [parseInt(fromBlock, 16), parseInt(toBlock, 16)];
+          spans.push([from, to]);
+          return logs
+            .filter((l) => parseInt(l.blockNumber, 16) >= from && parseInt(l.blockNumber, 16) <= to)
+            .slice(0, MAX_LOG_RESULTS);
+        };
         const result =
           method === "eth_blockNumber"
             ? hex(head)
             : method === "eth_getLogs"
-              ? logs
+              ? logsIn(params[0] as { fromBlock: string; toBlock: string })
               : { timestamp: hex(1_700_000_000 + 2 * parseInt(params[0] as string, 16)) };
         return { json: async () => ({ result }) };
       }),
     );
-    return calls;
+    return Object.assign(calls, { spans });
   }
 
   afterEach(() => vi.unstubAllGlobals());
@@ -140,6 +156,26 @@ describe("fetchEvmTrades", () => {
     expect(trades[123]!.timestamp).toBe(1_700_000_000 + 2 * 5_123);
   });
 
+  it("keeps the newest trades when a chunk holds more logs than eth-rpc returns at once", async () => {
+    stubEthRpc(100_000, tradeLogs(50_000, 12_000));
+    const trades = await fetchEvmTrades("0x00000000000000000000000000000000000000b3");
+    expect(trades).toHaveLength(2000);
+    expect(trades[0]!.blockNumber).toBe(60_000);
+    expect(trades.at(-1)!.blockNumber).toBe(61_999);
+  });
+
+  it("stops at the newest chunks once they hold enough trades", async () => {
+    const head = 1_300_000;
+    const calls = stubEthRpc(head, [...tradeLogs(10_000, 10), ...tradeLogs(1_250_000, 2500)]);
+    const trades = await fetchEvmTrades("0x00000000000000000000000000000000000000b4");
+    expect(trades).toHaveLength(2000);
+    expect(trades.at(-1)!.blockNumber).toBe(1_252_499);
+    // Only the newest 300,000-block chunk was queried; the trades at block 10,000 were never needed.
+    expect(calls.spans).toHaveLength(1);
+    expect(calls.spans[0]![1]).toBe(head);
+    expect(calls.spans[0]![0]).toBeGreaterThan(1_000_000);
+  });
+
   it("fails when eth-rpc does not answer in time, so the next poll retries", async () => {
     vi.stubGlobal(
       "fetch",
@@ -148,5 +184,28 @@ describe("fetchEvmTrades", () => {
       }),
     );
     await expect(fetchEvmTrades("0x00000000000000000000000000000000000000b2")).rejects.toThrow("timed out");
+  });
+});
+
+describe("fetchHostTrades", () => {
+  it("resumes after a long pause by scanning at most the last 200 blocks", async () => {
+    let head = 1_000;
+    const hashReads: number[] = [];
+    vi.mocked(getTypedApi).mockReturnValue({
+      query: {
+        System: {
+          Number: { getValue: async () => head },
+          BlockHash: { getValue: async (n: number) => (hashReads.push(n), null) },
+        },
+      },
+    } as never);
+    const market = "0x00000000000000000000000000000000000000c1";
+    await fetchHostTrades(market);
+    hashReads.length = 0;
+
+    head = 100_000; // about two days of 2 s blocks later
+    await fetchHostTrades(market);
+    expect(hashReads.length).toBeLessThanOrEqual(200);
+    expect(Math.min(...hashReads)).toBe(head - 200);
   });
 });

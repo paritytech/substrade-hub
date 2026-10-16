@@ -41,6 +41,12 @@ const BATCH = 20;
  */
 const LOG_CHUNK_BLOCKS = 300_000;
 
+/**
+ * Most logs eth-rpc returns for one `eth_getLogs` query (pallet-revive's `MAX_LOG_RESULTS`). A larger
+ * result is cut to the oldest rows without an error, so a span that returns this many is split.
+ */
+export const MAX_LOG_RESULTS = 10_000;
+
 /** Inclusive `[start, end]` block spans covering `from..to`, each at most `size` blocks long. */
 export function blockChunks(from: number, to: number, size: number): Array<[number, number]> {
   const out: Array<[number, number]> = [];
@@ -111,15 +117,41 @@ type EthLog = {
   blockNumber: string;
   transactionHash: string;
   transactionIndex: string;
+  logIndex: string;
 };
 
 type Cached = { lastBlock: number; trades: TradeEvent[] };
 const evmCache = new Map<string, Cached>();
 
 /**
- * Trades from eth-rpc logs over the last `HISTORY_BLOCKS`. The first call per market fetches the whole
- * window in `LOG_CHUNK_BLOCKS` chunks; later calls fetch only the blocks since the previous one, since
- * past logs never change.
+ * The market's Trade logs in blocks `start..end`, oldest first. A span that returns `MAX_LOG_RESULTS`
+ * logs may have been cut, so it is split in half and both halves are fetched.
+ */
+async function fetchTradeLogs(marketAddr: `0x${string}`, start: number, end: number): Promise<EthLog[]> {
+  const logs = (await ethRpc("eth_getLogs", [
+    {
+      address: marketAddr,
+      topics: [TRADE_TOPIC],
+      fromBlock: `0x${start.toString(16)}`,
+      toBlock: `0x${end.toString(16)}`,
+    },
+  ])) as EthLog[];
+  if (logs.length < MAX_LOG_RESULTS) return logs;
+  if (start === end) {
+    console.warn(`[tradeHistory] block ${start} holds more than ${MAX_LOG_RESULTS} trades; some are not shown`);
+    return logs;
+  }
+  const mid = Math.floor((start + end) / 2);
+  return [...(await fetchTradeLogs(marketAddr, start, mid)), ...(await fetchTradeLogs(marketAddr, mid + 1, end))];
+}
+
+const logOrder = (l: EthLog) => [l.blockNumber, l.transactionIndex, l.logIndex].map((h) => parseInt(h, 16));
+
+/**
+ * Trades from eth-rpc logs over the last `HISTORY_BLOCKS`. Chunks of `LOG_CHUNK_BLOCKS` are fetched
+ * newest first, and the first call per market stops once `MAX_TRADES` trades are found, since only the
+ * newest are kept. Later calls fetch only the blocks since the previous one, since past logs never
+ * change.
  */
 export async function fetchEvmTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]> {
   if (isInHost() && !(await requestRemoteAccess())) {
@@ -131,18 +163,18 @@ export async function fetchEvmTrades(marketAddr: `0x${string}`): Promise<TradeEv
   const from = prev ? prev.lastBlock + 1 : Math.max(1, current - HISTORY_BLOCKS);
   if (from > current) return prev?.trades ?? [];
 
-  const logs: EthLog[] = [];
-  for (const [start, end] of blockChunks(from, current, LOG_CHUNK_BLOCKS)) {
-    const chunk = (await ethRpc("eth_getLogs", [
-      {
-        address: marketAddr,
-        topics: [TRADE_TOPIC],
-        fromBlock: `0x${start.toString(16)}`,
-        toBlock: `0x${end.toString(16)}`,
-      },
-    ])) as EthLog[];
-    logs.push(...chunk);
+  const chunks: EthLog[][] = [];
+  let found = 0;
+  for (const [start, end] of blockChunks(from, current, LOG_CHUNK_BLOCKS).reverse()) {
+    const chunk = await fetchTradeLogs(marketAddr, start, end);
+    chunks.unshift(chunk);
+    found += chunk.length;
+    if (found >= MAX_TRADES) break;
   }
+  const logs = chunks.flat().sort((a, b) => {
+    const [x, y] = [logOrder(a), logOrder(b)];
+    return x[0]! - y[0]! || x[1]! - y[1]! || x[2]! - y[2]!;
+  });
   // Only the newest trades are kept, so only their blocks need a timestamp.
   logs.splice(0, Math.max(0, logs.length - MAX_TRADES));
 
@@ -253,12 +285,14 @@ export function decodeTradesInBlock(
 
 const hostCache = new Map<string, Cached>();
 
-async function fetchHostTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]> {
+export async function fetchHostTrades(marketAddr: `0x${string}`): Promise<TradeEvent[]> {
   const api = getTypedApi();
   const marketLower = marketAddr.toLowerCase();
   const current = Number(await api.query.System.Number.getValue());
   const prev = hostCache.get(marketAddr);
-  const from = prev ? prev.lastBlock + 1 : Math.max(1, current - HOST_SCAN_BLOCKS);
+  // Resuming after a pause scans at most HOST_SCAN_BLOCKS too: older blocks' events are mostly pruned,
+  // and a fresh load shows no more than this either.
+  const from = Math.max(1, current - HOST_SCAN_BLOCKS, prev ? prev.lastBlock + 1 : 0);
   const to = current - 1; // the newest block's hash may not be in System.BlockHash yet
   const trades = prev ? [...prev.trades] : [];
 
