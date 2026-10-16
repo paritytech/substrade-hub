@@ -1,0 +1,7 @@
+# Weekly PRs bumping the commit SHAs that workflows pin their actions to.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
