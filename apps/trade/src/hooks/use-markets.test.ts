@@ -92,6 +92,17 @@ describe("fetchMarkets", () => {
     expect((await fetchMarkets()).map((m) => m.address)).toEqual(["0xa2"]);
   });
 
+  it("skips every market when the quote's decimals no longer match networks.json", async () => {
+    // Both assets' metadata changed to 18 decimals: equal, but existing amounts would show off by 10^12.
+    getMetadata.mockImplementation(async (id: number) =>
+      id === 0x02faf33a
+        ? { name: bytes("Test USD"), symbol: bytes("tUSD"), decimals: 18 }
+        : { name: bytes("Test Ether"), symbol: bytes("tETH"), decimals: 18 },
+    );
+    chain([["0xa1", T18, TUSD]]);
+    expect(await fetchMarkets()).toEqual([]);
+  });
+
   it("fails when every market fails, so an outage is not shown as an empty exchange", async () => {
     chain([["0xa1", TNVDA, TUSD]], ["0xa1"]);
     await expect(fetchMarkets()).rejects.toThrow("Could not load any market");
