@@ -50,7 +50,9 @@ export const MAX_MARKETS = 50;
 
 /**
  * Load market `index` of the factory. Returns null for a market quoted in another token: only markets
- * quoted in the known tUSD are shown, so other markets never reach a token lookup.
+ * quoted in the known tUSD are shown, so other markets never reach a token lookup. Returns null too for
+ * a market whose base and quote decimals differ: the DLOB prices in raw units, and the app shows a raw
+ * price as a human price, which only holds when both tokens share decimals.
  */
 async function fetchMarket(factory: `0x${string}`, index: bigint): Promise<MarketInfo | null> {
   const marketAddr = (await readContract(
@@ -81,6 +83,12 @@ async function fetchMarket(factory: `0x${string}`, index: bigint): Promise<Marke
     fetchTokenInfo(baseAddr),
     fetchTokenInfo(quoteAddr),
   ]);
+  if (base.decimals !== quote.decimals) {
+    console.warn(
+      `[markets] skipped ${base.symbol}/${quote.symbol} at ${marketAddr}: base has ${base.decimals} decimals, quote ${quote.decimals}`,
+    );
+    return null;
+  }
 
   return {
     address: marketAddr,

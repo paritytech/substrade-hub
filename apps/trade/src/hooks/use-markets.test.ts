@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const OTHER_QUOTE = "0x000007c000000000000000000000000001200000";
 const TNVDA = "0x0000000500000000000000000000000001200000";
 const NO_CODE = "0x000000000000000000000000000000000000dead";
+const T18 = "0x0000000700000000000000000000000001200000"; // an asset with 18 decimals
 
 const { readContract, getMetadata, FACTORY, TUSD } = vi.hoisted(() => ({
   readContract: vi.fn(),
@@ -45,7 +46,9 @@ beforeEach(() => {
       ? { name: bytes("Test USD"), symbol: bytes("tUSD"), decimals: 6 }
       : id === 5
         ? { name: bytes("Test NVIDIA"), symbol: bytes("tNVDA"), decimals: 6 }
-        : undefined,
+        : id === 7
+          ? { name: bytes("Test Ether"), symbol: bytes("tETH"), decimals: 18 }
+          : undefined,
   );
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -79,6 +82,14 @@ describe("fetchMarkets", () => {
     ]);
     expect((await fetchMarkets()).map((m) => m.address)).toEqual(["0xa2"]);
     expect(readContract.mock.calls.some(([, , , addr]) => addr === NO_CODE)).toBe(false);
+  });
+
+  it("skips a market whose base and quote decimals differ, since its prices would show off by 10^k", async () => {
+    chain([
+      ["0xa1", T18, TUSD],
+      ["0xa2", TNVDA, TUSD],
+    ]);
+    expect((await fetchMarkets()).map((m) => m.address)).toEqual(["0xa2"]);
   });
 
   it("fails when every market fails, so an outage is not shown as an empty exchange", async () => {
