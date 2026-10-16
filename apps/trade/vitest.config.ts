@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "scripts/**/*.test.mjs"],
     // `config/chains` resolves the network at import time; tests run against previewnet's entry.
     env: { VITE_NETWORK: "previewnet" },
   },
