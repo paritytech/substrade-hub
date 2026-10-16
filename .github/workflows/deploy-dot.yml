@@ -43,9 +43,26 @@ jobs:
     name: Build (${{ inputs.network }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      app_version: ${{ steps.ver.outputs.app_version }}
     env:
       VITE_NETWORK: ${{ inputs.network }}
     steps:
+      # Version comes from the input (release.yml passes the tag's version). Validate it first, so a
+      # malformed value fails before anything is installed or built.
+      - name: Resolve app version
+        id: ver
+        # Never interpolate the untrusted input into the script body. Pass it via env, then validate
+        # before use.
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          V="$INPUT_VERSION"
+          if ! printf '%s' "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version '$V' is not MAJOR.MINOR.PATCH"; exit 1
+          fi
+          echo "app_version=$V" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -113,28 +130,13 @@ jobs:
           name: dist-${{ inputs.network }}
           path: apps/trade/dist
 
-      # Version comes from the input (release.yml passes the tag's version). Validate here so a malformed
-      # value fails before we publish.
-      - name: Resolve app version
-        id: ver
-        # Never interpolate the untrusted input into the script body. Pass it via env, then validate
-        # before use.
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          V="$INPUT_VERSION"
-          if ! printf '%s' "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::version '$V' is not MAJOR.MINOR.PATCH"; exit 1
-          fi
-          echo "app_version=$V" >> "$GITHUB_OUTPUT"
-
       - name: Publish to Bulletin and point the dotNS name at it
         working-directory: apps/trade
         env:
           DO_NOT_TRACK: "1" # no telemetry from the job that holds the deploy key
           MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
           DOTNS_OWNER: ${{ vars.DOTNS_OWNER }}
-          APP_VERSION: ${{ steps.ver.outputs.app_version }}
+          APP_VERSION: ${{ needs.build.outputs.app_version }}
         run: |
           if [ -z "$MNEMONIC" ]; then
             echo "::error::DOTNS_MNEMONIC secret is not set in the $VITE_NETWORK-deploy environment"; exit 1
