@@ -799,4 +799,71 @@ contract CrossChainTest is Test {
         vm.expectRevert(DLOB.NotAdmin.selector);
         dlob.adminRedirectClaim(claimId, PARA_3000, CHARLIE_SETTLEMENT);
     }
+
+    // ──────────────────── Match budget ─────────────────
+
+    /// @dev `n` single-order asks from alice at distinct prices from PRICE up, settling to `para`
+    /// (0 for local).
+    function _asks(uint256 n, uint32 para) internal returns (uint32 first) {
+        for (uint256 i = 0; i < n; i++) {
+            vm.prank(alice);
+            uint32 id = dlob.placeLimitOrder{value: para == 0 ? 0 : 1e9}(
+                DLOB.Side.Sell,
+                PRICE + uint96(i) * TICK_SIZE,
+                MIN_ORDER_SIZE,
+                ALICE_ORIGIN,
+                para == 0 ? bytes32(0) : ALICE_SETTLEMENT,
+                para,
+                0
+            );
+            if (i == 0) first = id;
+        }
+    }
+
+    /// @dev Base filled by a market buy from bob for `n` asks' worth, settling to `para`.
+    function _sweep(uint256 n, uint32 para) internal returns (uint128) {
+        vm.prank(bob);
+        return dlob.placeMarketOrder{value: para == 0 ? 0 : 1e9}(
+            DLOB.Side.Buy,
+            uint128(n) * MIN_ORDER_SIZE,
+            type(uint96).max,
+            0,
+            BOB_ORIGIN,
+            para == 0 ? bytes32(0) : BOB_SETTLEMENT,
+            para
+        );
+    }
+
+    function testBudgetAllowsFourFillsWithOneCrossChainLeg() public {
+        _asks(6, PARA_2000);
+        assertEq(_sweep(6, 0), 4 * MIN_ORDER_SIZE, "a local taker fills 4 cross-chain makers");
+    }
+
+    function testBudgetAllowsThreeFillsWithTwoCrossChainLegs() public {
+        _asks(6, PARA_2000);
+        assertEq(
+            _sweep(6, PARA_1000),
+            3 * MIN_ORDER_SIZE,
+            "a cross-chain taker fills 3 cross-chain makers"
+        );
+    }
+
+    function testBudgetCountsEachMakersOwnLegs() public {
+        // Local, cross-chain, local, cross-chain... from the best price: costs 2, 3, 2, 3 = 10, then a
+        // fifth fill (2) fits exactly and a sixth would not.
+        for (uint256 i = 0; i < 6; i++) {
+            uint32 para = i % 2 == 0 ? 0 : PARA_2000;
+            vm.prank(alice);
+            dlob.placeLimitOrder{value: para == 0 ? 0 : 1e9}(
+                DLOB.Side.Sell,
+                PRICE + uint96(i) * TICK_SIZE,
+                MIN_ORDER_SIZE,
+                ALICE_ORIGIN,
+                para == 0 ? bytes32(0) : ALICE_SETTLEMENT,
+                para,
+                0
+            );
+        }
+        assertEq(_sweep(6, 0), 5 * MIN_ORDER_SIZE, "fills while the budget lasts");
+    }
 }

@@ -86,10 +86,15 @@ contract DLOB {
     // ──────────────────────── Constants ────────────────────────────────
 
     uint256 internal constant PRECISION = 1e18;
-    /// @dev Each fill needs about 1 MB of proof on Asset Hub, and one transaction may prove 8 MiB, so a
-    /// larger cap would let an order run out of proof and revert as a whole. With 6, an order crossing
-    /// more makers fills 6, then rests (limit) or returns the remainder (market).
-    uint8 internal constant MAX_FILLS_PER_TX = 6;
+    /// @dev Matching work one transaction may do, in units of proof size. Each fill costs `FILL_COST`,
+    /// plus `CROSS_CHAIN_LEG_COST` for each of its two legs settled over XCM; cleaning up an expired
+    /// order costs `FILL_COST`. On Asset Hub a local fill needs about 1 MB of proof, a cross-chain leg
+    /// adds about 0.5 MB, and one transaction may prove 8 MiB: the budget allows 6 local fills, 4 with
+    /// one cross-chain leg, or 3 with two, each using at most about 80% of that limit. An order that
+    /// needs more fills what fits and returns the remainder to the sender.
+    uint8 internal constant MATCH_BUDGET = 12;
+    uint8 internal constant FILL_COST = 2;
+    uint8 internal constant CROSS_CHAIN_LEG_COST = 1;
 
     // ──────────────────────── State ──────────────────────────────
 
@@ -251,7 +256,8 @@ contract DLOB {
 
     // ──────────────────────── Core Functions ──────────────────────
 
-    /// @notice Place a limit order.
+    /// @notice Place a limit order. It fills against the opposite side, then rests at `price`. When
+    /// the match budget runs out first, the order does not rest: its remainder is returned.
     function placeLimitOrder(
         Side side,
         uint96 price,
@@ -306,20 +312,29 @@ contract DLOB {
         // --- MATCHING PHASE ---
         uint128 remaining = amount;
         uint128 quoteUsed = 0;
-        uint8 fillCount = 0;
+        bool exhausted;
 
         if (side == Side.Buy) {
-            (remaining, quoteUsed) =
-                _matchBuy(orderId, price, remaining, originAccount, destParaId, fillCount);
+            (remaining, quoteUsed, exhausted) =
+                _matchBuy(orderId, price, remaining, originAccount, destParaId, 0);
         } else {
-            remaining = _matchSell(orderId, price, remaining, originAccount, destParaId, fillCount);
+            (remaining, exhausted) =
+                _matchSell(orderId, price, remaining, originAccount, destParaId, 0);
+        }
+
+        // An order the budget stopped while it still crossed would cross the book if it rested at its
+        // price, so its remainder goes back to the sender, as a market order's does.
+        uint128 returned = exhausted ? remaining : 0;
+        remaining -= returned;
+        if (side == Side.Sell && returned > 0) {
+            baseToken.safeTransfer(msg.sender, uint256(returned));
         }
 
         // Update remaining amount after matching
         orders[orderId].remainingAmount = remaining;
 
         // --- REFUND EXCESS QUOTE FOR BUY ORDERS ---
-        if (side == Side.Buy && quoteUsed > 0) {
+        if (side == Side.Buy && (quoteUsed > 0 || returned > 0)) {
             uint128 totalEscrowed = PriceMath.quoteAmountCeil(amount, price, PRECISION);
             uint128 restingEscrow =
                 remaining > 0 ? PriceMath.quoteAmountCeil(remaining, price, PRECISION) : 0;
@@ -405,9 +420,9 @@ contract DLOB {
         // Match
         uint128 remaining = amount;
         if (side == Side.Buy) {
-            (remaining,) = _matchBuy(orderId, limitPrice, remaining, originAccount, destParaId, 0);
+            (remaining,,) = _matchBuy(orderId, limitPrice, remaining, originAccount, destParaId, 0);
         } else {
-            remaining = _matchSell(orderId, limitPrice, remaining, originAccount, destParaId, 0);
+            (remaining,) = _matchSell(orderId, limitPrice, remaining, originAccount, destParaId, 0);
         }
 
         filledAmount = amount - remaining;
@@ -737,26 +752,32 @@ contract DLOB {
         uint96 maxPrice,
         uint128 remaining,
         bytes32 originAccount,
-        uint32, /* takerDestParaId */
-        uint8 fillCount
-    ) internal returns (uint128, uint128) {
+        uint32 takerDestParaId,
+        uint8 used
+    ) internal returns (uint128, uint128, bool exhausted) {
         uint128 quoteUsed = 0;
-        while (remaining > 0 && fillCount < MAX_FILLS_PER_TX && bestAskNodeId != 0) {
+        while (remaining > 0 && bestAskNodeId != 0) {
             RedBlackTree.RBNode storage askNode = nodes[bestAskNodeId];
             if (askNode.price > maxPrice) break;
 
             uint32 makerOrderId = askNode.orderHead;
-            while (makerOrderId != 0 && remaining > 0 && fillCount < MAX_FILLS_PER_TX) {
+            while (makerOrderId != 0 && remaining > 0) {
                 Order storage maker = orders[makerOrderId];
                 uint32 nextMaker = orderLinks[makerOrderId].next;
 
-                // Lazy expiry. Counts toward MAX_FILLS_PER_TX, so expired orders cannot make one
+                // Lazy expiry. Counts toward MATCH_BUDGET, so expired orders cannot make one
                 // transaction's work unbounded.
-                if (maker.expireTimestamp != 0 && uint64(block.timestamp) >= maker.expireTimestamp)
-                {
+                bool expired =
+                    maker.expireTimestamp != 0 && uint64(block.timestamp) >= maker.expireTimestamp;
+                uint8 cost = expired ? FILL_COST : _fillCost(takerDestParaId, makerOrderId);
+                if (used + cost > MATCH_BUDGET) {
+                    exhausted = true;
+                    break;
+                }
+                used += cost;
+                if (expired) {
                     _expireOrder(makerOrderId);
                     makerOrderId = nextMaker;
-                    fillCount++;
                     continue;
                 }
 
@@ -773,7 +794,6 @@ contract DLOB {
 
                 maker.remainingAmount -= fillAmount;
                 remaining -= fillAmount;
-                fillCount++;
                 askNode.totalAmount -= fillAmount;
 
                 emit Trade(takerOrderId, makerOrderId, askNode.price, fillAmount);
@@ -789,8 +809,9 @@ contract DLOB {
 
             // If price level empty, remove from tree
             if (askNode.orderCount == 0) _removeLevel(bestAskNodeId, Side.Sell, askNode.price);
+            if (exhausted) break;
         }
-        return (remaining, quoteUsed);
+        return (remaining, quoteUsed, exhausted);
     }
 
     function _matchSell(
@@ -798,25 +819,31 @@ contract DLOB {
         uint96 minPrice,
         uint128 remaining,
         bytes32 originAccount,
-        uint32, /* takerDestParaId */
-        uint8 fillCount
-    ) internal returns (uint128) {
-        while (remaining > 0 && fillCount < MAX_FILLS_PER_TX && bestBidNodeId != 0) {
+        uint32 takerDestParaId,
+        uint8 used
+    ) internal returns (uint128, bool exhausted) {
+        while (remaining > 0 && bestBidNodeId != 0) {
             RedBlackTree.RBNode storage bidNode = nodes[bestBidNodeId];
             if (bidNode.price < minPrice) break;
 
             uint32 makerOrderId = bidNode.orderHead;
-            while (makerOrderId != 0 && remaining > 0 && fillCount < MAX_FILLS_PER_TX) {
+            while (makerOrderId != 0 && remaining > 0) {
                 Order storage maker = orders[makerOrderId];
                 uint32 nextMaker = orderLinks[makerOrderId].next;
 
-                // Lazy expiry. Counts toward MAX_FILLS_PER_TX, so expired orders cannot make one
+                // Lazy expiry. Counts toward MATCH_BUDGET, so expired orders cannot make one
                 // transaction's work unbounded.
-                if (maker.expireTimestamp != 0 && uint64(block.timestamp) >= maker.expireTimestamp)
-                {
+                bool expired =
+                    maker.expireTimestamp != 0 && uint64(block.timestamp) >= maker.expireTimestamp;
+                uint8 cost = expired ? FILL_COST : _fillCost(takerDestParaId, makerOrderId);
+                if (used + cost > MATCH_BUDGET) {
+                    exhausted = true;
+                    break;
+                }
+                used += cost;
+                if (expired) {
                     _expireOrder(makerOrderId);
                     makerOrderId = nextMaker;
-                    fillCount++;
                     continue;
                 }
 
@@ -832,7 +859,6 @@ contract DLOB {
 
                 maker.remainingAmount -= fillAmount;
                 remaining -= fillAmount;
-                fillCount++;
                 bidNode.totalAmount -= fillAmount;
 
                 emit Trade(makerOrderId, takerOrderId, bidNode.price, fillAmount);
@@ -848,11 +874,20 @@ contract DLOB {
 
             // If price level empty, remove from tree
             if (bidNode.orderCount == 0) _removeLevel(bestBidNodeId, Side.Buy, bidNode.price);
+            if (exhausted) break;
         }
-        return remaining;
+        return (remaining, exhausted);
     }
 
     // ──────────────────────── Internal: Settlement ───────────────
+
+    /// @dev What a fill against `makerOrderId` costs of `MATCH_BUDGET`.
+    function _fillCost(uint32 takerDestParaId, uint32 makerOrderId) internal view returns (uint8) {
+        uint8 cost = FILL_COST;
+        if (takerDestParaId != 0) cost += CROSS_CHAIN_LEG_COST;
+        if (orderLinks[makerOrderId].destParaId != 0) cost += CROSS_CHAIN_LEG_COST;
+        return cost;
+    }
 
     function _settleFill(
         uint32 takerOrderId,

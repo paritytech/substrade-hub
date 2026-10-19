@@ -39,11 +39,11 @@ DLOBFactory (~2KB)
               ├── RedBlackTree library (bid + ask price levels, O(log n))
               ├── XcmBuilder library (XCM message encoding)
               ├── FIFO Order Queue (per price level, doubly-linked list)
-              ├── Matching Engine (up to 6 fills per tx)
+              ├── Matching Engine (per-tx fill budget)
               └── XCM Settlement (inline or pending claim fallback)
 ```
 
-Each market is a **DLOB** contract that maintains two red-black trees (one for bids, one for asks), giving O(log n) price level insertion and O(1) best bid/ask lookup. Within each price level, orders sit in a FIFO queue (doubly-linked list) so the matching engine can fill them in time priority. When a new order crosses the spread, the engine walks the opposite tree and fills up to 6 orders per transaction. For cross-chain traders, filled tokens are delivered via XCM reserve transfers; if delivery fails, a `PendingClaim` stores the settlement for later retry.
+Each market is a **DLOB** contract that maintains two red-black trees (one for bids, one for asks), giving O(log n) price level insertion and O(1) best bid/ask lookup. Within each price level, orders sit in a FIFO queue (doubly-linked list) so the matching engine can fill them in time priority. When a new order crosses the spread, the engine walks the opposite tree and fills orders up to a per-transaction budget (6 local fills, fewer when settlement is cross-chain). For cross-chain traders, filled tokens are delivered via XCM reserve transfers; if delivery fails, a `PendingClaim` stores the settlement for later retry.
 
 **DLOBFactory** creates new markets as EIP-1167 minimal proxy clones of a single DLOB implementation. The architecture uses two patterns to stay within the EIP-170 contract size limit (24KB) enforced by pallet-revive:
 
