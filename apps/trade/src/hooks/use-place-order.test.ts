@@ -4,7 +4,8 @@ import { encodeAbiParameters } from "viem";
 const { simulateContractData } = vi.hoisted(() => ({ simulateContractData: vi.fn() }));
 vi.mock("../lib/contract", () => ({ simulateContractData }));
 
-import { limitOrderReturned } from "./use-place-order";
+import { limitOrderReturned, withinLimit } from "./use-place-order";
+import { Side } from "../types/market";
 
 const MARKET = "0x00000000000000000000000000000000000000aa";
 const FROM = "0x00000000000000000000000000000000000000bb";
@@ -30,5 +31,21 @@ describe("limitOrderReturned", () => {
   it("passes a failed simulation on", async () => {
     simulateContractData.mockRejectedValueOnce(new Error("reverted"));
     await expect(limitOrderReturned(ARGS, MARKET, FROM)).rejects.toThrow("reverted");
+  });
+});
+
+describe("withinLimit", () => {
+  it("takes asks up to a buy's limit", () => {
+    expect(withinLimit(Side.Buy, 100n, 100n)).toBe(true);
+    expect(withinLimit(Side.Buy, 101n, 100n)).toBe(false);
+  });
+
+  it("takes bids down to a sell's limit", () => {
+    expect(withinLimit(Side.Sell, 100n, 100n)).toBe(true);
+    expect(withinLimit(Side.Sell, 99n, 100n)).toBe(false);
+  });
+
+  it("is false for an empty book", () => {
+    expect(withinLimit(Side.Buy, undefined, 100n)).toBe(false);
   });
 });
