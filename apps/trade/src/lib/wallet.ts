@@ -1,4 +1,6 @@
 import { activeChain } from "../config/chains";
+import { revertError } from "./errors";
+import { UserFacingError } from "./user-errors";
 
 declare global {
   interface Window {
@@ -15,15 +17,21 @@ export function isMetaMaskAvailable(): boolean {
   return typeof window !== "undefined" && !!window.ethereum?.isMetaMask;
 }
 
+/** EIP-1193: the user rejected the request in the wallet. */
+const isUserRejection = (e: unknown) => (e as { code?: unknown })?.code === 4001;
+
 export async function connectMetaMask(): Promise<`0x${string}`> {
-  if (!window.ethereum) throw new Error("MetaMask not found");
+  if (!window.ethereum) throw new UserFacingError("MetaMask isn't installed — install it, or use another wallet");
 
   // Request account access
-  const accounts = (await window.ethereum.request({
-    method: "eth_requestAccounts",
-  })) as string[];
+  const accounts = (await window.ethereum
+    .request({ method: "eth_requestAccounts" })
+    .catch((e: unknown) => {
+      if (isUserRejection(e)) throw new UserFacingError("The connection was rejected in MetaMask", { cause: e });
+      throw e;
+    })) as string[];
 
-  if (!accounts.length) throw new Error("No accounts returned");
+  if (!accounts.length) throw new UserFacingError("MetaMask has no account to connect — create or unlock one, then retry");
 
   // Switch to the correct chain
   try {
@@ -32,6 +40,9 @@ export async function connectMetaMask(): Promise<`0x${string}`> {
       params: [{ chainId: `0x${activeChain.chainId.toString(16)}` }],
     });
   } catch (switchError: unknown) {
+    if (isUserRejection(switchError)) {
+      throw new UserFacingError(`Switch MetaMask to ${activeChain.name} to continue`, { cause: switchError });
+    }
     // Chain not added — add it
     if ((switchError as { code?: number })?.code === 4902) {
       await window.ethereum.request({
@@ -64,7 +75,7 @@ const FINGERPRINT_DEPTH = 5;
  * not have the same block at that height (old blocks are no use, these nodes prune their state).
  */
 export async function assertWalletOnActiveChain(): Promise<void> {
-  if (!window.ethereum) throw new Error("MetaMask not found");
+  if (!window.ethereum) throw new UserFacingError("MetaMask isn't installed — install it, or use another wallet");
   const head = parseInt((await ethRpcDirect("eth_blockNumber")) as string, 16);
   const probe = `0x${Math.max(head - FINGERPRINT_DEPTH, 0).toString(16)}`;
   const [ours, theirs] = (await Promise.all([
@@ -72,7 +83,7 @@ export async function assertWalletOnActiveChain(): Promise<void> {
     window.ethereum.request({ method: "eth_getBlockByNumber", params: [probe, false] }),
   ])) as [{ hash?: string } | null, { hash?: string } | null];
   if (!ours?.hash || ours.hash !== theirs?.hash) {
-    throw new Error(
+    throw new UserFacingError(
       `MetaMask's network for chain id ${activeChain.chainId} is not ${activeChain.name}. In MetaMask, ` +
         `edit that network's RPC URL to ${activeChain.rpcUrl} and try again.`,
     );
@@ -85,24 +96,32 @@ export async function sendTransaction(params: {
   from: `0x${string}`;
   value?: bigint;
 }): Promise<`0x${string}`> {
-  if (!window.ethereum) throw new Error("MetaMask not found");
+  if (!window.ethereum) throw new UserFacingError("MetaMask isn't installed — install it, or use another wallet");
   // The wallet's network can change between connect and send.
   await assertWalletOnActiveChain();
 
   // Estimate gas via our RPC — MetaMask can't estimate on Paseo
   console.log(`[sendTransaction] from=${params.from} to=${params.to} data=${params.data}`);
 
+  // A call that would revert fails here, with the revert data, before the wallet is asked to sign.
   const gasEstimate = (await ethRpcDirect("eth_estimateGas", [
     {
       from: params.from,
       to: params.to,
       data: params.data,
     },
-  ])) as string;
+  ]).catch((e: unknown) => {
+    const data = (e as { data?: unknown }).data;
+    if (typeof data === "string" && /^0x[0-9a-f]*$/i.test(data)) {
+      throw revertError({ value: { data: hexToBytes(data) } });
+    }
+    throw e;
+  })) as string;
   const gas = `0x${(parseInt(gasEstimate, 16) * 2).toString(16)}`;
   const gasPrice = (await ethRpcDirect("eth_gasPrice")) as string;
 
-  const txHash = (await window.ethereum.request({
+  const txHash = (await window.ethereum
+    .request({
     method: "eth_sendTransaction",
     params: [
       {
@@ -114,7 +133,12 @@ export async function sendTransaction(params: {
         gasPrice,
       },
     ],
-  })) as `0x${string}`;
+    })
+    .catch((e: unknown) => {
+      // EIP-1193: 4001 is the user rejecting the request in the wallet.
+      if (isUserRejection(e)) throw new UserFacingError("Signing was cancelled.", { cause: e });
+      throw e;
+    })) as `0x${string}`;
 
   console.log(`[sendTransaction] txHash: ${txHash}`);
   return txHash;
@@ -126,9 +150,14 @@ async function ethRpcDirect(method: string, params: unknown[] = []): Promise<unk
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
-  const json = (await res.json()) as { result?: unknown; error?: { message: string } };
-  if (json.error) throw new Error(`RPC error: ${json.error.message}`);
+  const json = (await res.json()) as { result?: unknown; error?: { message: string; data?: unknown } };
+  if (json.error) throw Object.assign(new Error(`RPC error: ${json.error.message}`), { data: json.error.data });
   return json.result;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.slice(2);
+  return new Uint8Array(clean.match(/../g)?.map((h) => parseInt(h, 16)) ?? []);
 }
 
 export async function waitForReceipt(
@@ -144,19 +173,24 @@ export async function waitForReceipt(
       if (receipt) {
         console.log(`[waitForReceipt] ${txHash} status: ${receipt.status}, block: ${receipt.blockNumber}`);
         if (receipt.status !== "0x1") {
-          const err = new Error("Transaction reverted on chain");
+          const err = new UserFacingError("The transaction was reverted on chain");
           (err as Error & { txHash: string }).txHash = txHash;
           throw err;
         }
         return receipt;
       }
     } catch (e) {
-      if (e instanceof Error && e.message.includes("reverted")) throw e;
+      if (e instanceof UserFacingError) throw e;
       console.log(`[waitForReceipt] poll ${i} error:`, e);
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
-  throw new Error("Transaction receipt timeout — check explorer: " + txHash);
+  throw Object.assign(
+    new UserFacingError("The network didn't confirm the transaction in time — check your orders before trying again", {
+      cause: `no receipt for ${txHash}`,
+    }),
+    { txHash },
+  );
 }
 
 /** How long to wait for a block to finalize before giving up on reporting it. */

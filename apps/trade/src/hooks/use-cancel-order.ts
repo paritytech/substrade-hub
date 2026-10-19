@@ -4,6 +4,7 @@ import { dlobAbi } from "../abi/dlob";
 import { useWalletStore } from "../stores/wallet";
 import { useMarketStore } from "../stores/market";
 import { txProgressToast, useToastStore } from "../stores/toast";
+import { UserFacingError } from "../lib/user-errors";
 import { formatOrderError } from "./use-place-order";
 
 export function useCancelOrder() {
@@ -15,7 +16,7 @@ export function useCancelOrder() {
   return useMutation({
     mutationFn: async (orderId: number) => {
       if (!h160 || !originAccount || !market)
-        throw new Error("Wallet not connected or no market selected");
+        throw new UserFacingError("Connect a wallet and select a market first");
 
       const cancelling = `Cancelling order #${orderId}`;
       const toastId = addToast("pending", `${cancelling}: waiting for signature...`);

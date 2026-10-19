@@ -2,7 +2,8 @@ import { type PolkadotSigner, type SS58String, type SizedHex } from "polkadot-ap
 import { fromHex } from "polkadot-api/utils";
 import type { Abi } from "viem";
 import { getTypedApi } from "./client";
-import { extractRevertReason } from "./errors";
+import { revertError } from "./errors";
+import { UserFacingError } from "./user-errors";
 import {
   submitAndWatch,
   TxDispatchError,
@@ -35,31 +36,64 @@ export function isRevert(flags: number): boolean {
 }
 
 /**
- * Format a submission failure — a dispatch error (post-inclusion) OR a transaction-validity error
- * (pre-inclusion, e.g. `BadProof`) — into a short, human message. Unwraps PAPI errors that carry the
- * structured `{ type, value }` under `.error` or JSON-encode it in an Error message.
+ * The names along a chain error's nested `{ type, value }` chain, e.g. a Module error gives
+ * Module, Revive, StorageDepositLimitExhausted. Unwraps PAPI errors that carry the shape under `.error`
+ * or JSON-encode it in an Error message. Empty for anything else.
  */
-export function formatSubmitError(err: unknown): string {
+function errorPath(err: unknown): string[] {
   let e: unknown = err;
-  // Our own thrown Errors have plain messages; PAPI validity errors may JSON-encode the shape.
   if (err instanceof Error) {
     try {
       e = JSON.parse(err.message);
     } catch {
-      return err.message;
+      return [];
     }
   }
   if (e && typeof e === "object" && "error" in e && (e as { error?: unknown }).error) {
     e = (e as { error: unknown }).error;
   }
-  // Walk the nested `{ type, value }` chain so we surface the full path, e.g. a Module error decodes to
-  // Module -> Revive -> StorageDepositLimitExhausted, not just "Module (Revive)".
   const path: string[] = [];
   let cur: unknown = e;
   while (cur && typeof cur === "object" && typeof (cur as { type?: unknown }).type === "string") {
     path.push((cur as { type: string }).type);
     cur = (cur as { value?: unknown }).value;
   }
+  return path;
+}
+
+/** Chain errors the user can act on, by a name in the error's path; undefined for the rest. */
+const NOT_ENOUGH_FUNDS = ["Payment", "FundsUnavailable", "InsufficientBalance", "StorageDepositNotEnoughFunds"];
+function userChainError(path: string[]): string | undefined {
+  if (path.some((name) => NOT_ENOUGH_FUNDS.includes(name))) {
+    return "Not enough balance to pay for this transaction — add funds and try again";
+  }
+  if (path.includes("Stale") || path.includes("Future")) {
+    return "A previous transaction is still pending — wait a moment and try again";
+  }
+  if (path.includes("BadProof")) {
+    return "The network rejected your wallet's signature — try again, or use another wallet";
+  }
+  return undefined;
+}
+
+/**
+ * The error to throw for a chain failure: a `UserFacingError` when the user can act on it (see
+ * `userChainError`), else a plain Error carrying the detail for the console.
+ */
+function chainError(err: unknown): Error {
+  const detail = formatSubmitError(err);
+  const user = userChainError(errorPath(err));
+  return user ? new UserFacingError(user, { cause: detail }) : new Error(detail);
+}
+
+/**
+ * Format a submission failure — a dispatch error (post-inclusion) OR a transaction-validity error
+ * (pre-inclusion, e.g. `BadProof`) — into a short, human message. Unwraps PAPI errors that carry the
+ * structured `{ type, value }` under `.error` or JSON-encode it in an Error message.
+ */
+export function formatSubmitError(err: unknown): string {
+  if (err instanceof Error && errorPath(err).length === 0) return err.message;
+  const path = errorPath(err);
   if (path.includes("BadProof"))
     return "Chain rejected the signature (BadProof) — the signed payload didn't match what the runtime expected. This is a wallet/runtime signing incompatibility, not an insufficient-balance error.";
   if (path.length) {
@@ -69,17 +103,18 @@ export function formatSubmitError(err: unknown): string {
   return `Transaction failed: ${typeof err === "string" ? err : JSON.stringify(err)}`;
 }
 
-/** Turn a product-sdk-tx failure into the short message the order UI shows. */
-export function describeTxError(e: TxError): string {
+/** The error to throw for a product-sdk-tx failure. */
+export function txError(e: TxError): Error {
   if (e instanceof TxTimeoutError) {
-    return `Transaction was not included within ${INCLUSION_TIMEOUT_MS / 1000}s — check the explorer and try again.`;
+    return new UserFacingError(
+      "The network didn't include the transaction in time — check your orders before trying again",
+      { cause: e },
+    );
   }
-  if (e instanceof TxSigningRejectedError) return "Signing was cancelled.";
-  // Validity errors (e.g. BadProof) arrive pre-inclusion; keep the structured payload so the BadProof
-  // explanation in formatSubmitError still applies.
-  if (e instanceof TxValidityError) return formatSubmitError({ error: e.reason });
-  if (e instanceof TxDispatchError) return formatSubmitError(e.dispatchError);
-  return formatSubmitError(e);
+  if (e instanceof TxSigningRejectedError) return new UserFacingError("Signing was cancelled.", { cause: e });
+  if (e instanceof TxValidityError) return chainError({ error: e.reason });
+  if (e instanceof TxDispatchError) return chainError(e.dispatchError);
+  return chainError(e);
 }
 
 /** The SDK's lifecycle statuses, as the steps the UI reports. Its "signing" fires once signed. */
@@ -108,7 +143,7 @@ async function submitAndAwaitInclusion(
       if (step) onProgress?.(step);
     },
   });
-  if (!res.ok) throw new Error(describeTxError(res.error));
+  if (!res.ok) throw txError(res.error);
   return { txHash: res.value.txHash };
 }
 
@@ -180,11 +215,13 @@ export async function submitReviveCall(
 
   if (!dry.result.success) {
     // dispatch-level failure (fees, origin, etc.) — not a contract revert
-    throw new Error(`dry-run failed: ${JSON.stringify(dry.result.value)}`);
+    const user = userChainError(errorPath(dry.result.value));
+    const detail = `dry-run failed: ${JSON.stringify(dry.result.value)}`;
+    throw user ? new UserFacingError(user, { cause: detail }) : new Error(detail);
   }
   if (isRevert(dry.result.value.flags)) {
-    // extractRevertReason reads `.value.data`, so wrap the ExecReturnValue accordingly
-    throw new Error(extractRevertReason({ value: dry.result.value }, params.abi));
+    // revertError reads `.value.data`, so wrap the ExecReturnValue accordingly
+    throw revertError({ value: dry.result.value }, params.abi);
   }
   // A function call that requires ZERO weight means the destination has no contract code: the call is a
   // silent no-op that pallet-revive still reports as success (this is what a mis-recorded/undeployed

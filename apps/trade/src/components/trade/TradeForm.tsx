@@ -4,7 +4,7 @@ import { AmountInput } from "./AmountInput";
 import { useTradeFormStore } from "../../stores/trade-form";
 import { useWalletStore } from "../../stores/wallet";
 import { useMarketStore } from "../../stores/market";
-import { usePlaceOrder } from "../../hooks/use-place-order";
+import { orderErrorText, usePlaceOrder } from "../../hooks/use-place-order";
 import { useBestPrices } from "../../hooks/use-best-prices";
 import { useOrderBook } from "../../hooks/use-order-book";
 import {
@@ -193,7 +193,7 @@ export function TradeForm() {
 
       {placeOrder.error && (
         <div className="rounded bg-sell-dim px-2 py-1.5 text-xs text-sell">
-          {placeOrder.error.message}
+          {orderErrorText(placeOrder.error)}
         </div>
       )}
 

@@ -8,6 +8,7 @@ import { formatHostError, getAccountsProvider } from "@parity/product-sdk-host";
 import type { PolkadotSigner } from "polkadot-api";
 import { activeChain } from "../../config/chains";
 import { withTimeout } from "../timeout";
+import { UserFacingError } from "../user-errors";
 
 let manager: SignerManager | null = null;
 
@@ -48,7 +49,7 @@ export function connectHostAccounts(): Promise<SignerAccount[]> {
     })(),
     CONNECT_TIMEOUT_MS,
     () => {
-      throw new Error("The Polkadot host did not respond. Try again.");
+      throw new UserFacingError("The Polkadot host did not respond. Try again.");
     },
   ).finally(() => {
     connecting = undefined;

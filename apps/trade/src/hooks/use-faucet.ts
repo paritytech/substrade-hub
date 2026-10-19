@@ -6,6 +6,7 @@ import { isNonZeroAddress } from "../lib/markets";
 import { useWalletStore } from "../stores/wallet";
 import { txProgressToast, useToastStore } from "../stores/toast";
 import { POLL_INTERVAL_MS } from "../config/constants";
+import { userMessage, UserFacingError } from "../lib/user-errors";
 
 const SYMBOL = activeChain.knownQuote.symbol;
 
@@ -15,14 +16,7 @@ export function isFaucetConfigured(): boolean {
 }
 
 function formatFaucetError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (/CooldownActive/i.test(msg)) {
-    return "You've already claimed — wait for the cooldown to pass before claiming again.";
-  }
-  if (/FaucetEmpty/i.test(msg)) {
-    return `The faucet is out of ${SYMBOL} right now. Try again shortly.`;
-  }
-  return msg;
+  return userMessage(e, `Couldn't claim test ${SYMBOL}. Please try again.`);
 }
 
 /** Drip size + seconds left on the caller's cooldown (0 = claimable now). */
@@ -50,7 +44,7 @@ export function useClaimFaucet() {
 
   return useMutation({
     mutationFn: async () => {
-      if (!h160) throw new Error("Connect a wallet first");
+      if (!h160) throw new UserFacingError("Connect a wallet first");
       const requesting = `Requesting test ${SYMBOL}`;
       const toastId = addToast("pending", `${requesting}: waiting for signature...`);
       try {

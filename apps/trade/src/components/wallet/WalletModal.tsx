@@ -15,6 +15,7 @@ import {
 } from "../../lib/host/signer";
 import { useWalletStore } from "../../stores/wallet";
 import { Spinner } from "../ui/Spinner";
+import { userMessage } from "../../lib/user-errors";
 
 interface WalletModalProps {
   onClose: () => void;
@@ -49,7 +50,7 @@ export function WalletModal({ onClose }: WalletModalProps) {
       connectEvm(address);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to connect");
+      setError(userMessage(e, "Couldn't connect to MetaMask. Check that it's unlocked, then retry."));
       setConnecting(false);
     }
   }, [connectEvm, onClose, setConnecting]);
@@ -81,7 +82,12 @@ export function WalletModal({ onClose }: WalletModalProps) {
               : `${extensionLabel(name)} can't register this network's signing extensions, so it can't place orders here.`,
           );
         } else {
-          setError(e instanceof Error ? e.message : `Failed to connect to ${extensionLabel(name)}`);
+          setError(
+            userMessage(
+              e,
+              `Couldn't connect to ${extensionLabel(name)}. Check that it's unlocked and allows this site, then retry.`,
+            ),
+          );
         }
         setConnecting(false);
       }
@@ -107,7 +113,7 @@ export function WalletModal({ onClose }: WalletModalProps) {
         if (ext) watchAccounts(ext, acc.address, () => useWalletStore.getState().disconnect());
         onClose();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to select account");
+        setError(userMessage(e, "Couldn't use this account. Try again, or pick another one."));
         setConnecting(false);
       }
     },
@@ -133,7 +139,7 @@ export function WalletModal({ onClose }: WalletModalProps) {
         // the "connected" emission) so we do not leave an unauthorized wallet behind.
         disconnectHost();
         useWalletStore.getState().disconnect();
-        setError(e instanceof Error ? e.message : "Failed to connect the host account");
+        setError(userMessage(e, "Couldn't connect your Polkadot account. Try again."));
         setConnecting(false);
       }
     },
@@ -171,7 +177,7 @@ export function WalletModal({ onClose }: WalletModalProps) {
         setConnecting(false);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to connect to the Polkadot host");
+      setError(userMessage(e, "Couldn't connect to the Polkadot host. Try again."));
       setConnecting(false);
     }
   }, [handleHostPick, setConnecting]);

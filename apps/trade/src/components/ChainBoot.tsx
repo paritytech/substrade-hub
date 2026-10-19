@@ -3,6 +3,7 @@ import { initChainClient } from "../lib/client";
 import { isInHost } from "../lib/host/detect";
 import { activeChain } from "../config/chains";
 import { Spinner } from "./ui/Spinner";
+import { userMessage } from "../lib/user-errors";
 
 /**
  * Gate rendering on the chain client being initialized. In a Polkadot host this awaits host detection
@@ -26,7 +27,8 @@ export function ChainBoot({ children }: { children: ReactNode }) {
       },
       (e: unknown) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
+        // Only an explained cause is shown under the headline; anything else goes to the console.
+        setError(userMessage(e, "") || undefined);
         setState("error");
       },
     );
