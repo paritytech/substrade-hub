@@ -11,6 +11,8 @@ import { revertError } from "./errors";
 import { sendTransaction, waitForFinality, waitForReceipt } from "./wallet";
 import type { TxStep } from "./tx-progress";
 import { useWalletStore } from "../stores/wallet";
+import { useHostConnectionStore } from "../stores/host-connection";
+import { UserFacingError } from "./user-errors";
 import { AccountId } from "polkadot-api";
 import { dryRunCall, submitReviveCall, ensureMapped } from "./revive";
 
@@ -149,6 +151,11 @@ export async function writeContract<
   from: `0x${string}`,
   options?: { value?: bigint; onProgress?: (step: TxStep) => void },
 ): Promise<{ txHash: string; status: "success" }> {
+  // Inside a host, signing and submitting go through the host channel: with it down, a transaction
+  // would wait at the signature step with nothing to answer it.
+  if (useHostConnectionStore.getState().connection !== "ok") {
+    throw new UserFacingError("The connection to the host is lost. Try again once it is back.");
+  }
   const callData = encodeFunctionData({ abi, functionName, args } as never);
 
   const { accountType, ss58, signer, mapped, h160, setMapped } = useWalletStore.getState();

@@ -18,6 +18,7 @@ vi.mock("./wallet", () => ({
 import { writeContract } from "./contract";
 import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
+import { useHostConnectionStore } from "../stores/host-connection";
 import { submitReviveCall, ensureMapped, dryRunCall } from "./revive";
 import { UserFacingError } from "./user-errors";
 import { sendTransaction, waitForFinality } from "./wallet";
@@ -36,9 +37,22 @@ const args = [EVM, 1000n] as const; // approve(spender, amount)
 beforeEach(() => {
   vi.clearAllMocks();
   useWalletStore.getState().disconnect();
+  useHostConnectionStore.setState({ connection: "ok", everConnected: false });
 });
 
 describe("writeContract routing", () => {
+  it("refuses to submit while the host connection is down", async () => {
+    useWalletStore.getState().connectSubstrate(SUB);
+    for (const connection of ["lost", "reconnecting"] as const) {
+      useHostConnectionStore.setState({ connection, everConnected: true });
+      await expect(writeContract(erc20Abi, "approve", args, TOKEN, SUB.h160)).rejects.toThrow(
+        new UserFacingError("The connection to the host is lost. Try again once it is back."),
+      );
+    }
+    expect(submitReviveCall).not.toHaveBeenCalled();
+    expect(ensureMapped).not.toHaveBeenCalled();
+  });
+
   it("routes EVM accounts through eth_sendTransaction (regression: EVM path unchanged)", async () => {
     useWalletStore.getState().connectEvm(EVM);
     const res = await writeContract(erc20Abi, "approve", args, TOKEN, EVM);
