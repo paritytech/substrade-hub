@@ -1,10 +1,13 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import { AccountId } from "polkadot-api";
+import { fromHex } from "polkadot-api/utils";
 import type { PolkadotSigner } from "polkadot-api";
 
 // Mock the two submission backends and the EVM wallet so we can assert which path writeContract takes.
 vi.mock("./revive", () => ({
   submitReviveCall: vi.fn().mockResolvedValue({ txHash: "0xsubstrate", status: "success" }),
   ensureMapped: vi.fn().mockResolvedValue(undefined),
+  dryRunCall: vi.fn().mockResolvedValue({}),
 }));
 vi.mock("./wallet", () => ({
   sendTransaction: vi.fn().mockResolvedValue("0xevmhash"),
@@ -15,7 +18,8 @@ vi.mock("./wallet", () => ({
 import { writeContract } from "./contract";
 import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
-import { submitReviveCall, ensureMapped } from "./revive";
+import { submitReviveCall, ensureMapped, dryRunCall } from "./revive";
+import { UserFacingError } from "./user-errors";
 import { sendTransaction, waitForFinality } from "./wallet";
 
 const EVM = "0x1234567890abcdef1234567890abcdef12345678" as const;
@@ -93,5 +97,21 @@ describe("writeContract routing", () => {
       signer: SUB.signer,
     });
     expect(res).toEqual({ txHash: "0xsubstrate", status: "success" });
+  });
+
+  it("dry-runs an EVM write as the EVM address's mapped account before asking MetaMask", async () => {
+    useWalletStore.getState().connectEvm(EVM);
+    await writeContract(erc20Abi, "approve", args, TOKEN, EVM);
+    const [origin, dest] = vi.mocked(dryRunCall).mock.calls.at(-1)!;
+    expect(origin).toBe(AccountId().dec(fromHex(`${EVM}${"ee".repeat(12)}`)));
+    expect(dest).toBe(TOKEN);
+  });
+
+  it("stops before MetaMask when the dry run refuses the call", async () => {
+    useWalletStore.getState().connectEvm(EVM);
+    vi.mocked(sendTransaction).mockClear();
+    vi.mocked(dryRunCall).mockRejectedValueOnce(new UserFacingError("This order crosses too many price levels"));
+    await expect(writeContract(erc20Abi, "approve", args, TOKEN, EVM)).rejects.toThrow(/too many price levels/);
+    expect(sendTransaction).not.toHaveBeenCalled();
   });
 });

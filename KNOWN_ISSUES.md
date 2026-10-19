@@ -14,6 +14,7 @@ of the code, see [SECURITY.md](SECURITY.md).
 | 6 | Markets whose base and quote decimals differ are not shown | App | #79 |
 | 7 | Demo networks use demo keys | Deployment | below |
 | 8 | The Paseo networks share one EIP-155 chain id | Deployment | below |
+| 9 | One transaction fits about 7 fills | Contracts | #104 |
 
 ## 1. One admin key holds every privileged power
 
@@ -75,3 +76,12 @@ An EVM transaction signed through MetaMask for one is also valid on the other. N
 has an effect when replayed, because the contracts have different addresses on each network; at most
 it uses gas and the sender's nonce on the other network. Transactions signed through a host or
 Substrate wallet are bound to the network's genesis and are not affected.
+
+## 9. One transaction fits about 7 fills
+
+Each fill needs about 1 MB of proof, and one transaction may use 8 MiB, so an order that would fill
+against more than about 7 resting orders cannot be included. The contract's own cap,
+`MAX_FILLS_PER_TX`, is 50, so it does not stop such an order first. The app refuses it before signing:
+"This order crosses too many price levels for one transaction — place a smaller order". Lowering
+`MAX_FILLS_PER_TX` below that limit in the next contract deployment would let a larger order fill
+partly, then rest (a limit order) or return the remainder (a market order) (#104).

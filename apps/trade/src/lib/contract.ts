@@ -156,7 +156,13 @@ export async function writeContract<
     });
   }
 
-  // EVM path (unchanged behaviour): MetaMask eth_sendTransaction + receipt polling.
+  // EVM path: MetaMask eth_sendTransaction + receipt polling. A dry run first gives the same checks as
+  // the Substrate path: eth_estimateGas reports an order too large for one transaction as a revert with
+  // no reason, which only the dry run's weight tells apart. It needs the value in native planck, so a
+  // call that sends value (cross-chain orders, not live yet) skips it.
+  if (!options?.value) {
+    await dryRunCall(simulationOrigin(from), contractAddress, 0n, fromHex(callData), abi as Abi);
+  }
   const txHash = await sendTransaction({
     to: contractAddress,
     data: callData,
