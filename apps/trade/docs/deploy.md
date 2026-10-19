@@ -100,12 +100,16 @@ release follows once they pass.
   and every market the factory lists;
 - `codehashes.json`: the codehash of each deployed contract in this release's build, with the parts that
   differ per deployment masked (linked library addresses, immutables, the CBOR metadata), so one hash
-  holds on every network; plus the build settings (solc, EVM version, `via_ir`, optimizer).
+  holds on every network; plus the build settings (solc, EVM version, `via_ir`, optimizer);
+- `abis.json`: the DLOB's and the factory's ABIs in this release's build, to build a client against.
 
 The header also says whether every network runs the contract code this release builds, or names the
-networks where a contract redeploy is pending.
+networks where a contract redeploy is pending, and lists the ABI changes since the previous release:
+removed or changed functions, events and errors as breaking, additions collapsed. It compares with the
+previous release's `abis.json`, or with its `apps/trade/src/abi/` files for a release made before that
+asset existed.
 
-GitHub's notes for the merged PRs follow the header, and both files are attached to the release. To
+GitHub's notes for the merged PRs follow the header, and the files above are attached to the release. To
 add highlights or breaking changes, commit `release-notes/<version>.md` before tagging: its text goes
 above the header.
 

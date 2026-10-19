@@ -3,6 +3,7 @@ import { compareDeployments, contenthashToCid, deploymentsFromNetworks, gatewayU
 import { renderHeader } from "./notes.mjs";
 import { diffDeployment } from "./verify.mjs";
 import { checkLiveCode, eip1167Runtime, linkedLibraries, maskedCodehash } from "./codehash.mjs";
+import { abiFromModule, diffAbi, renderAbiChanges } from "./abi.mjs";
 
 const A = "0x341c005e16941d904Aee4a71E669362eD3c4fFe9";
 const B = "0xFD6E13f0e3F9690A41b3f3a7605d075849eC01d0";
@@ -89,6 +90,87 @@ describe("renderHeader", () => {
 
   it("puts the hand-written intro first", () => {
     expect(render({ intro: "Highlights.\n" }).startsWith("Highlights.\n\n## Where it is live")).toBe(true);
+  });
+
+  it("links the ABIs and adds the ABI changes after the contracts", () => {
+    const text = render({ abiChanges: ["### ABI changes", "", "No ABI changes since `dot-v0.9.0`.", ""] });
+    expect(text).toContain("and their ABIs in [`abis.json`](https://example/abis.json).");
+    expect(text.indexOf("### ABI changes")).toBeGreaterThan(text.indexOf("### Contracts"));
+    expect(text.indexOf("### ABI changes")).toBeLessThan(text.indexOf("### Verify"));
+  });
+});
+
+describe("diffAbi", () => {
+  const u = (type, name = "") => ({ name, type, internalType: type });
+  const fn = (name, inputs, outputs = [], stateMutability = "nonpayable") => ({ type: "function", name, inputs, outputs, stateMutability });
+  const place = fn("placeLimitOrder", [u("uint8", "side"), u("uint96", "price")], [u("uint32", "orderId")], "payable");
+
+  it("reports nothing for the same ABI, whatever the parameter names", () => {
+    const renamed = fn("placeLimitOrder", [u("uint8", "s"), u("uint96", "p")], [u("uint32", "id")], "payable");
+    expect(diffAbi([place], [renamed])).toEqual({ removed: [], changed: [], added: [] });
+  });
+
+  it("reports a changed result, mutability or event indexing", () => {
+    const placeTwo = { ...place, outputs: [u("uint32"), u("uint128")] };
+    const ev = (indexed) => ({ type: "event", name: "Trade", anonymous: false, inputs: [{ ...u("uint32", "id"), indexed }] });
+    expect(diffAbi([place, ev(false)], [placeTwo, ev(true)]).changed).toEqual([
+      { from: "function placeLimitOrder(uint8,uint96) payable returns (uint32)", to: "function placeLimitOrder(uint8,uint96) payable returns (uint32,uint128)" },
+      { from: "event Trade(uint32)", to: "event Trade(uint32 indexed)" },
+    ]);
+    expect(diffAbi([fn("f", [])], [fn("f", [], [], "view")]).changed).toEqual([{ from: "function f()", to: "function f() view" }]);
+  });
+
+  it("pairs a new signature with the one it replaces, and keeps removals and additions apart", () => {
+    const market = fn("placeMarketOrder", [u("uint8")]);
+    const marketWithLimit = fn("placeMarketOrder", [u("uint8"), u("uint96")]);
+    const diff = diffAbi(
+      [market, fn("gone", []), { type: "error", name: "Old", inputs: [] }],
+      [marketWithLimit, fn("fresh", [u("address")]), { type: "error", name: "Halted", inputs: [] }],
+    );
+    expect(diff.changed).toEqual([{ from: "function placeMarketOrder(uint8)", to: "function placeMarketOrder(uint8,uint96)" }]);
+    expect(diff.removed).toEqual(["function gone()", "error Old()"]);
+    expect(diff.added).toEqual(["function fresh(address)", "error Halted()"]);
+  });
+
+  it("writes tuples out, and ignores the constructor and receive", () => {
+    const tuple = { name: "t", type: "tuple[]", components: [u("address"), u("bytes")] };
+    const diff = diffAbi([{ type: "constructor", inputs: [] }], [{ type: "receive", stateMutability: "payable" }, fn("g", [tuple])]);
+    expect(diff).toEqual({ removed: [], changed: [], added: ["function g((address,bytes)[])"] });
+  });
+});
+
+describe("renderAbiChanges", () => {
+  const f = (name, outputs = []) => ({ type: "function", name, inputs: [], outputs, stateMutability: "nonpayable" });
+  const abis = (dlob, factory = []) => ({ DLOB: dlob, DLOBFactory: factory });
+
+  it("says when nothing changed", () => {
+    expect(renderAbiChanges(abis([f("a")]), abis([f("a")]), "dot-v0.9.0")).toContain("No ABI changes since `dot-v0.9.0`.");
+  });
+
+  it("lists breaking changes per contract and collapses additions", () => {
+    const text = renderAbiChanges(
+      abis([f("a"), f("b")]),
+      abis([f("a", [{ type: "uint32" }])], [f("halt")]),
+      "dot-v0.9.0",
+    ).join("\n");
+    expect(text).toContain("**Breaking since `dot-v0.9.0`**: clients built against its ABI need updating.");
+    expect(text).toContain("- `DLOB`: `function a()` becomes `function a() returns (uint32)`");
+    expect(text).toContain("- `DLOB`: removed `function b()`");
+    expect(text).toContain("<summary>1 addition</summary>\n\n- `DLOBFactory`: `function halt()`");
+  });
+
+  it("says nothing breaks when there are only additions", () => {
+    const text = renderAbiChanges(abis([]), abis([f("a")]), "dot-v0.9.0").join("\n");
+    expect(text).toContain("Nothing breaking since `dot-v0.9.0`.");
+    expect(text).toContain("<summary>1 addition</summary>");
+  });
+});
+
+describe("abiFromModule", () => {
+  it("reads the ABI out of a generated file", () => {
+    const source = '// Auto-generated\nexport const dlobAbi = [\n  {\n    "type": "receive",\n    "stateMutability": "payable"\n  }\n] as const;\n';
+    expect(abiFromModule(source)).toEqual([{ type: "receive", stateMutability: "payable" }]);
+    expect(() => abiFromModule("export const x = 1;")).toThrow(/not a generated ABI file/);
   });
 });
 

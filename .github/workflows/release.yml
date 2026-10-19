@@ -3,11 +3,10 @@ name: Release
 # Publishes a release of the trading UI to every network in apps/trade/src/config/networks.json when a
 # `dot-vX.Y.Z` tag is pushed on a commit of master, then creates the GitHub Release: a header read
 # from the chain (each network's published CID and contracts, see apps/trade/scripts/release/) above
-# notes generated from the merged PRs, with release-manifest.json, deployments.json and codehashes.json
-# attached. The
-# "Protect dot-v release tags" ruleset limits who can push such a tag. Each network publishes through
-# deploy-dot.yml from its own `<network>-deploy` environment, whose deployment rules must allow
-# `dot-v*` tags. See apps/trade/docs/deploy.md.
+# notes generated from the merged PRs, with release-manifest.json, deployments.json, codehashes.json
+# and abis.json attached. The "Protect dot-v release tags" ruleset limits who can push such a tag.
+# Each network publishes through deploy-dot.yml from its own `<network>-deploy` environment, whose
+# deployment rules must allow `dot-v*` tags. See apps/trade/docs/deploy.md.
 
 on:
   push:
@@ -105,8 +104,9 @@ jobs:
         run: pnpm install --frozen-lockfile --filter @substrade-hub/trade
 
       # Reads each network's dotNS contenthash, contracts and their code back from the chain. The
-      # previous release's deployments.json gives the "contracts changed" line; a release made before
-      # that asset existed falls back to its networks.json.
+      # previous release's deployments.json gives the "contracts changed" line, and its abis.json the
+      # "ABI changes" section; a release made before those assets existed falls back to its
+      # networks.json and its generated ABI files.
       - name: Build the notes and assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -122,6 +122,15 @@ jobs:
               git show "$PREV:apps/trade/src/config/networks.json" > previous/networks.json
               ARGS+=(--previous-networks previous/networks.json)
             fi
+            if gh release download "$PREV" --repo "$GITHUB_REPOSITORY" -D previous -p abis.json 2>/dev/null; then
+              ARGS+=(--previous-abis previous/abis.json)
+            else
+              mkdir -p previous/abi
+              for f in dlob.ts dlob-factory.ts; do
+                git show "$PREV:apps/trade/src/abi/$f" > "previous/abi/$f"
+              done
+              ARGS+=(--previous-abi-dir previous/abi)
+            fi
           fi
           node apps/trade/scripts/release/notes.mjs "${ARGS[@]}"
 
@@ -132,4 +141,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "SubsTrade Hub $VERSION" --generate-notes --notes-file release/notes.md \
-            release/release-manifest.json release/deployments.json release/codehashes.json
+            release/release-manifest.json release/deployments.json release/codehashes.json release/abis.json
