@@ -15,13 +15,61 @@ import {
 } from "@parity/product-sdk-tx";
 import type { TxStep } from "./tx-progress";
 
-// Headroom over the dry-run estimates. Weight (ref_time/proof_size) is PoV-sensitive and counts against
-// block limits, so keep its buffer modest. Storage deposit does NOT affect block/PoV limits and the
+// Headroom over the dry-run estimates. ref_time is far below its per-extrinsic limit, so it gets 2x.
+// proof_size is the limit an order meets first (about 1 MB per fill, 8 MiB per extrinsic), so it gets
+// 10%: doubling it rejected orders crossing four or more price levels that would have fitted. Both are
+// capped at what one extrinsic may use. Storage deposit does NOT affect block/PoV limits and the
 // dry-run under-estimates it badly on storage-churning paths (e.g. a fill that removes a price level via
 // the RedBlackTree delegatecall), so give it a generous buffer — otherwise those trades revert on
-// execution while passing the dry-run. Verified: this order needed >3x storage; 2x weight was ample.
-const WEIGHT_BUFFER = 2n;
+// execution while passing the dry-run. Verified: this order needed >3x storage.
+const REF_TIME_BUFFER_PERCENT = 200n;
+const PROOF_SIZE_BUFFER_PERCENT = 110n;
 const STORAGE_BUFFER = 10n;
+/**
+ * What a `Revive.call` itself adds to its weight limit (17.5 KB of proof measured on paseo-v2), plus
+ * the transaction's size: the limit must leave this room under the per-extrinsic maximum.
+ */
+const EXTRINSIC_MARGIN = { ref_time: 10_000_000_000n, proof_size: 64n * 1024n };
+
+type Weight = { ref_time: bigint; proof_size: bigint };
+
+/**
+ * The weight limit for a call needing `required`: the buffered estimate, capped at what one extrinsic
+ * may use (`max` less `EXTRINSIC_MARGIN`). Throws a user error when the estimate alone does not fit.
+ */
+export function weightLimit(required: Weight, max: Weight): Weight {
+  const cap = {
+    ref_time: max.ref_time - EXTRINSIC_MARGIN.ref_time,
+    proof_size: max.proof_size - EXTRINSIC_MARGIN.proof_size,
+  };
+  if (required.ref_time > cap.ref_time || required.proof_size > cap.proof_size) {
+    throw new UserFacingError("This order crosses too many price levels for one transaction — place a smaller order", {
+      cause: `needs ${required.ref_time} ref_time and ${required.proof_size} proof_size; one extrinsic allows ${cap.ref_time} and ${cap.proof_size}`,
+    });
+  }
+  const buffered = (value: bigint, percent: bigint, limit: bigint) => {
+    const v = (value * percent) / 100n;
+    return v < limit ? v : limit;
+  };
+  return {
+    ref_time: buffered(required.ref_time, REF_TIME_BUFFER_PERCENT, cap.ref_time),
+    proof_size: buffered(required.proof_size, PROOF_SIZE_BUFFER_PERCENT, cap.proof_size),
+  };
+}
+
+let maxExtrinsic: Promise<Weight> | undefined;
+
+/** What one normal extrinsic may use on this chain (`System.BlockWeights`), read once; a failed read is retried. */
+function maxExtrinsicWeight(): Promise<Weight> {
+  maxExtrinsic ??= getTypedApi()
+    .constants.System.BlockWeights()
+    .then((w) => w.per_class.normal.max_extrinsic ?? w.max_block)
+    .catch((e: unknown) => {
+      maxExtrinsic = undefined;
+      throw e;
+    });
+  return maxExtrinsic;
+}
 
 /**
  * Reject a submission that is never included, so the UI can't hang forever on a dropped tx.
@@ -249,10 +297,7 @@ export async function submitReviveCall(
   const tx = api.tx.Revive.call({
     dest,
     value,
-    weight_limit: {
-      ref_time: dry.weight_required.ref_time * WEIGHT_BUFFER,
-      proof_size: dry.weight_required.proof_size * WEIGHT_BUFFER,
-    },
+    weight_limit: weightLimit(dry.weight_required, await maxExtrinsicWeight()),
     storage_deposit_limit: depositLimit,
     data,
   });
