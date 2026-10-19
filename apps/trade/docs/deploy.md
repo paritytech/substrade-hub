@@ -96,7 +96,14 @@ release follows once they pass.
   contenthash points at) and whether the contracts changed since the previous release;
 - `release-manifest.json`: the version, the commit and, per network, the dotNS name, gateway URL,
   CID, eth-rpc URL and dotNS content resolver;
-- `deployments.json`: per network, the factory, faucet, quote token and every market the factory lists.
+- `deployments.json`: per network, the factory, implementation, linked libraries, faucet, quote token
+  and every market the factory lists;
+- `codehashes.json`: the codehash of each deployed contract in this release's build, with the parts that
+  differ per deployment masked (linked library addresses, immutables, the CBOR metadata), so one hash
+  holds on every network; plus the build settings (solc, EVM version, `via_ir`, optimizer).
+
+The header also says whether every network runs the contract code this release builds, or names the
+networks where a contract redeploy is pending.
 
 GitHub's notes for the merged PRs follow the header, and both files are attached to the release. To
 add highlights or breaking changes, commit `release-notes/<version>.md` before tagging: its text goes
@@ -109,8 +116,10 @@ pnpm install --frozen-lockfile
 node apps/trade/scripts/release/verify.mjs --tag dot-v1.3.0
 ```
 
-It downloads the release's two files with `gh`, then checks each network: the dotNS name points at the
-release's CID, and the factory lists the recorded markets, each with code. A later release moves the
+It downloads the release's three files with `gh`, then checks each network: the dotNS name points at
+the release's CID; the factory lists the recorded markets; the implementation, factory, libraries and
+faucet run the release's code (by masked codehash); and every market is the 45-byte EIP-1167 proxy to
+the implementation, returned by the factory for its pair. A later release moves the
 names to a newer build, so an older release then fails the CID check.
 
 ## CI publish
