@@ -42,7 +42,7 @@ export function TradeForm() {
     if (!amount) return;
     placeOrder.mutate(
       { side, orderType, price, amount, limitPrice: marketEstimate?.limitPrice },
-      { onSuccess: () => reset() },
+      { onSuccess: ({ placed }) => placed && reset() },
     );
   };
 

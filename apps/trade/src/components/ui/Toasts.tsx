@@ -83,6 +83,23 @@ export function Toasts() {
             </span>
             <div className="flex-1 leading-snug">
               <div>{toast.message}</div>
+              {toast.actions && (
+                <div className="mt-3 flex gap-2">
+                  {toast.actions.map((action, i) => (
+                    <button
+                      key={action.label}
+                      onClick={action.onClick}
+                      className={
+                        i === 0
+                          ? "rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-light"
+                          : "rounded-lg bg-surface-overlay px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary"
+                      }
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {toast.link && (
                 <ExternalLink
                   href={toast.link.href}

@@ -86,8 +86,9 @@ against more than about 7 resting orders cannot be included. The contracts now l
 per-transaction budget (`MATCH_BUDGET`, #104): 6 local fills, 4 when one leg of each fill settles
 cross-chain, or 3 when both do. A larger order fills what fits and returns the remainder: a limit order
 cannot rest it at its price without crossing the book. `placeLimitOrder` reports that amount, and the
-app checks it before signing and asks for an order that fits. When expired or small orders at the front
-of the book use up the budget, so that what fits is too small to place, the app sends the order anyway:
-it clears them and returns the rest, to be placed again. The markets deployed today still have a flat
-cap of 50 fills, so until the next contract deployment the app refuses such an order before signing:
-"This order crosses too many price levels for one transaction — place a smaller order".
+app checks it before signing: for an order that needs more than one transaction, limit or market, it
+offers to place it in parts, one signature each (#107). When expired or small orders at the front of
+the book use up the budget, so that what fits is too small to place, the app sends the order anyway: it
+clears them and returns the rest, to be placed again. The markets deployed today still have a flat cap
+of 50 fills, so until the next contract deployment the app refuses such an order before signing: "This
+order crosses too many price levels for one transaction — place a smaller order".

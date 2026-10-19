@@ -4,7 +4,7 @@ import { encodeAbiParameters } from "viem";
 const { simulateContractData } = vi.hoisted(() => ({ simulateContractData: vi.fn() }));
 vi.mock("../lib/contract", () => ({ simulateContractData }));
 
-import { limitOrderReturned, withinLimit } from "./use-place-order";
+import { limitOrderReturned, liquidityWithin, withinLimit } from "./use-place-order";
 import { Side } from "../types/market";
 
 const MARKET = "0x00000000000000000000000000000000000000aa";
@@ -47,5 +47,17 @@ describe("withinLimit", () => {
 
   it("is false for an empty book", () => {
     expect(withinLimit(Side.Buy, undefined, 100n)).toBe(false);
+  });
+});
+
+describe("liquidityWithin", () => {
+  const level = (price: bigint, totalAmount: bigint) => ({ price, totalAmount, orderCount: 0 });
+
+  it("adds up the levels a market order's limit reaches", () => {
+    const asks = [level(100n, 5n), level(101n, 7n), level(103n, 9n)];
+    expect(liquidityWithin(Side.Buy, asks, 101n)).toBe(12n);
+    const bids = [level(100n, 5n), level(99n, 7n), level(97n, 9n)];
+    expect(liquidityWithin(Side.Sell, bids, 99n)).toBe(12n);
+    expect(liquidityWithin(Side.Buy, [], 101n)).toBe(0n);
   });
 });
