@@ -4,8 +4,7 @@ import { dlobAbi } from "../abi/dlob";
 import { useWalletStore } from "../stores/wallet";
 import { useMarketStore } from "../stores/market";
 import { txProgressToast, useToastStore } from "../stores/toast";
-import { UserFacingError } from "../lib/user-errors";
-import { formatOrderError } from "./use-place-order";
+import { userMessage, UserFacingError } from "../lib/user-errors";
 
 export function useCancelOrder() {
   const queryClient = useQueryClient();
@@ -30,7 +29,7 @@ export function useCancelOrder() {
           { onProgress: txProgressToast(toastId, { pending: cancelling, done: `Order #${orderId} cancelled` }) },
         );
       } catch (err) {
-        updateToast(toastId, "error", formatOrderError(err));
+        updateToast(toastId, "error", userMessage(err, "Couldn't cancel the order. Please try again."));
         throw err;
       }
     },

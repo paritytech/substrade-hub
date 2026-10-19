@@ -6,7 +6,7 @@ import { isNonZeroAddress } from "../lib/markets";
 import { useWalletStore } from "../stores/wallet";
 import { txProgressToast, useToastStore } from "../stores/toast";
 import { POLL_INTERVAL_MS } from "../config/constants";
-import { userMessage, UserFacingError } from "../lib/user-errors";
+import { isEmptyRevert, userMessage, UserFacingError } from "../lib/user-errors";
 
 const SYMBOL = activeChain.knownQuote.symbol;
 
@@ -16,7 +16,12 @@ export function isFaucetConfigured(): boolean {
 }
 
 function formatFaucetError(e: unknown): string {
-  return userMessage(e, `Couldn't claim test ${SYMBOL}. Please try again.`);
+  const text = userMessage(e, `Couldn't claim test ${SYMBOL}. Please try again.`);
+  // The token precompile reverts with no reason when it cannot credit the account, as for an account
+  // with no native balance yet.
+  return isEmptyRevert(e)
+    ? `The claim was rejected — your account may need some native tokens for fees first. Add some, then try again.`
+    : text;
 }
 
 /** Drip size + seconds left on the caller's cooldown (0 = claimable now). */

@@ -73,6 +73,10 @@ function userChainError(path: string[]): string | undefined {
   if (path.includes("BadProof")) {
     return "The network rejected your wallet's signature — try again, or use another wallet";
   }
+  if (path.includes("AccountUnmapped")) {
+    // Accounts are mapped when they are created, which funding the account does.
+    return "This account is not set up on this network yet — add some native tokens to it, then try again";
+  }
   return undefined;
 }
 
@@ -161,9 +165,12 @@ export async function ensureMapped(
   const api = getTypedApi();
   const existing = await api.query.Revive.OriginalAccount.getValue(h160 as SizedHex<20>);
   if (existing != null) return; // already mapped
-  const res = await api.tx.Revive.map_account().signAndSubmit(signer);
-  if (!res.ok && !/AccountAlreadyMapped/i.test(JSON.stringify(res.dispatchError))) {
-    throw new Error(`map_account failed: ${JSON.stringify(res.dispatchError)}`);
+  try {
+    // Same path as a contract call, so a cancelled signature or too little balance reads the same.
+    await submitAndAwaitInclusion(api.tx.Revive.map_account(), signer);
+  } catch (e) {
+    const detail = e instanceof Error ? `${e.message} ${String(e.cause ?? "")}` : String(e);
+    if (!/AccountAlreadyMapped/i.test(detail)) throw e;
   }
 }
 

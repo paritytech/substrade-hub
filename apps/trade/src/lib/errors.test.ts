@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { encodeErrorResult } from "viem";
 import { extractRevertReason, revertError } from "./errors";
-import { UserFacingError } from "./user-errors";
+import { isEmptyRevert, UserFacingError } from "./user-errors";
 import { erc20Abi } from "../abi/erc20";
 import { dlobAbi } from "../abi/dlob";
 
@@ -80,8 +80,11 @@ describe("revertError", () => {
     );
   });
 
-  it("hints at balance and approval for a revert with no reason", () => {
-    expect(revertError(reverted("0x")).message).toMatch(/check your token balance and approval/);
+  it("marks a revert with no reason, so the caller can give the likely cause", () => {
+    const err = revertError(reverted("0x"));
+    expect(err.message).toBe("The contract rejected this transaction");
+    expect(isEmptyRevert(err)).toBe(true);
+    expect(isEmptyRevert(revertError(reverted(dlobError("SelfTrade"))))).toBe(false);
   });
 
   it("shows no selector, error name or arguments for a revert it has no text for", () => {

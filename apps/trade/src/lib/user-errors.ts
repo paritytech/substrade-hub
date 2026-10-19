@@ -5,10 +5,19 @@
  * wallet or app internals) shows a generic message, and its details go to the console only.
  */
 export class UserFacingError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  /** Set when a caller may replace the message with one that fits its context (see `EMPTY_REVERT`). */
+  readonly code?: "empty-revert";
+
+  constructor(message: string, options?: { cause?: unknown; code?: "empty-revert" }) {
     super(message, options);
     this.name = "UserFacingError";
+    this.code = options?.code;
   }
+}
+
+/** `err` is a revert with no reason, whose likely cause depends on the call that made it. */
+export function isEmptyRevert(err: unknown): boolean {
+  return err instanceof UserFacingError && err.code === "empty-revert";
 }
 
 export const GENERIC_ERROR = "Something went wrong. Please try again.";

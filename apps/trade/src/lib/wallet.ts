@@ -55,6 +55,11 @@ export async function connectMetaMask(): Promise<`0x${string}`> {
             nativeCurrency: { name: "PAS", symbol: "PAS", decimals: 18 },
           },
         ],
+      }).catch((e: unknown) => {
+        if (isUserRejection(e)) {
+          throw new UserFacingError(`Switch MetaMask to ${activeChain.name} to continue`, { cause: e });
+        }
+        throw e;
       });
     } else {
       throw switchError;

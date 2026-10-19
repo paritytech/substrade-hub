@@ -12,7 +12,7 @@ import { activeChain } from "../config/chains";
 import { MAX_OB_LEVELS } from "../config/constants";
 import { estimateMarketOrder } from "../lib/market-order";
 import { fetchOrderBook } from "./use-order-book";
-import { messageFor, userMessage, UserFacingError } from "../lib/user-errors";
+import { isEmptyRevert, messageFor, userMessage, UserFacingError } from "../lib/user-errors";
 
 interface PlaceOrderParams {
   side: Side;
@@ -210,16 +210,22 @@ export function usePlaceOrder() {
 }
 
 const ORDER_ERROR = "Couldn't complete the transaction. Please try again.";
+/**
+ * A revert with no reason while trading: the token precompile reverts that way when it rejects the
+ * escrow transfer, usually for too little balance or approval.
+ */
+const ORDER_EMPTY_REVERT = "The transaction was rejected — check your token balance and approval, then try again";
 
 /**
  * The text an order toast shows for `err`: a user or contract error as thrown (see lib/user-errors),
  * else a generic message. Logs the error's details to the console.
  */
 export function formatOrderError(err: unknown): string {
-  return userMessage(err, ORDER_ERROR);
+  const text = userMessage(err, ORDER_ERROR);
+  return isEmptyRevert(err) ? ORDER_EMPTY_REVERT : text;
 }
 
 /** `formatOrderError` without the console log, for text rendered on every render. */
 export function orderErrorText(err: unknown): string {
-  return messageFor(err, ORDER_ERROR);
+  return isEmptyRevert(err) ? ORDER_EMPTY_REVERT : messageFor(err, ORDER_ERROR);
 }

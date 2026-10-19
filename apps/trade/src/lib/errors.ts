@@ -54,9 +54,7 @@ const FRIENDLY: Record<string, string> = {
   FaucetEmpty: "The faucet is out of test tokens right now — try again later",
 };
 
-/** What a revert with no reason usually means for a trade, and what the user can do about it. */
-const EMPTY_REVERT = "The transaction was rejected — check your token balance and approval, then try again";
-/** A contract rejection the app has no specific text for. */
+/** A contract rejection the app has no specific text for, including a revert with no reason. */
 const UNKNOWN_REVERT = "The contract rejected this transaction";
 
 /** Resolve a selector to an error name using the known set plus any extra `abi` the caller passes. */
@@ -130,14 +128,15 @@ export function extractRevertReason(
 
 /**
  * The error to throw for a contract revert: a `UserFacingError` with the friendly text for a recognised
- * error, a hint for a revert with no reason, or a plain "the contract rejected this transaction" for
- * anything else. The decoded detail (`extractRevertReason`) is kept as the cause, for the console.
+ * error, else "the contract rejected this transaction". A revert with no reason is marked
+ * `empty-revert`, so a caller that knows the likely cause can say it (see `isEmptyRevert`). The decoded
+ * detail (`extractRevertReason`) is kept as the cause, for the console.
  */
 export function revertError(result: { value?: { data?: Uint8Array } }, abi?: Abi): UserFacingError {
   const detail = extractRevertReason(result, abi);
   const data = result.value?.data;
   const hex = data ? toHex(data) : "0x";
-  if (hex === "0x") return new UserFacingError(EMPTY_REVERT, { cause: detail });
+  if (hex === "0x") return new UserFacingError(UNKNOWN_REVERT, { cause: detail, code: "empty-revert" });
   const name = nameForSelector(hex.slice(0, 10).toLowerCase(), abi);
   const friendly = name ? FRIENDLY[name] : undefined;
   return new UserFacingError(friendly ?? UNKNOWN_REVERT, { cause: detail });
