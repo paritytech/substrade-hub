@@ -587,6 +587,11 @@ export const dlobAbi = [
         "name": "orderId",
         "type": "uint32",
         "internalType": "uint32"
+      },
+      {
+        "name": "returned",
+        "type": "uint128",
+        "internalType": "uint128"
       }
     ],
     "stateMutability": "payable"

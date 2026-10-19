@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { writeContract, readContract, simulateContract } from "../lib/contract";
+import { decodeFunctionResult, formatUnits, size, type ContractFunctionArgs } from "viem";
+import { writeContract, readContract, simulateContract, simulateContractData } from "../lib/contract";
 import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
@@ -71,6 +72,17 @@ export function usePlaceOrder() {
             );
           }
 
+          const limitArgs = [params.side, price, amount, originAccount, ZERO_BYTES32, destParaId, 0n] as const;
+          // One transaction fills only so many resting orders. When this order crosses more, the contract
+          // returns what is left (resting it would cross the book), so ask for a smaller order up front.
+          updateToast(toastId, "pending", "Checking the order book...");
+          const returned = await limitOrderReturned(limitArgs, market.address, h160);
+          if (returned > 0n) {
+            throw new UserFacingError(
+              `This order crosses more resting orders than one transaction can fill. Place ${formatUnits(amount - returned, baseDecimals)} ${market.base.symbol} now and the rest in another order.`,
+            );
+          }
+
           const placing = `Placing ${sideLabel.toLowerCase()} order`;
           updateToast(toastId, "pending", `${placing}: waiting for signature...`);
           console.log("[placeLimitOrder] params:", {
@@ -84,15 +96,7 @@ export function usePlaceOrder() {
           const result = await writeContract(
             dlobAbi,
             "placeLimitOrder",
-            [
-              params.side,
-              price,
-              amount,
-              originAccount,
-              ZERO_BYTES32,
-              destParaId,
-              0n,
-            ],
+            limitArgs,
             market.address,
             h160,
             { value, onProgress: txProgressToast(toastId, { pending: placing, done: `${sideLabel} order placed` }) },
@@ -207,6 +211,22 @@ export function usePlaceOrder() {
       queryClient.invalidateQueries({ queryKey: ["tokenAllowance"] });
     },
   });
+}
+
+/**
+ * What `placeLimitOrder` would hand back unfilled, from a simulation as `from`: the base amount the
+ * match budget leaves over when the order still crosses, else 0. Markets whose `placeLimitOrder`
+ * returns only the order id rest any remainder, so nothing comes back there.
+ */
+export async function limitOrderReturned(
+  args: ContractFunctionArgs<typeof dlobAbi, "payable", "placeLimitOrder">,
+  marketAddress: `0x${string}`,
+  from: `0x${string}`,
+): Promise<bigint> {
+  const data = await simulateContractData(dlobAbi, "placeLimitOrder", args, marketAddress, from);
+  if (size(data) < 64) return 0n;
+  const [, returned] = decodeFunctionResult({ abi: dlobAbi, functionName: "placeLimitOrder", data });
+  return returned;
 }
 
 const ORDER_ERROR = "Couldn't complete the transaction. Please try again.";
