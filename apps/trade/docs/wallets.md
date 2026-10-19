@@ -103,6 +103,18 @@ matching there: if the book moved or holds only orders at worse prices, the rest
 returned unfilled. A buy approves only the amount times that limit. The form warns when the book
 cannot fill the whole amount within 10% of the best price.
 
+### "This order crosses more resting orders than one transaction can fill"
+
+One transaction fills a bounded number of resting orders (6, fewer when settlement is cross-chain; see
+[KNOWN_ISSUES.md](../../../KNOWN_ISSUES.md#9-one-transaction-fits-about-7-fills)). A limit order that
+crosses more cannot rest what is left at its price, since that would cross the book, so the contract
+returns it. The app simulates the order before signing and names the amount that fills: place that
+much now and the rest in another order.
+
+When the orders in front are expired, or too small for what fits to reach the minimum order size, the
+app sends the order anyway, saying "Clearing expired or small orders at the front of the book". The
+transaction clears them and returns the rest; place the order again to fill it.
+
 ### "No sell-side liquidity to fill this market order" (or "buy-side")
 
 A market order fills against the **opposite** side of the book — a market buy takes asks, a market sell
@@ -112,6 +124,13 @@ order button is disabled with this message, and the place-order hook refuses to 
 the button is bypassed). **Place a limit order instead**: it rests on the book and becomes the
 liquidity a later market order can take. The check reads the live best bid/ask (`getBestPrices`), so it
 clears as soon as the other side has a resting order.
+
+### "The connection to the host is lost" (or "Reconnecting to the host…")
+
+Inside Polkadot Desktop or dot.li, the app reaches the chain and signs through the host. When that
+channel drops, a banner under the header says so, and orders, cancels and claims are refused with "The
+connection to the host is lost. Try again once it is back." instead of waiting at a signature that
+cannot come. The banner goes away when the channel is back.
 
 ### "Cannot trade against your own resting order"
 
