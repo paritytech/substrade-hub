@@ -6,12 +6,14 @@ import { Toasts } from "./components/ui/Toasts";
 import { useWalletReconnect } from "./hooks/use-wallet-reconnect";
 import { useHostReconnect } from "./hooks/use-host-reconnect";
 import { useHostConnection } from "./hooks/use-host-connection";
+import { useHashRoute } from "./hooks/use-hash-route";
 import { useViewStore } from "./stores/view";
 
 export function App() {
   useWalletReconnect();
   useHostReconnect();
   useHostConnection();
+  useHashRoute();
   const view = useViewStore((s) => s.view);
   return (
     <div className="flex h-screen flex-col overflow-hidden">
