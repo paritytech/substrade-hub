@@ -11,7 +11,8 @@ import { revertError } from "./errors";
 import { sendTransaction, waitForFinality, waitForReceipt } from "./wallet";
 import type { TxStep } from "./tx-progress";
 import { useWalletStore } from "../stores/wallet";
-import { submitReviveCall, ensureMapped } from "./revive";
+import { AccountId } from "polkadot-api";
+import { dryRunCall, submitReviveCall, ensureMapped } from "./revive";
 
 function buildEthTransactTx(
   contractAddress: `0x${string}`,
@@ -84,10 +85,21 @@ export async function readContract<
 }
 
 /**
- * Simulate a state-changing contract call (an `eth_transact` dry-run) and return its decoded return
- * value, without submitting. Node-side, so it is account-type-agnostic. A contract revert surfaces via
- * `revertError`. Unlike a cached view (e.g. `getBestPrices`), this runs the call for real, so
- * it reflects execution-time effects like lazy order expiry during matching.
+ * The account a simulation runs as: the connected Substrate or host account for its own H160, else the
+ * account an EVM address maps to (the H160 followed by twelve 0xEE bytes).
+ */
+function simulationOrigin(from: `0x${string}`): string {
+  const { ss58, h160 } = useWalletStore.getState();
+  if (ss58 && h160?.toLowerCase() === from.toLowerCase()) return ss58;
+  return AccountId().dec(fromHex(`${from}${"ee".repeat(12)}`));
+}
+
+/**
+ * Simulate a state-changing contract call (a `ReviveApi.call` dry-run as `from`) and return its decoded
+ * return value, without submitting. Unlike a cached view (e.g. `getBestPrices`), this runs the call for
+ * real, so it reflects execution-time effects like lazy order expiry during matching. It fails the way
+ * a submission would: a contract revert, or a call too large for one transaction (see `dryRunCall`).
+ * `value` is in native planck.
  */
 export async function simulateContract<
   TAbi extends Abi,
@@ -100,21 +112,11 @@ export async function simulateContract<
   from: `0x${string}`,
   options?: { value?: bigint },
 ) {
-  const api = getTypedApi();
   const callData = encodeFunctionData({ abi, functionName, args } as never);
-  const tx = buildEthTransactTx(contractAddress, callData, from, options?.value);
-
-  const result = await api.apis.ReviveApi.eth_transact(tx, { at: "best" });
-
-  if (!result.success) {
-    throw ethTransactError(result.value, abi);
-  }
-
-  return decodeFunctionResult({
-    abi,
-    functionName,
-    data: toHex(result.value.data) as `0x${string}`,
-  } as never);
+  const { dry } = await dryRunCall(simulationOrigin(from), contractAddress, options?.value ?? 0n, fromHex(callData), abi as Abi);
+  const raw = dry.result.value as { data: Uint8Array | { asBytes(): Uint8Array } };
+  const bytes = raw.data instanceof Uint8Array ? raw.data : raw.data.asBytes();
+  return decodeFunctionResult({ abi, functionName, data: toHex(bytes) as `0x${string}` } as never);
 }
 
 /**

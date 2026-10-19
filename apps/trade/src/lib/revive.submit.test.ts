@@ -301,6 +301,30 @@ describe("submitReviveCall chain errors", () => {
   });
 });
 
+describe("submitReviveCall, orders too large for one transaction", () => {
+  it("reports a dry run that ran out of proof as too large, not as a revert", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(
+      okDry({
+        result: { success: true, value: { flags: 1, data: new Uint8Array() } },
+        weight_required: weight(124_751_601_197n, 10_478_239n),
+      }),
+    );
+    await expect(submit()).rejects.toThrow(/crosses too many price levels/);
+    expect(mockApi.tx.Revive.call).not.toHaveBeenCalled();
+  });
+
+  it("reports running out of weight after inclusion the same way", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    mockApi.tx.Revive.call.mockReturnValue(
+      watch([
+        { type: "signed", txHash: "0xh" },
+        { type: "txBestBlocksState", found: true, ok: false, dispatchError: { type: "Module", value: { type: "Revive", value: { type: "OutOfGas" } } } },
+      ]),
+    );
+    await expect(submit()).rejects.toThrow(/crosses too many price levels/);
+  });
+});
+
 describe("weightLimit", () => {
   // paseo-v2's per-extrinsic limit, and proof sizes measured there for market orders crossing levels (#104).
   const max = { ref_time: 1_599_875_000_000n, proof_size: 8_388_608n };
