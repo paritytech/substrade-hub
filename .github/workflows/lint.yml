@@ -59,6 +59,41 @@ jobs:
           foundryup --install v1.5.1
           echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
 
-      - name: Build
-        run: forge build
+      # pallet-revive enforces the EIP-170 runtime limit (24,576 bytes) and the EIP-3860 initcode limit.
+      # `--sizes` fails the build when a contract exceeds either. The margin check also fails when a
+      # deployed contract gets within MIN_MARGIN bytes of a limit, so a PR sees the budget running out
+      # before a deploy does; the job summary lists every margin.
+      - name: Build and check contract sizes
         working-directory: contracts
+        env:
+          MIN_MARGIN: 512
+          DEPLOYED: DLOB DLOBFactory Faucet RedBlackTree XcmBuilder
+        run: |
+          # forge exits 1 when a contract exceeds a limit but still writes the report; keep going so the
+          # table and the annotation below name the contract and its (negative) margin.
+          forge_status=0
+          forge build --sizes --json > "$RUNNER_TEMP/sizes.json" || forge_status=$?
+          [ -s "$RUNNER_TEMP/sizes.json" ] || exit "$forge_status"
+          {
+            echo "| Contract | Runtime | Margin | Initcode | Margin |"
+            echo "|---|---|---|---|---|"
+            for c in $DEPLOYED; do
+              jq -r --arg c "$c" '.[$c] | "| \($c) | \(.runtime_size) | \(.runtime_margin) | \(.init_size) | \(.init_margin) |"' \
+                "$RUNNER_TEMP/sizes.json"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          status=$forge_status
+          for c in $DEPLOYED; do
+            read -r runtime init < <(jq -r --arg c "$c" '.[$c] | "\(.runtime_margin // "missing") \(.init_margin // "missing")"' "$RUNNER_TEMP/sizes.json")
+            if [ "$runtime" = missing ]; then
+              echo "::error::$c is missing from forge's size report"; status=1; continue
+            fi
+            if [ "$runtime" -lt 0 ] || [ "$init" -lt 0 ]; then
+              echo "::error::$c exceeds a size limit (runtime margin $runtime, initcode margin $init)"
+              status=1
+            elif [ "$runtime" -lt "$MIN_MARGIN" ] || [ "$init" -lt "$MIN_MARGIN" ]; then
+              echo "::error::$c is within $MIN_MARGIN bytes of a size limit (runtime margin $runtime, initcode margin $init)"
+              status=1
+            fi
+          done
+          exit $status
