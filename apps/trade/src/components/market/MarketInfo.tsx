@@ -1,19 +1,18 @@
 import { useMarketStore } from "../../stores/market";
 import { erc20ToAssetId } from "../../lib/format";
 import { activeChain } from "../../config/chains";
+import { ExternalLink } from "../ui/ExternalLink";
 
 function AssetLink({ symbol, addr }: { symbol: string; addr: `0x${string}` }) {
   const assetId = erc20ToAssetId(addr);
   if (assetId === null || !activeChain.explorerUrl) return <span>{symbol}</span>;
   return (
-    <a
+    <ExternalLink
       href={`${activeChain.explorerUrl}/assets/${assetId}`}
-      target="_blank"
-      rel="noopener noreferrer"
       className="text-text-secondary hover:text-text-primary underline decoration-dotted"
     >
       {symbol}
-    </a>
+    </ExternalLink>
   );
 }
 
@@ -30,14 +29,12 @@ export function MarketInfo() {
         <AssetLink symbol={market.quote.symbol} addr={market.quote.addr} />
       </div>
       {activeChain.explorerUrl && (
-        <a
+        <ExternalLink
           href={`${activeChain.explorerUrl}/account/${market.address}`}
-          target="_blank"
-          rel="noopener noreferrer"
           className="text-text-secondary hover:text-text-primary text-sm underline decoration-dotted"
         >
           Contract
-        </a>
+        </ExternalLink>
       )}
     </div>
   );
