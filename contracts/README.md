@@ -39,7 +39,7 @@ DLOBFactory (~2KB)
               ├── RedBlackTree library (bid + ask price levels, O(log n))
               ├── XcmBuilder library (XCM message encoding)
               ├── FIFO Order Queue (per price level, doubly-linked list)
-              ├── Matching Engine (up to 50 fills per tx)
+              ├── Matching Engine (up to 6 fills per tx)
               └── XCM Settlement (inline or pending claim fallback)
 ```
 
