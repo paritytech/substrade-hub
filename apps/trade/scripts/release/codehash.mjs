@@ -24,7 +24,8 @@ const LINK_PLACEHOLDER = /__\$[0-9a-f]{34}\$__/g;
  */
 export function maskedCodehash(hex, mask) {
   const code = Buffer.from(hex.replace(/^0x/, "").replace(LINK_PLACEHOLDER, "0".repeat(40)), "hex");
-  for (const [start, length] of mask) code.fill(0, start, start + length);
+  // subarray clamps to the code's end: live code shorter than this build's layout hashes as a mismatch.
+  for (const [start, length] of mask) code.subarray(start, start + length).fill(0);
   const metadata = code.length >= 2 ? code.readUInt16BE(code.length - 2) + 2 : 0;
   return keccak256(code.subarray(0, Math.max(0, code.length - metadata)));
 }

@@ -112,6 +112,11 @@ describe("maskedCodehash", () => {
     expect(maskedCodehash(code("1111222233334444"), [])).not.toBe(base); // the masked bytes count when unmasked
   });
 
+  it("hashes code shorter than the masked ranges as a mismatch, without throwing", () => {
+    const short = maskedCodehash(code("11112222"), [[40, 20]]);
+    expect(short).not.toBe(maskedCodehash(code("1111222233334444"), [[40, 20]]));
+  });
+
   it("treats forge's link placeholder as a zeroed address", () => {
     const placeholder = `__$${"1".repeat(34)}$__`;
     const linked = `0x00${"ab".repeat(20)}00aaaa0002`;
