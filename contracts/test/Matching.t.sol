@@ -26,7 +26,7 @@ contract MatchingTest is Test {
     uint96 constant MIN_ORDER_SIZE = 1e6;
     uint128 constant MAX_ORDER_SIZE = 1e24;
     uint256 constant PRECISION = 1e18;
-    uint8 constant MAX_FILLS_PER_TX = 6;
+    uint8 constant LOCAL_FILLS_PER_TX = 6; // MATCH_BUDGET (12) / FILL_COST (2)
 
     function setUp() public {
         mockXcm = new MockXcm();
@@ -298,10 +298,10 @@ contract MatchingTest is Test {
         );
     }
 
-    /// @notice Test that matching stops at MAX_FILLS_PER_TX (50 fills)
+    /// @notice Test that matching stops at LOCAL_FILLS_PER_TX (50 fills)
     function testMaxFillsCap() public {
         // One more seller than the cap, each placing a sell order
-        uint256 numSellers = MAX_FILLS_PER_TX + 1;
+        uint256 numSellers = LOCAL_FILLS_PER_TX + 1;
         address[] memory sellers = new address[](numSellers);
 
         for (uint256 i = 0; i < numSellers; i++) {
@@ -324,60 +324,121 @@ contract MatchingTest is Test {
         uint256 aliceBaseBalanceBefore = baseToken.balanceOf(alice);
 
         // Alice places buy order for 600e6 base, more than all the sellers offer
-        // Should only fill MAX_FILLS_PER_TX orders
+        // Should only fill LOCAL_FILLS_PER_TX orders
         vm.prank(alice);
         dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
 
         uint256 aliceBaseBalanceAfter = baseToken.balanceOf(alice);
 
-        // Alice should receive exactly MAX_FILLS_PER_TX * 10e6 base
+        // Alice should receive exactly LOCAL_FILLS_PER_TX * 10e6 base
         assertEq(
             aliceBaseBalanceAfter - aliceBaseBalanceBefore,
-            uint256(MAX_FILLS_PER_TX) * 10e6,
-            "Should fill exactly MAX_FILLS_PER_TX orders"
+            uint256(LOCAL_FILLS_PER_TX) * 10e6,
+            "Should fill exactly LOCAL_FILLS_PER_TX orders"
         );
     }
 
-    /// @notice Test that after max fills cap, remainder rests on book
-    function testMaxFillsRestsRemainder() public {
-        // One more seller than the cap, each placing a sell order
-        uint256 numSellers = MAX_FILLS_PER_TX + 1;
-
-        for (uint256 i = 0; i < numSellers; i++) {
+    /// @dev One more local seller than the budget fills, each selling 10e6 base at 50e15.
+    function _sellersBeyondBudget() internal {
+        for (uint256 i = 0; i < LOCAL_FILLS_PER_TX + 1; i++) {
             address seller = vm.addr(i + 2000); // Start from 2000 to avoid collision
-
-            // Mint tokens for each seller
             baseToken.mint(seller, 1000e18);
-            quoteToken.mint(seller, 1000e18);
-
-            // Approve DLOB
             vm.startPrank(seller);
             baseToken.approve(address(dlob), type(uint256).max);
-            quoteToken.approve(address(dlob), type(uint256).max);
-
-            // Each seller places sell order for 10e6 base at 50e15
             dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
             vm.stopPrank();
         }
+    }
 
-        // Alice places buy order for 600e6 base
-        // Should fill MAX_FILLS_PER_TX orders and rest the rest on the book
+    /// @notice A limit buy the budget stops while it still crosses returns its remainder: resting at
+    /// its price would cross the book.
+    function testBudgetStoppedBuyReturnsRemainder() public {
+        _sellersBeyondBudget();
+
+        uint256 quoteBefore = quoteToken.balanceOf(alice);
+        uint256 baseBefore = baseToken.balanceOf(alice);
         vm.prank(alice);
         uint32 aliceOrderId =
             dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
 
-        // Verify Alice's order exists and has remaining amount
+        uint128 filled = uint128(LOCAL_FILLS_PER_TX) * 10e6;
         DLOB.Order memory o = dlob.getOrder(aliceOrderId);
-
-        assertEq(o.owner, alice, "Order owner should be Alice");
-        assertEq(uint8(o.side), uint8(DLOB.Side.Buy), "Order should be buy side");
-        assertEq(o.price, 50e15, "Order price should be 50e15");
         assertEq(o.originalAmount, 600e6, "Order original amount should be 600e6");
+        assertEq(o.remainingAmount, 0, "Nothing rests");
         assertEq(
-            o.remainingAmount,
-            600e6 - uint128(MAX_FILLS_PER_TX) * 10e6,
-            "Order should rest what the cap left unfilled"
+            quoteBefore - quoteToken.balanceOf(alice),
+            uint256(filled) * 50e15 / 1e18,
+            "Alice pays only for what filled"
         );
+        assertEq(baseToken.balanceOf(alice) - baseBefore, filled, "Alice receives what filled");
+
+        (uint96 bid, uint96 ask) = dlob.getBestPrices();
+        assertEq(bid, 0, "No bid rests");
+        assertEq(ask, 50e15, "The unfilled seller still rests");
+    }
+
+    /// @notice The same for a limit sell: its unfilled base goes back to the seller.
+    function testBudgetStoppedSellReturnsRemainder() public {
+        for (uint256 i = 0; i < LOCAL_FILLS_PER_TX + 1; i++) {
+            address buyer = vm.addr(i + 3000);
+            quoteToken.mint(buyer, 1000e18);
+            vm.startPrank(buyer);
+            quoteToken.approve(address(dlob), type(uint256).max);
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+            vm.stopPrank();
+        }
+
+        uint256 baseBefore = baseToken.balanceOf(alice);
+        vm.prank(alice);
+        uint32 aliceOrderId =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
+
+        assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 0, "Nothing rests");
+        assertEq(
+            baseBefore - baseToken.balanceOf(alice),
+            uint256(LOCAL_FILLS_PER_TX) * 10e6,
+            "Alice gives only what filled"
+        );
+        assertEq(baseToken.balanceOf(address(dlob)), 0, "No base is left escrowed");
+
+        (uint96 bid, uint96 ask) = dlob.getBestPrices();
+        assertEq(ask, 0, "No ask rests");
+        assertEq(bid, 50e15, "The unfilled buyer still rests");
+    }
+
+    /// @notice Expired orders alone can use up the budget: the buy then fills nothing, and all its quote
+    /// comes back.
+    function testBudgetUsedByExpiryReturnsAllQuote() public {
+        for (uint256 i = 0; i < LOCAL_FILLS_PER_TX + 1; i++) {
+            address seller = vm.addr(i + 4000);
+            baseToken.mint(seller, 1000e18);
+            vm.startPrank(seller);
+            baseToken.approve(address(dlob), type(uint256).max);
+            dlob.placeLimitOrder(
+                DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, uint64(block.timestamp + 1)
+            );
+            vm.stopPrank();
+        }
+        vm.warp(block.timestamp + 2);
+
+        uint256 quoteBefore = quoteToken.balanceOf(alice);
+        vm.prank(alice);
+        uint32 aliceOrderId =
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
+
+        assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 0, "Nothing rests");
+        assertEq(quoteToken.balanceOf(alice), quoteBefore, "All of Alice's quote comes back");
+        (uint96 bid,) = dlob.getBestPrices();
+        assertEq(bid, 0, "No bid rests");
+    }
+
+    /// @notice An order that stops before the budget, because the price no longer crosses, rests.
+    function testOrderWithinBudgetRestsRemainder() public {
+        _sellersBeyondBudget();
+        vm.prank(alice);
+        uint32 aliceOrderId =
+            dlob.placeLimitOrder(DLOB.Side.Buy, 49e15, 600e6, bytes32(0), bytes32(0), 0, 0);
+        assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 600e6, "The order rests in full");
     }
 
     /// @notice Test that same owner with different originAccount can trade (self-trade allowed)

@@ -618,7 +618,7 @@ contract DLOBTest is Test {
 
     // ──────────────────── Expired Order Backlog Tests ─────────────
 
-    uint256 constant MAX_FILLS_PER_TX = 6;
+    uint256 constant LOCAL_FILLS_PER_TX = 6; // MATCH_BUDGET (12) / FILL_COST (2); a cleanup costs FILL_COST
 
     /// Charlie rests `n` minimum-size asks at `price`, all expiring at `expiry`; returns the first id.
     function _expiringAsks(uint256 n, uint96 price, uint64 expiry) internal returns (uint32 first) {
@@ -639,20 +639,22 @@ contract DLOBTest is Test {
 
     function testExpiredCleanupCountsTowardFillCap() public {
         // More expired orders than one cap, few enough for the second transaction to finish them.
-        uint256 expired = MAX_FILLS_PER_TX + 4;
+        uint256 expired = LOCAL_FILLS_PER_TX + 4;
         vm.warp(1000);
         uint32 first = _expiringAsks(expired, 50e15, 1500);
         vm.prank(bob); // live liquidity behind the expired level
         dlob.placeLimitOrder(DLOB.Side.Sell, 51e15, 100e6, bytes32(0), bytes32(0), 0, 0);
         vm.warp(2000);
 
-        // The first taker transaction does at most MAX_FILLS_PER_TX units of work: here, all expiries.
+        // The first taker transaction does at most LOCAL_FILLS_PER_TX units of work: here, all expiries.
         vm.prank(alice);
         uint128 filled = dlob.placeMarketOrder(
             DLOB.Side.Buy, 10e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0
         );
-        assertEq(filled, 0, "the cap is spent on expired orders");
-        assertEq(_countCancelled(first, expired), MAX_FILLS_PER_TX, "exactly the cap is cleaned up");
+        assertEq(filled, 0, "the budget is spent on expired orders");
+        assertEq(
+            _countCancelled(first, expired), LOCAL_FILLS_PER_TX, "exactly the budget is cleaned up"
+        );
 
         // The next one finishes the cleanup and reaches the live ask.
         vm.prank(alice);
@@ -670,7 +672,9 @@ contract DLOBTest is Test {
 
         vm.prank(alice);
         dlob.placeMarketOrder(DLOB.Side.Buy, 10e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
-        assertEq(_countCancelled(first, 400), MAX_FILLS_PER_TX, "one transaction, one cap of work");
+        assertEq(
+            _countCancelled(first, 400), LOCAL_FILLS_PER_TX, "one transaction, one budget of work"
+        );
     }
 
     function testPurgeExpiredRemovesOnlyExpiredOrders() public {

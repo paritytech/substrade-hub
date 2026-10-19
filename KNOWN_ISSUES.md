@@ -82,8 +82,9 @@ Substrate wallet are bound to the network's genesis and are not affected.
 ## 9. One transaction fits about 7 fills
 
 Each fill needs about 1 MB of proof, and one transaction may use 8 MiB, so an order that would fill
-against more than about 7 resting orders cannot be included. The contracts now cap matching at 6 fills
-per transaction (`MAX_FILLS_PER_TX`, #104), so a larger order fills 6, then rests (a limit order) or
-returns the remainder (a market order). The markets deployed today still have a cap of 50, so until
-the next contract deployment the app refuses such an order before signing: "This order crosses too many
-price levels for one transaction — place a smaller order".
+against more than about 7 resting orders cannot be included. The contracts now limit matching to a
+per-transaction budget (`MATCH_BUDGET`, #104): 6 local fills, 4 when one leg of each fill settles
+cross-chain, or 3 when both do. A larger order fills what fits and returns the remainder: a limit order
+cannot rest it at its price without crossing the book. The markets deployed today still have a flat cap
+of 50 fills, so until the next contract deployment the app refuses such an order before signing: "This
+order crosses too many price levels for one transaction — place a smaller order".

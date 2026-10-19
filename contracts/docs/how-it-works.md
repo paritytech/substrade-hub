@@ -6,7 +6,7 @@ SubsTrade Hub runs an entire limit order book on-chain: order placement, matchin
 
 ## Key Features
 
-- **Price-time priority matching.** Orders fill at the best available price first; within the same price level, earlier orders fill before later ones (FIFO). A single transaction can execute up to 6 fills, sweeping multiple price levels if needed.
+- **Price-time priority matching.** Orders fill at the best available price first; within the same price level, earlier orders fill before later ones (FIFO). A single transaction can execute up to 6 fills (fewer when settlement is cross-chain), sweeping multiple price levels if needed.
 - **Cross-chain settlement via XCM.** Matched tokens are delivered to any Polkadot parachain using XCM reserve transfers. Traders on remote parachains place and settle orders without leaving their home chain. A single extrinsic handles token transfer, approval, and order placement atomically.
 - **Pending claim fallback.** If inline XCM delivery fails (e.g., destination chain congested, HRMP channel full), a `PendingClaim` is created instead of reverting. Funds remain safe on Asset Hub; anyone can call `claimSettlement()` later to retry, or `redirectClaim()` to reroute to a different destination. No funds are ever lost.
 - **Limit and market orders.** `placeLimitOrder()` rests on the book at a specific price with an optional expiry timestamp; `placeMarketOrder()` fills immediately against resting orders, up to a `limitPrice` and with a `minAmountOut` minimum fill. Market orders never rest on the book.
@@ -18,7 +18,7 @@ SubsTrade Hub runs an entire limit order book on-chain: order placement, matchin
 ## Order Lifecycle
 
 1. **Place.** A trader submits a limit order (buy or sell) with a price and amount. The order book escrows the relevant tokens (base for sells, quote for buys) and inserts the order at the correct price level. See [configuration](configuration.md) for market parameter details (tick size, order size limits).
-2. **Match.** When a new order crosses the spread (bid >= ask), the matching engine fills orders in **price-time priority** (best price first, then FIFO within each price level). A single transaction can execute up to 6 fills.
+2. **Match.** When a new order crosses the spread (bid >= ask), the matching engine fills orders in **price-time priority** (best price first, then FIFO within each price level). A single transaction fills orders within a budget: 6 local fills, fewer when settlement is cross-chain.
 3. **Settle.** Matched tokens are delivered to the counterparties. For local (Asset Hub) traders, this is a direct token transfer. For cross-chain traders, settlement uses XCM reserve transfers to deliver tokens to the destination parachain.
 4. **Cancel / Expire.** Unfilled orders can be cancelled by the owner at any time. Orders with an expiry timestamp are lazily cleaned during matching; no keeper or cron job needed.
 
@@ -26,7 +26,7 @@ SubsTrade Hub runs an entire limit order book on-chain: order placement, matchin
 
 The DLOB supports two order types:
 
-- **`placeLimitOrder()`:** Rests on the book at a specific price. If the price crosses the spread, the order fills immediately (up to 6 fills); any unfilled remainder stays on the book. An optional `expireTimestamp` causes the order to be skipped (and lazily removed) during matching after expiry.
+- **`placeLimitOrder()`:** Rests on the book at a specific price. If the price crosses the spread, the order fills immediately (within the per-transaction budget), and the unfilled remainder stays on the book. When the budget runs out while the order still crosses, the remainder is returned instead, since resting it would cross the book. An optional `expireTimestamp` causes the order to be skipped (and lazily removed) during matching after expiry.
 - **`placeMarketOrder()`:** Fills immediately against resting orders and never rests on the book. `limitPrice` is the worst price accepted (the highest ask a buy takes, the lowest bid a sell takes), so a resting order at an extreme price cannot fill it; pass `type(uint96).max` (buy) or `0` (sell) for no limit. `minAmountOut` is the minimum base amount filled; the transaction reverts with `SlippageExceeded` if less fills. Whatever does not fill is returned; with no liquidity within the limit, the order fills nothing and, unless `minAmountOut` is set, does not revert.
 
 ### Matching Engine Details
@@ -36,8 +36,8 @@ The matching engine runs inline during order placement. When a new order crosses
 1. For each price level, it dequeues orders in FIFO order (earliest first)
 2. Each fill transfers tokens between the maker and taker. Buy orders always execute at the **ask price** (the maker's price), so buyers may get a better price than their limit
 3. If a buy order fills at a price lower than its limit, the excess quote tokens are refunded to the buyer immediately
-4. The engine stops after **6 fills** (`MAX_FILLS_PER_TX`): each fill needs about 1 MB of proof, and one transaction may use 8 MiB on Asset Hub. If the incoming order still has remaining amount, it rests on the book at its limit price; a market order returns it
-5. Expired orders encountered during the walk are skipped and lazily removed; each one counts toward the 6-fill cap, so a backlog of expired orders cannot make one transaction's work unbounded. `purgeExpired(side, price, maxOrders)` removes expired orders at one price level in bounded batches
+4. The engine stops when the next fill would exceed the **per-transaction budget** (`MATCH_BUDGET` = 12): a fill costs 2, plus 1 for each of its legs settled over XCM, so a transaction does 6 local fills, 4 with one cross-chain leg, or 3 with two. Each fill needs about 1 MB of proof, a cross-chain leg adds about 0.5 MB, and one transaction may use 8 MiB on Asset Hub. If the incoming order still has remaining amount, it goes back to the sender, for limit and market orders alike: a limit order resting at its price would cross the book. A limit order that stops because the price no longer crosses rests the remainder at its limit price
+5. Expired orders encountered during the walk are skipped and lazily removed; each one costs 2, like a local fill, so a backlog of expired orders cannot make one transaction's work unbounded. `purgeExpired(side, price, maxOrders)` removes expired orders at one price level in bounded batches
 
 ### Self-Trade Prevention
 
