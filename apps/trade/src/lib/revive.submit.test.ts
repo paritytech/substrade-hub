@@ -12,7 +12,7 @@ vi.mock("./errors", async () => {
 });
 
 import { UserFacingError } from "./user-errors";
-import { submitReviveCall, ensureMapped } from "./revive";
+import { submitReviveCall, ensureMapped, weightLimit } from "./revive";
 
 const signer = {} as PolkadotSigner;
 const ABI = [] as unknown as Abi;
@@ -23,6 +23,15 @@ const weight = (ref = 1000n, proof = 2000n) => ({ ref_time: ref, proof_size: pro
 
 beforeEach(() => {
   mockApi.apis = { ReviveApi: { call: vi.fn(), address: vi.fn() } };
+  // paseo-v2's per-extrinsic limit.
+  mockApi.constants = {
+    System: {
+      BlockWeights: async () => ({
+        max_block: { ref_time: 2_000_000_000_000n, proof_size: 10_485_760n },
+        per_class: { normal: { max_extrinsic: { ref_time: 1_599_875_000_000n, proof_size: 8_388_608n } } },
+      }),
+    },
+  };
   mockApi.tx = { Revive: { call: vi.fn(), map_account: vi.fn() } };
   mockApi.query = { Revive: { OriginalAccount: { getValue: vi.fn() } } };
 });
@@ -50,7 +59,7 @@ const submit = () =>
   submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer });
 
 describe("submitReviveCall", () => {
-  it("submits Revive.call with 2x-buffered weight and storage deposit on a clean dry-run", async () => {
+  it("submits Revive.call with buffered weight (2x ref_time, +10% proof) and storage deposit on a clean dry-run", async () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
@@ -69,7 +78,7 @@ describe("submitReviveCall", () => {
 
     expect(res).toEqual({ txHash: "0xhash", status: "success" });
     const arg = mockApi.tx.Revive.call.mock.calls[0][0];
-    expect(arg.weight_limit).toEqual({ ref_time: 2000n, proof_size: 4000n }); // 2x weight buffer
+    expect(arg.weight_limit).toEqual({ ref_time: 2000n, proof_size: 2200n }); // 2x ref_time, +10% proof_size
     expect(arg.storage_deposit_limit).toBe(5000n); // 500n * 10 storage buffer
     expect(arg.value).toBe(0n);
   });
@@ -289,5 +298,52 @@ describe("submitReviveCall chain errors", () => {
     const err = await submit().catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(UserFacingError);
     expect((err as Error).message).toBe("Transaction failed: BadOrigin");
+  });
+});
+
+describe("submitReviveCall, orders too large for one transaction", () => {
+  it("reports a dry run that ran out of proof as too large, not as a revert", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(
+      okDry({
+        result: { success: true, value: { flags: 1, data: new Uint8Array() } },
+        weight_required: weight(124_751_601_197n, 10_478_239n),
+      }),
+    );
+    await expect(submit()).rejects.toThrow(/crosses too many price levels/);
+    expect(mockApi.tx.Revive.call).not.toHaveBeenCalled();
+  });
+
+  it("reports running out of weight after inclusion the same way", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    mockApi.tx.Revive.call.mockReturnValue(
+      watch([
+        { type: "signed", txHash: "0xh" },
+        { type: "txBestBlocksState", found: true, ok: false, dispatchError: { type: "Module", value: { type: "Revive", value: { type: "OutOfGas" } } } },
+      ]),
+    );
+    await expect(submit()).rejects.toThrow(/crosses too many price levels/);
+  });
+});
+
+describe("weightLimit", () => {
+  // paseo-v2's per-extrinsic limit, and proof sizes measured there for market orders crossing levels (#104).
+  const max = { ref_time: 1_599_875_000_000n, proof_size: 8_388_608n };
+
+  it("buffers proof_size by 10% and ref_time by 2x", () => {
+    expect(weightLimit({ ref_time: 53_877_868_547n, proof_size: 4_585_721n }, max)).toEqual({
+      ref_time: 107_755_737_094n,
+      proof_size: 5_044_293n,
+    });
+  });
+
+  it("lets a seven-level sweep through, capped under the extrinsic limit", () => {
+    const limit = weightLimit({ ref_time: 92_226_367_784n, proof_size: 7_812_044n }, max);
+    expect(limit.proof_size).toBe(8_388_608n - 64n * 1024n); // 110% would be 8,593,248: capped
+  });
+
+  it("refuses, with a user error, an order whose estimate alone does not fit", () => {
+    expect(() => weightLimit({ ref_time: 102_511_219_773n, proof_size: 8_630_260n }, max)).toThrow(
+      "This order crosses too many price levels for one transaction",
+    );
   });
 });

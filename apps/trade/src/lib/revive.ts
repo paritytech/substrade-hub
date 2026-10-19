@@ -15,13 +15,61 @@ import {
 } from "@parity/product-sdk-tx";
 import type { TxStep } from "./tx-progress";
 
-// Headroom over the dry-run estimates. Weight (ref_time/proof_size) is PoV-sensitive and counts against
-// block limits, so keep its buffer modest. Storage deposit does NOT affect block/PoV limits and the
+// Headroom over the dry-run estimates. ref_time is far below its per-extrinsic limit, so it gets 2x.
+// proof_size is the limit an order meets first (about 1 MB per fill, 8 MiB per extrinsic), so it gets
+// 10%: doubling it rejected orders crossing four or more price levels that would have fitted. Both are
+// capped at what one extrinsic may use. Storage deposit does NOT affect block/PoV limits and the
 // dry-run under-estimates it badly on storage-churning paths (e.g. a fill that removes a price level via
 // the RedBlackTree delegatecall), so give it a generous buffer — otherwise those trades revert on
-// execution while passing the dry-run. Verified: this order needed >3x storage; 2x weight was ample.
-const WEIGHT_BUFFER = 2n;
+// execution while passing the dry-run. Verified: this order needed >3x storage.
+const REF_TIME_BUFFER_PERCENT = 200n;
+const PROOF_SIZE_BUFFER_PERCENT = 110n;
 const STORAGE_BUFFER = 10n;
+/**
+ * What a `Revive.call` itself adds to its weight limit (17.5 KB of proof measured on paseo-v2), plus
+ * the transaction's size: the limit must leave this room under the per-extrinsic maximum.
+ */
+const EXTRINSIC_MARGIN = { ref_time: 10_000_000_000n, proof_size: 64n * 1024n };
+
+type Weight = { ref_time: bigint; proof_size: bigint };
+
+/**
+ * The weight limit for a call needing `required`: the buffered estimate, capped at what one extrinsic
+ * may use (`max` less `EXTRINSIC_MARGIN`). Throws a user error when the estimate alone does not fit.
+ */
+export function weightLimit(required: Weight, max: Weight): Weight {
+  const cap = {
+    ref_time: max.ref_time - EXTRINSIC_MARGIN.ref_time,
+    proof_size: max.proof_size - EXTRINSIC_MARGIN.proof_size,
+  };
+  if (required.ref_time > cap.ref_time || required.proof_size > cap.proof_size) {
+    throw new UserFacingError(TOO_MANY_LEVELS, {
+      cause: `needs ${required.ref_time} ref_time and ${required.proof_size} proof_size; one extrinsic allows ${cap.ref_time} and ${cap.proof_size}`,
+    });
+  }
+  const buffered = (value: bigint, percent: bigint, limit: bigint) => {
+    const v = (value * percent) / 100n;
+    return v < limit ? v : limit;
+  };
+  return {
+    ref_time: buffered(required.ref_time, REF_TIME_BUFFER_PERCENT, cap.ref_time),
+    proof_size: buffered(required.proof_size, PROOF_SIZE_BUFFER_PERCENT, cap.proof_size),
+  };
+}
+
+let maxExtrinsic: Promise<Weight> | undefined;
+
+/** What one normal extrinsic may use on this chain (`System.BlockWeights`), read once; a failed read is retried. */
+export function maxExtrinsicWeight(): Promise<Weight> {
+  maxExtrinsic ??= getTypedApi()
+    .constants.System.BlockWeights()
+    .then((w) => w.per_class.normal.max_extrinsic ?? w.max_block)
+    .catch((e: unknown) => {
+      maxExtrinsic = undefined;
+      throw e;
+    });
+  return maxExtrinsic;
+}
 
 /**
  * Reject a submission that is never included, so the UI can't hang forever on a dropped tx.
@@ -61,6 +109,9 @@ function errorPath(err: unknown): string[] {
   return path;
 }
 
+/** An order whose matching needs more weight than one transaction may use (#104). */
+const TOO_MANY_LEVELS = "This order crosses too many price levels for one transaction — place a smaller order";
+
 /** Chain errors the user can act on, by a name in the error's path; undefined for the rest. */
 const NOT_ENOUGH_FUNDS = ["Payment", "FundsUnavailable", "InsufficientBalance", "StorageDepositNotEnoughFunds"];
 function userChainError(path: string[]): string | undefined {
@@ -72,6 +123,10 @@ function userChainError(path: string[]): string | undefined {
   }
   if (path.includes("BadProof")) {
     return "The network rejected your wallet's signature — try again, or use another wallet";
+  }
+  if (path.includes("OutOfGas") || path.includes("ExhaustsResources")) {
+    // The book can grow between the dry run and inclusion, so a sized call can still run out.
+    return TOO_MANY_LEVELS;
   }
   if (path.includes("AccountUnmapped")) {
     // Accounts are mapped when they are created, which funding the account does.
@@ -174,6 +229,46 @@ export async function ensureMapped(
   }
 }
 
+/**
+ * Dry-run a contract call as `originSs58` with `ReviveApi.call`, at the best block (writes resolve on
+ * best-block inclusion, so a call that depends on the previous write, an order after its approve,
+ * would revert against the finalized state). ReviveApi.call lazily maps the origin, so this works even
+ * for an unmapped account. Throws the error to show for a failed dispatch, a call that needs more
+ * weight than one transaction may use, or a contract revert; returns the dry run and the weight limit
+ * to submit with.
+ */
+export async function dryRunCall(
+  originSs58: string,
+  dest: `0x${string}`,
+  value: bigint,
+  data: Uint8Array,
+  abi: Abi,
+) {
+  const dry = await getTypedApi().apis.ReviveApi.call(
+    originSs58 as SS58String,
+    dest as SizedHex<20>,
+    value,
+    undefined, // gas_limit
+    undefined, // storage_deposit_limit
+    data,
+    { at: "best" },
+  );
+  if (!dry.result.success) {
+    // dispatch-level failure (fees, origin, etc.) — not a contract revert
+    const user = userChainError(errorPath(dry.result.value));
+    const detail = `dry-run failed: ${JSON.stringify(dry.result.value)}`;
+    throw user ? new UserFacingError(user, { cause: detail }) : new Error(detail);
+  }
+  // Before the revert: a call that runs out of proof also reports a revert with no reason, and only its
+  // weight shows that it was too large.
+  const weight = weightLimit(dry.weight_required, await maxExtrinsicWeight());
+  if (isRevert(dry.result.value.flags)) {
+    // revertError reads `.value.data`, so wrap the ExecReturnValue accordingly
+    throw revertError({ value: dry.result.value }, abi);
+  }
+  return { dry, weight };
+}
+
 export interface ReviveCallParams {
   /** Contract ABI — only used to decode a revert reason from the dry-run. */
   abi: Abi;
@@ -207,29 +302,7 @@ export async function submitReviveCall(
   const dest = params.contractAddress as SizedHex<20>;
 
   // 1. Dry-run: sizes weight + storage deposit AND surfaces contract reverts before we sign.
-  //    ReviveApi.call lazily maps the origin, so this works even for an unmapped account.
-  //    It runs at the best block: writes resolve on best-block inclusion, so a call that depends on
-  //    the previous write (an order after its approve) would revert against the finalized state.
-  const dry = await api.apis.ReviveApi.call(
-    params.originSs58 as SS58String,
-    dest,
-    value,
-    undefined, // gas_limit
-    undefined, // storage_deposit_limit
-    data,
-    { at: "best" },
-  );
-
-  if (!dry.result.success) {
-    // dispatch-level failure (fees, origin, etc.) — not a contract revert
-    const user = userChainError(errorPath(dry.result.value));
-    const detail = `dry-run failed: ${JSON.stringify(dry.result.value)}`;
-    throw user ? new UserFacingError(user, { cause: detail }) : new Error(detail);
-  }
-  if (isRevert(dry.result.value.flags)) {
-    // revertError reads `.value.data`, so wrap the ExecReturnValue accordingly
-    throw revertError({ value: dry.result.value }, params.abi);
-  }
+  const { dry, weight } = await dryRunCall(params.originSs58, params.contractAddress, value, data, params.abi);
   // A function call that requires ZERO weight means the destination has no contract code: the call is a
   // silent no-op that pallet-revive still reports as success (this is what a mis-recorded/undeployed
   // contract address looks like). Fail loudly instead of letting the UI toast a fake success.
@@ -249,10 +322,7 @@ export async function submitReviveCall(
   const tx = api.tx.Revive.call({
     dest,
     value,
-    weight_limit: {
-      ref_time: dry.weight_required.ref_time * WEIGHT_BUFFER,
-      proof_size: dry.weight_required.proof_size * WEIGHT_BUFFER,
-    },
+    weight_limit: weight,
     storage_deposit_limit: depositLimit,
     data,
   });
