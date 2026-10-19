@@ -86,7 +86,7 @@ export function usePlaceOrder() {
             );
           }
 
-          const placing = `Placing ${sideLabel.toLowerCase()} order`;
+          const placing = clearsFront ? CLEARING_FRONT : `Placing ${sideLabel.toLowerCase()} order`;
           updateToast(toastId, "pending", `${placing}: waiting for signature...`);
           console.log("[placeLimitOrder] params:", {
             side: params.side,
@@ -179,7 +179,7 @@ export function usePlaceOrder() {
             );
           }
 
-          const placing = `Placing market ${sideLabel.toLowerCase()} order`;
+          const placing = clearsFront ? CLEARING_FRONT : `Placing market ${sideLabel.toLowerCase()} order`;
           updateToast(toastId, "pending", `${placing}: waiting for signature...`);
           const result = await writeContract(
             dlobAbi,
@@ -215,6 +215,9 @@ export function usePlaceOrder() {
     },
   });
 }
+
+/** The pending text of an order that can only clear the front of the book. */
+const CLEARING_FRONT = "Clearing expired or small orders at the front of the book";
 
 /** The success text of an order that only cleared the front of the book. */
 const FRONT_CLEARED =
