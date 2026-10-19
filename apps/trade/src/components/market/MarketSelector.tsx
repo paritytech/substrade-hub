@@ -19,13 +19,6 @@ export function MarketSelector() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Auto-select first market
-  useEffect(() => {
-    if (markets?.length && !selectedMarket) {
-      selectMarket(markets[0]!);
-    }
-  }, [markets, selectedMarket, selectMarket]);
-
   const label = selectedMarket
     ? `${selectedMarket.base.symbol}/${selectedMarket.quote.symbol}`
     : "Select Market";

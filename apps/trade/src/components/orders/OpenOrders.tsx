@@ -1,6 +1,8 @@
+import { useEffect, useRef } from "react";
 import { useUserOrders } from "../../hooks/use-user-orders";
 import { useCancelOrder } from "../../hooks/use-cancel-order";
 import { useMarketStore } from "../../stores/market";
+import { useViewStore } from "../../stores/view";
 import { Side } from "../../types/market";
 import { formatTokenAmount, tickToDisplayDecimals } from "../../lib/format";
 import { Spinner } from "../ui/Spinner";
@@ -12,8 +14,17 @@ export function OpenOrders() {
   const orders = data?.orders;
   const cancelOrder = useCancelOrder();
 
+  // `#/orders` brings this panel into view (on a phone it sits below the form and the book).
+  const ref = useRef<HTMLDivElement>(null);
+  const focus = useViewStore((s) => s.focus);
+  useEffect(() => {
+    if (focus !== "orders") return;
+    ref.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    useViewStore.getState().setFocus(null);
+  }, [focus]);
+
   return (
-    <div className="flex h-full flex-col">
+    <div ref={ref} className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <span className="text-xs font-medium text-text-secondary">
           Open Orders

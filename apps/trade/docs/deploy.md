@@ -22,6 +22,16 @@ first (`contracts/scripts/bootstrap.mjs`, see the root README). A publish refuse
   only that network's names. Use a build that serves the network you published to, and open the dotNS
   name (for example `substrade-hub.testnet`) in its in-app browser.
 
+### Links into the app
+
+The app keeps its view in the URL hash: `#/market/<address>` opens a market, `#/orders` the Open Orders
+panel, and `#/` (or no hash) Home. A link such as
+`https://substrade-hub.testnet.li/#/market/0xB28530eA4F78C7c643FDd1ed3be927D60ca0fF6E` reaches the app
+through the gateway, which hands the hash to the app's frame. Inside a gateway the app runs in that
+frame, so moving between markets updates the frame's history (Back works) but not the address bar,
+which keeps the link that was opened. A link to a market the network does not list, or one cut short
+before the full address, opens another market, with a notice.
+
 ## How a publish works
 
 `scripts/deploy-dot.mjs` runs a pinned `bulletin-deploy` with the network's environment. It:
