@@ -16,6 +16,7 @@ import {
 import { useWalletStore } from "../../stores/wallet";
 import { Spinner } from "../ui/Spinner";
 import { userMessage } from "../../lib/user-errors";
+import { ExternalLink } from "../ui/ExternalLink";
 
 interface WalletModalProps {
   onClose: () => void;
@@ -274,22 +275,20 @@ export function WalletModal({ onClose }: WalletModalProps) {
             {extensions.length === 0 && (
               <p className="text-sm text-text-secondary">
                 No Substrate wallet detected. Install{" "}
-                <a className="underline" href="https://talisman.xyz" target="_blank" rel="noreferrer">
+                <ExternalLink className="underline" href="https://talisman.xyz">
                   Talisman
-                </a>
+                </ExternalLink>
                 ,{" "}
-                <a className="underline" href="https://subwallet.app" target="_blank" rel="noreferrer">
+                <ExternalLink className="underline" href="https://subwallet.app">
                   SubWallet
-                </a>
+                </ExternalLink>
                 , or{" "}
-                <a
+                <ExternalLink
                   className="underline"
                   href="https://polkadot.js.org/extension/"
-                  target="_blank"
-                  rel="noreferrer"
                 >
                   polkadot-js
-                </a>
+                </ExternalLink>
                 .
               </p>
             )}

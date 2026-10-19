@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useFunding } from "../../hooks/use-funding";
 import { activeChain } from "../../config/chains";
 import { Amount } from "../ui/Amount";
+import { ExternalLink } from "../ui/ExternalLink";
 
 /**
  * Tells a connected user whose account is low on the native token that it needs funding before
@@ -45,14 +46,12 @@ export function FundingNotice() {
         </button>
       </div>
       {activeChain.nativeFaucetUrl ? (
-        <a
+        <ExternalLink
           href={activeChain.nativeFaucetUrl}
-          target="_blank"
-          rel="noopener noreferrer"
           className="mt-2 inline-block text-brand underline decoration-dotted"
         >
           Get {token.symbol} from the faucet
-        </a>
+        </ExternalLink>
       ) : (
         <p className="mt-2 text-xs text-text-muted">
           {activeChain.name} has no public {token.symbol} faucet; ask whoever runs it to fund this account.

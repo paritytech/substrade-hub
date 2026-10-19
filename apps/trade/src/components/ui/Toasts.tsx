@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useToastStore, type ToastType } from "../../stores/toast";
+import { ExternalLink } from "./ExternalLink";
 
 const borderColors: Record<ToastType, string> = {
   pending: "border-brand/60",
@@ -83,14 +84,12 @@ export function Toasts() {
             <div className="flex-1 leading-snug">
               <div>{toast.message}</div>
               {toast.link && (
-                <a
+                <ExternalLink
                   href={toast.link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="mt-1 inline-block text-xs text-text-secondary hover:text-text-primary underline decoration-dotted"
                 >
                   {toast.link.label}
-                </a>
+                </ExternalLink>
               )}
             </div>
             <button

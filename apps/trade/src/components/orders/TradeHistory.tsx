@@ -3,6 +3,7 @@ import { useMarketStore } from "../../stores/market";
 import { formatTokenAmount, tickToDisplayDecimals } from "../../lib/format";
 import { Spinner } from "../ui/Spinner";
 import { activeChain } from "../../config/chains";
+import { ExternalLink } from "../ui/ExternalLink";
 
 export function TradeHistory() {
   const { data: history, isLoading } = useTradeHistory();
@@ -43,18 +44,16 @@ export function TradeHistory() {
                   {/* EVM trades carry a real tx hash (link to /tx/); host-signed trades use a
                       block-index extrinsic id (link to /extrinsic/). */}
                   {activeChain.explorerUrl ? (
-                    <a
+                    <ExternalLink
                       href={
                         trade.txHash.startsWith("0x")
                           ? `${activeChain.explorerUrl}/tx/${trade.txHash}`
                           : `${activeChain.explorerUrl}/extrinsic/${trade.txHash}`
                       }
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className="text-text-secondary hover:text-text-primary underline decoration-dotted"
                     >
                       {shortTxId(trade.txHash)}
-                    </a>
+                    </ExternalLink>
                   ) : (
                     <span className="text-text-secondary">{shortTxId(trade.txHash)}</span>
                   )}
