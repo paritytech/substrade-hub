@@ -87,8 +87,8 @@ jobs:
           echo "No earlier progress since the last deployment record; starting from the committed state"
 
       # The archive is pinned by SHA-256, so a replaced release asset fails the run before forge, which
-      # receives the deployer key, ever runs. Bump V and SHA256 together, and keep the version in step
-      # with lint.yml and test.yml.
+      # receives the deployer key, ever runs. Bump V and SHA256 together, in release.yml too, and keep
+      # the version in step with lint.yml and test.yml.
       - name: Install foundry-polkadot
         env:
           V: v1.5.1

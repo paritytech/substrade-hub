@@ -3,7 +3,8 @@ name: Release
 # Publishes a release of the trading UI to every network in apps/trade/src/config/networks.json when a
 # `dot-vX.Y.Z` tag is pushed on a commit of master, then creates the GitHub Release: a header read
 # from the chain (each network's published CID and contracts, see apps/trade/scripts/release/) above
-# notes generated from the merged PRs, with release-manifest.json and deployments.json attached. The
+# notes generated from the merged PRs, with release-manifest.json, deployments.json and codehashes.json
+# attached. The
 # "Protect dot-v release tags" ruleset limits who can push such a tag. Each network publishes through
 # deploy-dot.yml from its own `<network>-deploy` environment, whose deployment rules must allow
 # `dot-v*` tags. See apps/trade/docs/deploy.md.
@@ -74,6 +75,26 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          submodules: recursive # the contracts' libraries, for the build whose codehashes the release records
+
+      # Same pinned archive as bootstrap.yml: bump V and SHA256 there and here together.
+      - name: Install foundry-polkadot
+        env:
+          V: v1.5.1
+          SHA256: c01fd8bcab0177232791b776098c7e55d97824c712095299351dd69c51c32f02
+        run: |
+          DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$DIR/bin"
+          curl -sSfL -o "$DIR/foundry.tar.gz" \
+            "https://github.com/paritytech/foundry-polkadot/releases/download/$V/foundry_${V}_linux_amd64.tar.gz"
+          echo "$SHA256  $DIR/foundry.tar.gz" | sha256sum -c -
+          tar -xzf "$DIR/foundry.tar.gz" -C "$DIR/bin" forge
+          echo "$DIR/bin" >> "$GITHUB_PATH"
+
+      - name: Build the contracts
+        run: forge build --quiet
+        working-directory: contracts
+
       - name: Install pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - name: Setup Node
@@ -83,15 +104,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --filter @substrade-hub/trade
 
-      # Reads each network's dotNS contenthash and contracts back from the chain. The previous release's
-      # deployments.json gives the "contracts changed" line; a release made before that asset existed
-      # falls back to its networks.json.
+      # Reads each network's dotNS contenthash, contracts and their code back from the chain. The
+      # previous release's deployments.json gives the "contracts changed" line; a release made before
+      # that asset existed falls back to its networks.json.
       - name: Build the notes and assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           PREV=$(git tag --list 'dot-v*' --sort=-v:refname | grep -vxF "$GITHUB_REF_NAME" | head -1 || true)
-          ARGS=(--tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --out release)
+          ARGS=(--tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --out release --contracts contracts)
           if [ -n "$PREV" ]; then
             ARGS+=(--previous-tag "$PREV")
             mkdir -p previous
@@ -111,4 +132,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "SubsTrade Hub $VERSION" --generate-notes --notes-file release/notes.md \
-            release/release-manifest.json release/deployments.json
+            release/release-manifest.json release/deployments.json release/codehashes.json

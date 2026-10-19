@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compareDeployments, contenthashToCid, deploymentsFromNetworks, gatewayUrl } from "./lib.mjs";
 import { renderHeader } from "./notes.mjs";
 import { diffDeployment } from "./verify.mjs";
+import { eip1167Runtime, maskedCodehash } from "./codehash.mjs";
 
 const A = "0x341c005e16941d904Aee4a71E669362eD3c4fFe9";
 const B = "0xFD6E13f0e3F9690A41b3f3a7605d075849eC01d0";
@@ -79,6 +80,13 @@ describe("renderHeader", () => {
     expect(text).not.toContain("No contract changes");
   });
 
+  it("says whether every network runs this build's contract code", () => {
+    expect(render()).toContain("Every network runs the contract code this release builds.");
+    expect(render({ codeDiffers: ["n"] })).toContain(
+      "**Deployed contracts differ from this release's build on: Paseo Asset Hub Next.** A contract redeploy is pending there",
+    );
+  });
+
   it("puts the hand-written intro first", () => {
     expect(render({ intro: "Highlights.\n" }).startsWith("Highlights.\n\n## Where it is live")).toBe(true);
   });
@@ -91,5 +99,31 @@ describe("diffDeployment", () => {
       `factory is ${B}, the release records ${A}`,
       `markets are none, the release records ${M.address}`,
     ]);
+  });
+});
+
+describe("maskedCodehash", () => {
+  // 8 code bytes, then 2 bytes of CBOR metadata and its 2-byte length (0x0002).
+  const code = (body) => `0x${body}aaaa0002`;
+
+  it("ignores the metadata, the masked ranges and unlinked library placeholders", () => {
+    const base = maskedCodehash(code("1111222233334444"), [[2, 2]]);
+    expect(maskedCodehash(`0x1111ffff33334444bbbb0002`, [[2, 2]])).toBe(base); // other metadata and masked bytes
+    expect(maskedCodehash(code("1111222233334444"), [])).not.toBe(base); // the masked bytes count when unmasked
+  });
+
+  it("treats forge's link placeholder as a zeroed address", () => {
+    const placeholder = `__$${"1".repeat(34)}$__`;
+    const linked = `0x00${"ab".repeat(20)}00aaaa0002`;
+    const unlinked = `0x00${placeholder}00aaaa0002`;
+    expect(maskedCodehash(unlinked, [[1, 20]])).toBe(maskedCodehash(linked, [[1, 20]]));
+  });
+});
+
+describe("eip1167Runtime", () => {
+  it("is the 45-byte minimal proxy to the implementation, as deployed on paseo-v2", () => {
+    expect(eip1167Runtime("0x91762b345A73222a0082740D94b9D96aB4f494A8")).toBe(
+      "0x363d3d373d3d3d363d7391762b345a73222a0082740d94b9d96ab4f494a85af43d82803e903d91602b57fd5bf3",
+    );
   });
 });
