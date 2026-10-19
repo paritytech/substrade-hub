@@ -3,14 +3,17 @@
  *   release-manifest.json  version, commit, and per network the dotNS name, gateway URL and CID
  *   deployments.json       per network the factory, implementation, libraries, faucet, quote token and markets
  *   codehashes.json        the masked codehash of each deployed contract in this build (see codehash.mjs)
+ *   abis.json              the DLOB's and the factory's ABIs in this build (see abi.mjs)
  *   notes.md               the header placed above GitHub's generated notes
  * The CIDs are read back from each name's contenthash, so the notes state what the chain serves.
  *
  * Usage (from the repo root):
  *   node apps/trade/scripts/release/notes.mjs --tag dot-v1.2.3 --commit <sha> --out <dir> --contracts contracts
  *     [--previous-tag dot-v1.2.2] [--previous-deployments <file>] [--previous-networks <file>]
+ *     [--previous-abis <file>] [--previous-abi-dir <dir>]
  * The previous release's deployments.json, or failing that its networks.json, gives the
- * "contracts changed" line. `--contracts` is the built contracts directory (after `forge build`); the
+ * "contracts changed" line. Its abis.json, or failing that a directory with its generated ABI files
+ * (`src/abi/`), gives the "ABI changes" section. `--contracts` is the built contracts directory (after `forge build`); the
  * notes flag any network whose live code differs from that build. A hand-written intro is read from
  * release-notes/<version>.md when present.
  */
@@ -27,11 +30,15 @@ import {
   readPublishedCid,
 } from "./lib.mjs";
 import { buildCodehashes, checkLiveCode } from "./codehash.mjs";
+import { abisFromModules, builtAbis, renderAbiChanges } from "./abi.mjs";
 
 const REPO_ROOT = new URL("../../../../", import.meta.url);
 
-/** The notes header: an optional intro, where the release is live, and how its contracts changed. */
-export function renderHeader({ tag, intro, manifest, comparison, previousTag, assetUrl, codeDiffers = [] }) {
+/**
+ * The notes header: an optional intro, where the release is live, how its contracts changed, and
+ * `abiChanges`, the lines of the "ABI changes" section (none for a first release).
+ */
+export function renderHeader({ tag, intro, manifest, comparison, previousTag, assetUrl, codeDiffers = [], abiChanges = [] }) {
   const rows = Object.values(manifest.networks).map(
     (n) => `| ${n.name} | \`${n.dotnsName}\` | [${n.url.replace("https://", "")}](${n.url}) | \`${n.cid}\` |`,
   );
@@ -67,8 +74,9 @@ export function renderHeader({ tag, intro, manifest, comparison, previousTag, as
     "",
     ...contracts,
     "",
-    `Addresses for every network are in [\`deployments.json\`](${assetUrl("deployments.json")}), the published builds in [\`release-manifest.json\`](${assetUrl("release-manifest.json")}), and the contracts' codehashes in [\`codehashes.json\`](${assetUrl("codehashes.json")}).`,
+    `Addresses for every network are in [\`deployments.json\`](${assetUrl("deployments.json")}), the published builds in [\`release-manifest.json\`](${assetUrl("release-manifest.json")}), the contracts' codehashes in [\`codehashes.json\`](${assetUrl("codehashes.json")}), and their ABIs in [\`abis.json\`](${assetUrl("abis.json")}).`,
     "",
+    ...abiChanges,
     "### Verify",
     "",
     "```sh",
@@ -92,6 +100,8 @@ async function main() {
       "previous-deployments": { type: "string" },
       "previous-networks": { type: "string" },
       contracts: { type: "string" },
+      "previous-abis": { type: "string" },
+      "previous-abi-dir": { type: "string" },
     },
   });
   const { tag, commit, out, repo } = values;
@@ -101,6 +111,7 @@ async function main() {
 
   const networks = loadNetworks();
   const codehashes = buildCodehashes(values.contracts);
+  const abis = builtAbis(values.contracts);
   const manifest = { version, tag, commit, networks: {} };
   const deployments = {};
   const codeDiffers = [];
@@ -126,6 +137,10 @@ async function main() {
   if (values["previous-deployments"]) previous = JSON.parse(readFileSync(values["previous-deployments"], "utf8"));
   else if (values["previous-networks"]) previous = deploymentsFromNetworks(loadNetworks(values["previous-networks"]));
 
+  let previousAbis = null;
+  if (values["previous-abis"]) previousAbis = JSON.parse(readFileSync(values["previous-abis"], "utf8"));
+  else if (values["previous-abi-dir"]) previousAbis = abisFromModules(values["previous-abi-dir"]);
+
   const introFile = new URL(`release-notes/${version}.md`, REPO_ROOT);
   const header = renderHeader({
     tag,
@@ -135,14 +150,16 @@ async function main() {
     previousTag,
     assetUrl: (file) => `https://github.com/${repo}/releases/download/${tag}/${file}`,
     codeDiffers,
+    abiChanges: previousTag && previousAbis ? renderAbiChanges(previousAbis, abis, previousTag) : [],
   });
 
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, "release-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   writeFileSync(join(out, "deployments.json"), `${JSON.stringify(deployments, null, 2)}\n`);
   writeFileSync(join(out, "codehashes.json"), `${JSON.stringify(codehashes, null, 2)}\n`);
+  writeFileSync(join(out, "abis.json"), `${JSON.stringify(abis, null, 2)}\n`);
   writeFileSync(join(out, "notes.md"), header);
-  console.log(`Wrote release-manifest.json, deployments.json, codehashes.json and notes.md to ${out}`);
+  console.log(`Wrote release-manifest.json, deployments.json, codehashes.json, abis.json and notes.md to ${out}`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
