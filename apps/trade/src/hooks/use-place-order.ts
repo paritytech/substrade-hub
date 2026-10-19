@@ -199,11 +199,16 @@ export function usePlaceOrder() {
             notPlaced(`${sentIn}, the most for one order. ${base(result.remaining)} was not placed: place it again.`);
             break;
           case "cleared":
-            if (result.sent === 1) updateToast(toastId, "success", FRONT_CLEARED);
+            if (result.sent === 1) notPlaced(FRONT_CLEARED);
             else
               notPlaced(
                 `${kind}: ${parts(result.sent - 1)} went through, then the next one cleared expired or small orders at the front of the book and ${base(result.remaining)} came back. Place it again to fill it.`,
               );
+            break;
+          case "unconfirmed":
+            notPlaced(
+              `${kind}: the last transaction went through, but the app could not tell what it placed. Check Open Orders and your balances before placing the rest (${base(result.remaining)}).`,
+            );
             break;
           case "done":
             updateToast(toastId, "success", result.sent === 1 ? `${kind} ${done}` : sentIn);

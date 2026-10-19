@@ -115,6 +115,8 @@ its simulation) goes into the next one; if the order then needs more transaction
 the app asks again. The last part of a limit order rests what does not cross; a market order stops when
 the amount has filled or nothing is left within its limit. Stopping midway, or rejecting a signature,
 leaves what the earlier parts placed; the toast says what was not placed, and stays until you close it.
+If a part goes through but the app cannot read what it placed, nothing more is sent: check Open Orders
+and your balances before placing the rest.
 One order goes in at most 10 transactions.
 
 When the orders in front are expired, or too small for what fits to reach the minimum order size, the

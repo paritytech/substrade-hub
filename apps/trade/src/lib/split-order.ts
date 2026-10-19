@@ -31,6 +31,8 @@ export type PartsResult =
   | { status: "capped"; sent: number; remaining: bigint }
   /** The last part only cleared the front of the book. */
   | { status: "cleared"; sent: number; remaining: bigint }
+  /** The last part was included but placed nothing the app could read, so nothing more is sent. */
+  | { status: "unconfirmed"; sent: number; remaining: bigint }
   /** The user declined more parts, after `sent` went out (none, when declined before the first). */
   | { status: "cancelled"; sent: number; remaining: bigint };
 
@@ -108,6 +110,9 @@ export async function placeInParts(steps: PlaceInPartsSteps): Promise<PartsResul
       throw new PartFailedError(sent, remaining, err);
     }
     sent++;
+    // A part that placed nothing, or whose events could not be read, is never sent again: resending
+    // what may have been placed would place it twice. A clearing part places little by design.
+    if (placed === 0n && outcome.kind !== "clears") return { status: "unconfirmed", sent, remaining };
     remaining -= placed < remaining ? placed : remaining;
 
     if (remaining === 0n) return { status: "done", sent };

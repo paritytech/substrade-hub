@@ -106,6 +106,17 @@ describe("placeInParts", () => {
     expect(await placeInParts(s)).toEqual({ status: "capped", sent: MAX_PARTS, remaining: 810n });
   });
 
+  it("stops, without resending, after a part that placed nothing it could read", async () => {
+    const s = steps([{ kind: "part", fills: 40n }, { kind: "part", fills: 40n }], { placed: { 2: 0n } });
+    expect(await placeInParts(s)).toEqual({ status: "unconfirmed", sent: 2, remaining: 60n });
+    expect(s.send).toHaveBeenCalledTimes(2);
+    expect(await placeInParts(steps([{ kind: "whole" }], { placed: { 1: 0n } }))).toEqual({
+      status: "unconfirmed",
+      sent: 1,
+      remaining: 100n,
+    });
+  });
+
   it("passes a first failure on as is, and a later one with what went through", async () => {
     await expect(placeInParts(steps([{ kind: "whole" }], { failAt: 1 }))).rejects.toThrow("rejected");
     const err = await placeInParts(steps([{ kind: "part", fills: 40n }, { kind: "whole" }], { failAt: 2 })).catch((e) => e);
