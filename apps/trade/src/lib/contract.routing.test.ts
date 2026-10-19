@@ -11,7 +11,11 @@ vi.mock("./revive", () => ({
 }));
 vi.mock("./wallet", () => ({
   sendTransaction: vi.fn().mockResolvedValue("0xevmhash"),
-  waitForReceipt: vi.fn().mockResolvedValue({ status: "0x1", blockNumber: "0x10" }),
+  waitForReceipt: vi.fn().mockResolvedValue({
+    status: "0x1",
+    blockNumber: "0x10",
+    logs: [{ address: "0x00000000000000000000000000000000000000aa", topics: ["0x01"], data: "0x02" }],
+  }),
   waitForFinality: vi.fn().mockResolvedValue(true),
 }));
 
@@ -58,7 +62,11 @@ describe("writeContract routing", () => {
     const res = await writeContract(erc20Abi, "approve", args, TOKEN, EVM);
     expect(sendTransaction).toHaveBeenCalledOnce();
     expect(submitReviveCall).not.toHaveBeenCalled();
-    expect(res).toEqual({ txHash: "0xevmhash", status: "success" });
+    expect(res).toEqual({
+      txHash: "0xevmhash",
+      status: "success",
+      logs: [{ address: "0x00000000000000000000000000000000000000aa", topics: ["0x01"], data: "0x02" }],
+    });
   });
 
   it("reports the EVM steps: submitted, included, then finalized once the block is", async () => {

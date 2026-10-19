@@ -42,7 +42,7 @@ export function TradeForm() {
     if (!amount) return;
     placeOrder.mutate(
       { side, orderType, price, amount, limitPrice: marketEstimate?.limitPrice },
-      { onSuccess: () => reset() },
+      { onSuccess: ({ placed }) => placed && reset() },
     );
   };
 
@@ -199,7 +199,7 @@ export function TradeForm() {
 
       <button
         type="submit"
-        disabled={!h160 || !amount || noLiquidity || (orderType === "market" && !marketEstimate)}
+        disabled={placeOrder.isPending || !h160 || !amount || noLiquidity || (orderType === "market" && !marketEstimate)}
         className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium text-white disabled:opacity-60 ${buttonColor}`}
       >
         {placeOrder.isPending && <Spinner className="h-4 w-4" />}

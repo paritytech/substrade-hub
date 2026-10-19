@@ -106,10 +106,18 @@ cannot fill the whole amount within 10% of the best price.
 ### "This order crosses more resting orders than one transaction can fill"
 
 One transaction fills a bounded number of resting orders (6, fewer when settlement is cross-chain; see
-[KNOWN_ISSUES.md](../../../KNOWN_ISSUES.md#9-one-transaction-fits-about-7-fills)). A limit order that
-crosses more cannot rest what is left at its price, since that would cross the book, so the contract
-returns it. The app simulates the order before signing and names the amount that fills: place that
-much now and the rest in another order.
+[KNOWN_ISSUES.md](../../../KNOWN_ISSUES.md#9-one-transaction-fits-about-7-fills)). For an order that
+crosses more, limit or market, the app says how many transactions it needs and, once you agree, places
+it in parts, one signature each. Each part is sized to what a simulation says it fills, and every part
+carries your price (the limit price, or the market order's price limit): orders arriving in between
+change only how much a part fills, never the price. What a part did not place (the book moved after
+its simulation) goes into the next one; if the order then needs more transactions than you agreed to,
+the app asks again. The last part of a limit order rests what does not cross; a market order stops when
+the amount has filled or nothing is left within its limit. Stopping midway, or rejecting a signature,
+leaves what the earlier parts placed; the toast says what was not placed, and stays until you close it.
+If a part goes through but the app cannot read what it placed, nothing more is sent: check Open Orders
+and your balances before placing the rest.
+One order goes in at most 10 transactions.
 
 When the orders in front are expired, or too small for what fits to reach the minimum order size, the
 app sends the order anyway, saying "Clearing expired or small orders at the front of the book". The

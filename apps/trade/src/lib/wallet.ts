@@ -167,13 +167,18 @@ function hexToBytes(hex: string): Uint8Array {
 
 export async function waitForReceipt(
   txHash: `0x${string}`,
-): Promise<{ status: string; blockNumber: string }> {
+): Promise<{ status: string; blockNumber: string; logs?: Array<{ address: string; topics: string[]; data: string }> }> {
   console.log(`[waitForReceipt] polling for ${txHash}...`);
   for (let i = 0; i < 40; i++) {
     try {
       const receipt = (await ethRpcDirect("eth_getTransactionReceipt", [
         txHash,
-      ])) as { status: string; gasUsed: string; blockNumber: string } | null;
+      ])) as {
+        status: string;
+        gasUsed: string;
+        blockNumber: string;
+        logs?: Array<{ address: string; topics: string[]; data: string }>;
+      } | null;
 
       if (receipt) {
         console.log(`[waitForReceipt] ${txHash} status: ${receipt.status}, block: ${receipt.blockNumber}`);

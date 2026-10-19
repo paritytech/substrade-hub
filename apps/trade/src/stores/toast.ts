@@ -10,6 +10,8 @@ interface Toast {
   createdAt: number;
   link?: { label: string; href: string };
   sticky?: boolean;
+  /** Buttons under the message; the first is the primary one. */
+  actions?: { label: string; onClick: () => void }[];
 }
 
 /** `sticky` keeps the toast until closed; `durationMs` overrides how long a finished toast stays. */
@@ -56,6 +58,7 @@ export const useToastStore = create<ToastState>((set) => {
     removeToast: (id) => {
       clearTimeout(timers.get(id));
       timers.delete(id);
+      onClose.get(id)?.();
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
     },
     updateToast: (id, type, message, opts) => {
@@ -69,6 +72,7 @@ export const useToastStore = create<ToastState>((set) => {
             ...t,
             type,
             message,
+            actions: undefined,
             ...(link !== undefined ? { link } : {}),
             ...(sticky !== undefined ? { sticky } : {}),
             ...(type !== t.type ? { createdAt: Date.now() } : {}),
@@ -79,6 +83,38 @@ export const useToastStore = create<ToastState>((set) => {
     },
   };
 });
+
+/** Called when the user closes a toast, for a question that closing answers. */
+const onClose = new Map<number, () => void>();
+
+/**
+ * Ask a yes/no question on toast `id`, with `confirm` and "Cancel" buttons; resolves true for `confirm`,
+ * false for "Cancel" or closing the toast. A pending toast stays until answered. The app asks in a toast
+ * because a host's sandboxed frame may block `window.confirm`.
+ */
+export function confirmToast(id: number, message: string, confirm: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const answer = (yes: boolean) => {
+      onClose.delete(id);
+      resolve(yes);
+    };
+    onClose.set(id, () => answer(false));
+    useToastStore.getState().updateToast(id, "pending", message);
+    useToastStore.setState((s) => ({
+      toasts: s.toasts.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              actions: [
+                { label: confirm, onClick: () => answer(true) },
+                { label: "Cancel", onClick: () => answer(false) },
+              ],
+            }
+          : t,
+      ),
+    }));
+  });
+}
 
 /**
  * Show a transaction's steps on toast `id`. While it is signed and submitted the toast stays pending with

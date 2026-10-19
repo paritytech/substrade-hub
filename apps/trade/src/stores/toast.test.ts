@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { txProgressToast, useToastStore } from "./toast";
+import { confirmToast, txProgressToast, useToastStore } from "./toast";
 
 const toast = (id: number) => useToastStore.getState().toasts.find((t) => t.id === id);
 
@@ -44,5 +44,34 @@ describe("txProgressToast", () => {
     useToastStore.getState().removeToast(id);
     progress("finalized");
     expect(toast(id)).toBeUndefined();
+  });
+});
+
+describe("confirmToast", () => {
+  it("resolves with the button pressed, or false when the toast is closed", async () => {
+    const { addToast, removeToast } = useToastStore.getState();
+    const id = addToast("pending", "Preparing...");
+    const yes = confirmToast(id, "Go ahead?", "Go");
+    const toast = () => useToastStore.getState().toasts.find((t) => t.id === id);
+    expect(toast()?.message).toBe("Go ahead?");
+    expect(toast()?.actions?.map((a) => a.label)).toEqual(["Go", "Cancel"]);
+    toast()!.actions![0]!.onClick();
+    expect(await yes).toBe(true);
+
+    const no = confirmToast(id, "Again?", "Go");
+    toast()!.actions![1]!.onClick();
+    expect(await no).toBe(false);
+
+    const closed = confirmToast(id, "Once more?", "Go");
+    removeToast(id);
+    expect(await closed).toBe(false);
+  });
+
+  it("drops the buttons when the toast moves on", () => {
+    const { addToast, updateToast } = useToastStore.getState();
+    const id = addToast("pending", "Preparing...");
+    void confirmToast(id, "Go ahead?", "Go");
+    updateToast(id, "pending", "Signing...");
+    expect(useToastStore.getState().toasts.find((t) => t.id === id)?.actions).toBeUndefined();
   });
 });
