@@ -7,7 +7,7 @@ of the code, see [SECURITY.md](SECURITY.md).
 | # | Limitation | Area | Tracked in |
 |---|---|---|---|
 | 1 | One admin key holds every privileged power | Contracts | [Admin powers](contracts/docs/admin.md), #100, #105 |
-| 2 | No way to halt new orders | Contracts | #106 |
+| 2 | The deployed markets cannot halt new orders yet | Contracts | #106 |
 | 3 | Cross-chain order ownership relies on a caller-supplied `originAccount` | Contracts | #60 |
 | 4 | Failed cross-chain settlement waits as a pending claim | Contracts | [How it works](contracts/docs/how-it-works.md#pendingclaim-fallback) |
 | 5 | Orders placed through a host or Substrate wallet are missing from eth-rpc's log index | App | below |
@@ -20,14 +20,16 @@ of the code, see [SECURITY.md](SECURITY.md).
 
 The factory's `admin` can list markets, set fees, redirect any pending claim and sweep excess DOT, and
 markets cannot be upgraded. The full list, and what a compromised key could do, is in
-[Admin powers](contracts/docs/admin.md). The admin role moves in one step today (#105), and custody
-before mainnet is open (#100).
+[Admin powers](contracts/docs/admin.md). The contracts now move the role in two steps and bound both
+fees (#105); the deployed factories get that with the next contract deployment. Custody before mainnet
+is open (#100).
 
-## 2. No way to halt new orders
+## 2. The deployed markets cannot halt new orders yet
 
-Markets are immutable clones with no pause. If a matching or settlement bug were found, new orders
-would keep reaching the faulty code until users stop using the market. A halt flag that stops new
-orders while keeping every exit open is planned for the next contract deployment (#106).
+Markets are immutable clones. The contracts now have a halt flag on the factory that stops new orders
+on every market while cancelling, reducing, claiming and withdrawing stay open (#106). The markets
+deployed today predate it, so until the next contract deployment, a matching or settlement bug could
+only be met by asking users to stop trading.
 
 ## 3. Cross-chain order ownership relies on a caller-supplied `originAccount`
 
@@ -80,8 +82,8 @@ Substrate wallet are bound to the network's genesis and are not affected.
 ## 9. One transaction fits about 7 fills
 
 Each fill needs about 1 MB of proof, and one transaction may use 8 MiB, so an order that would fill
-against more than about 7 resting orders cannot be included. The contract's own cap,
-`MAX_FILLS_PER_TX`, is 50, so it does not stop such an order first. The app refuses it before signing:
-"This order crosses too many price levels for one transaction — place a smaller order". Lowering
-`MAX_FILLS_PER_TX` below that limit in the next contract deployment would let a larger order fill
-partly, then rest (a limit order) or return the remainder (a market order) (#104).
+against more than about 7 resting orders cannot be included. The contracts now cap matching at 6 fills
+per transaction (`MAX_FILLS_PER_TX`, #104), so a larger order fills 6, then rests (a limit order) or
+returns the remainder (a market order). The markets deployed today still have a cap of 50, so until
+the next contract deployment the app refuses such an order before signing: "This order crosses too many
+price levels for one transaction — place a smaller order".

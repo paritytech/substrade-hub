@@ -369,7 +369,7 @@ contract CrossChainTest is Test {
 
     function testFuzzClaimFeeAccounting(uint256 reserve, uint256 fee, uint256 value) public {
         reserve = bound(reserve, 1e9, 1e13);
-        fee = bound(fee, 1e9, 2e13);
+        fee = bound(fee, 1e9, factory.MAX_MIN_CROSS_CHAIN_FEE());
         value = bound(value, 0, 3e13);
         (uint32 orderId, uint32 claimId) = _stuckFillClaim(reserve);
         factory.setMinCrossChainFee(uint128(fee));

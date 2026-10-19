@@ -225,10 +225,12 @@ The deployer is the initial factory admin. Admin capabilities:
 
 | Function                    | Description                                                      |
 | --------------------------- | ---------------------------------------------------------------- |
-| `setMinCrossChainFee()`     | Set the minimum DOT fee reserve for cross-chain orders           |
-| `setMarketCreationDeposit()`| Set the DOT deposit required to create a market                  |
-| `transferAdmin()`           | Transfer admin role to a new address (irreversible)              |
+| `setMinCrossChainFee()`     | Set the minimum DOT fee reserve for cross-chain orders (at most 10 DOT) |
+| `setMarketCreationDeposit()`| Set the DOT deposit required to create a market (at most 1,000 DOT) |
+| `transferAdmin()`           | Start handing the admin role to a new address; `address(0)` cancels |
+| `acceptAdmin()`             | Complete the hand-over, called by the new address                |
+| `setHalted()`               | Stop or resume new orders on every market; exits stay open       |
 | `adminRedirectClaim()`      | Redirect any pending claim to a different destination (emergency) |
 | `sweepOrphanedDot()`        | Withdraw orphaned DOT from a market contract (emergency)         |
 
-> **Note:** `transferAdmin()` is irreversible. There is no two-step transfer or timelock. Double-check the new admin address before calling.
+> **Note:** the admin role moves in two steps: `transferAdmin(newAdmin)` names the new admin, and the role moves only when that address calls `acceptAdmin()`. A mistyped address therefore never receives it. See [Admin powers](admin.md) for what the role can do.

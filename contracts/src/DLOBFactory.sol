@@ -13,6 +13,7 @@ import {XcmBuilder} from "./libraries/XcmBuilder.sol";
 /// @title DLOBFactory
 /// @notice Market registry and fee configuration for the DLOB protocol.
 /// Creates EIP-1167 minimal proxy clones of a pre-deployed DLOB implementation.
+/// @custom:security-contact security@parity.io
 contract DLOBFactory is IDLOBFactory {
     // ──────────────────────── State ──────────────────────────────
 
@@ -23,9 +24,19 @@ contract DLOBFactory is IDLOBFactory {
     ISystem public immutable SYSTEM_PRECOMPILE;
     address public immutable IMPLEMENTATION;
     address public admin;
+    /// @notice The account `transferAdmin` named, until it calls `acceptAdmin`.
+    address public pendingAdmin;
+    /// @notice While set, every market refuses new orders; cancelling, reducing, claiming and
+    /// withdrawing stay open.
+    bool public halted;
 
     uint128 public minCrossChainFee;
     uint128 public marketCreationDeposit;
+
+    /// @notice Upper bound for `minCrossChainFee`: 10 DOT, well above an XCM delivery fee.
+    uint128 public constant MAX_MIN_CROSS_CHAIN_FEE = 10 * 1e10;
+    /// @notice Upper bound for `marketCreationDeposit`: 1,000 DOT.
+    uint128 public constant MAX_MARKET_CREATION_DEPOSIT = 1000 * 1e10;
 
     // ──────────────────────── Events ─────────────────────────────
 
@@ -34,7 +45,9 @@ contract DLOBFactory is IDLOBFactory {
     );
     event MinCrossChainFeeUpdated(uint128 feeInPlanck);
     event MarketCreationDepositUpdated(uint128 depositInPlanck);
+    event AdminTransferStarted(address indexed admin, address indexed pendingAdmin);
     event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
+    event HaltedSet(bool halted);
 
     // ──────────────────────── Errors ─────────────────────────────
 
@@ -49,6 +62,9 @@ contract DLOBFactory is IDLOBFactory {
     error TrustBackedLocation();
     error MissingForeignLocation();
     error SameLocation();
+    error FeeTooHigh();
+    error DepositTooHigh();
+    error NotPendingAdmin();
 
     // ──────────────────────── Constructor ─────────────────────────
 
@@ -112,21 +128,40 @@ contract DLOBFactory is IDLOBFactory {
 
     function setMinCrossChainFee(uint128 feeInPlanck) external {
         if (msg.sender != admin) revert NotAdmin();
+        if (feeInPlanck > MAX_MIN_CROSS_CHAIN_FEE) revert FeeTooHigh();
         minCrossChainFee = feeInPlanck;
         emit MinCrossChainFeeUpdated(feeInPlanck);
     }
 
     function setMarketCreationDeposit(uint128 depositInPlanck) external {
         if (msg.sender != admin) revert NotAdmin();
+        if (depositInPlanck > MAX_MARKET_CREATION_DEPOSIT) revert DepositTooHigh();
         marketCreationDeposit = depositInPlanck;
         emit MarketCreationDepositUpdated(depositInPlanck);
     }
 
+    /// @notice Start handing the admin role to `newAdmin`, which completes it with `acceptAdmin`.
+    /// Naming another account replaces the pending one; `address(0)` cancels the transfer.
     function transferAdmin(address newAdmin) external {
         if (msg.sender != admin) revert NotAdmin();
-        if (newAdmin == address(0)) revert ZeroAddress();
-        emit AdminTransferred(admin, newAdmin);
-        admin = newAdmin;
+        pendingAdmin = newAdmin;
+        emit AdminTransferStarted(admin, newAdmin);
+    }
+
+    /// @notice Complete an admin transfer: callable only by the pending admin.
+    function acceptAdmin() external {
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+        emit AdminTransferred(admin, msg.sender);
+        admin = msg.sender;
+        pendingAdmin = address(0);
+    }
+
+    /// @notice Stop (or resume) new orders on every market. Existing orders can always be cancelled,
+    /// reduced, claimed and withdrawn.
+    function setHalted(bool halted_) external {
+        if (msg.sender != admin) revert NotAdmin();
+        halted = halted_;
+        emit HaltedSet(halted_);
     }
 
     // ──────────────────────── Internal ─────────────────────────────

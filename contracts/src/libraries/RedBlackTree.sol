@@ -5,6 +5,7 @@ pragma solidity ^0.8.20;
 /// @title RedBlackTree — Deployed library for on-chain red-black tree operations.
 /// @notice Public functions are called via delegatecall; private helpers are inlined.
 /// @dev Follows the red-black tree algorithms of Cormen et al., Introduction to Algorithms (3rd ed.), ch. 13.
+/// @custom:security-contact security@parity.io
 library RedBlackTree {
     enum Color {
         Red,

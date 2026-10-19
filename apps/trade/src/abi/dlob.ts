@@ -1164,6 +1164,11 @@ export const dlobAbi = [
   },
   {
     "type": "error",
+    "name": "Halted",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "HasPendingClaims",
     "inputs": []
   },

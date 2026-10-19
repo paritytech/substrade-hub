@@ -26,7 +26,7 @@ contract MatchingTest is Test {
     uint96 constant MIN_ORDER_SIZE = 1e6;
     uint128 constant MAX_ORDER_SIZE = 1e24;
     uint256 constant PRECISION = 1e18;
-    uint8 constant MAX_FILLS_PER_TX = 50;
+    uint8 constant MAX_FILLS_PER_TX = 6;
 
     function setUp() public {
         mockXcm = new MockXcm();
@@ -300,8 +300,8 @@ contract MatchingTest is Test {
 
     /// @notice Test that matching stops at MAX_FILLS_PER_TX (50 fills)
     function testMaxFillsCap() public {
-        // Create 51 different accounts and have them each place a sell order
-        uint256 numSellers = 51;
+        // One more seller than the cap, each placing a sell order
+        uint256 numSellers = MAX_FILLS_PER_TX + 1;
         address[] memory sellers = new address[](numSellers);
 
         for (uint256 i = 0; i < numSellers; i++) {
@@ -323,25 +323,25 @@ contract MatchingTest is Test {
 
         uint256 aliceBaseBalanceBefore = baseToken.balanceOf(alice);
 
-        // Alice places buy order for 600e6 base (more than 51 * 10e6 = 510e6)
-        // Should only fill MAX_FILLS_PER_TX = 50 orders (500e6 base)
+        // Alice places buy order for 600e6 base, more than all the sellers offer
+        // Should only fill MAX_FILLS_PER_TX orders
         vm.prank(alice);
         dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
 
         uint256 aliceBaseBalanceAfter = baseToken.balanceOf(alice);
 
-        // Alice should receive exactly 50 * 10e6 = 500e6 base (MAX_FILLS_PER_TX limit)
+        // Alice should receive exactly MAX_FILLS_PER_TX * 10e6 base
         assertEq(
             aliceBaseBalanceAfter - aliceBaseBalanceBefore,
-            500e6,
-            "Should fill exactly 50 orders (500e6 base)"
+            uint256(MAX_FILLS_PER_TX) * 10e6,
+            "Should fill exactly MAX_FILLS_PER_TX orders"
         );
     }
 
     /// @notice Test that after max fills cap, remainder rests on book
     function testMaxFillsRestsRemainder() public {
-        // Create 51 different accounts and have them each place a sell order
-        uint256 numSellers = 51;
+        // One more seller than the cap, each placing a sell order
+        uint256 numSellers = MAX_FILLS_PER_TX + 1;
 
         for (uint256 i = 0; i < numSellers; i++) {
             address seller = vm.addr(i + 2000); // Start from 2000 to avoid collision
@@ -361,7 +361,7 @@ contract MatchingTest is Test {
         }
 
         // Alice places buy order for 600e6 base
-        // Should fill 50 orders (500e6 base) and rest 100e6 on the book
+        // Should fill MAX_FILLS_PER_TX orders and rest the rest on the book
         vm.prank(alice);
         uint32 aliceOrderId =
             dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
@@ -373,7 +373,11 @@ contract MatchingTest is Test {
         assertEq(uint8(o.side), uint8(DLOB.Side.Buy), "Order should be buy side");
         assertEq(o.price, 50e15, "Order price should be 50e15");
         assertEq(o.originalAmount, 600e6, "Order original amount should be 600e6");
-        assertEq(o.remainingAmount, 100e6, "Order should have 100e6 remaining on book");
+        assertEq(
+            o.remainingAmount,
+            600e6 - uint128(MAX_FILLS_PER_TX) * 10e6,
+            "Order should rest what the cap left unfilled"
+        );
     }
 
     /// @notice Test that same owner with different originAccount can trade (self-trade allowed)

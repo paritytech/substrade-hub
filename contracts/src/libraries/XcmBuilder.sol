@@ -6,6 +6,7 @@ import {ScaleCodec} from "./ScaleCodec.sol";
 
 /// @title XcmBuilder
 /// @notice Builds SCALE-encoded XCM V5 messages for cross-chain asset transfers.
+/// @custom:security-contact security@parity.io
 library XcmBuilder {
     // --- XCM Version enum indices ---
     uint8 constant XCM_V5 = 5;

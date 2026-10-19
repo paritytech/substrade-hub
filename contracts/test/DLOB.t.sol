@@ -228,6 +228,37 @@ contract DLOBTest is Test {
 
     // ──────────────────── Cancellation Tests ──────────────────
 
+    function testHaltRefusesNewOrdersAndKeepsExitsOpen() public {
+        vm.prank(alice);
+        uint32 resting =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(alice);
+        uint32 reduced =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 61e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+
+        factory.setHalted(true);
+
+        vm.prank(bob);
+        vm.expectRevert(DLOB.Halted.selector);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        vm.prank(bob);
+        vm.expectRevert(DLOB.Halted.selector);
+        dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
+
+        // Exits stay open: reduce and cancel.
+        vm.prank(alice);
+        dlob.reduceOrder(reduced, 50e6, bytes32(0));
+        assertEq(dlob.getOrder(reduced).remainingAmount, 50e6);
+        vm.prank(alice);
+        dlob.cancelOrder(resting, bytes32(0));
+        assertEq(uint8(dlob.getOrder(resting).status), uint8(DLOB.OrderStatus.Cancelled));
+
+        // Resuming lets orders in again.
+        factory.setHalted(false);
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+    }
+
     function testCancelOwnOrder() public {
         vm.prank(alice);
         uint32 orderId =
@@ -587,7 +618,7 @@ contract DLOBTest is Test {
 
     // ──────────────────── Expired Order Backlog Tests ─────────────
 
-    uint256 constant MAX_FILLS_PER_TX = 50;
+    uint256 constant MAX_FILLS_PER_TX = 6;
 
     /// Charlie rests `n` minimum-size asks at `price`, all expiring at `expiry`; returns the first id.
     function _expiringAsks(uint256 n, uint96 price, uint64 expiry) internal returns (uint32 first) {
@@ -607,8 +638,10 @@ contract DLOBTest is Test {
     }
 
     function testExpiredCleanupCountsTowardFillCap() public {
+        // More expired orders than one cap, few enough for the second transaction to finish them.
+        uint256 expired = MAX_FILLS_PER_TX + 4;
         vm.warp(1000);
-        uint32 first = _expiringAsks(60, 50e15, 1500);
+        uint32 first = _expiringAsks(expired, 50e15, 1500);
         vm.prank(bob); // live liquidity behind the expired level
         dlob.placeLimitOrder(DLOB.Side.Sell, 51e15, 100e6, bytes32(0), bytes32(0), 0, 0);
         vm.warp(2000);
@@ -619,7 +652,7 @@ contract DLOBTest is Test {
             DLOB.Side.Buy, 10e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0
         );
         assertEq(filled, 0, "the cap is spent on expired orders");
-        assertEq(_countCancelled(first, 60), MAX_FILLS_PER_TX, "exactly the cap is cleaned up");
+        assertEq(_countCancelled(first, expired), MAX_FILLS_PER_TX, "exactly the cap is cleaned up");
 
         // The next one finishes the cleanup and reaches the live ask.
         vm.prank(alice);
@@ -627,7 +660,7 @@ contract DLOBTest is Test {
             DLOB.Side.Buy, 10e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0
         );
         assertEq(filled, 10e6, "fills once the backlog is gone");
-        assertEq(_countCancelled(first, 60), 60);
+        assertEq(_countCancelled(first, expired), expired);
     }
 
     function testLargeExpiredBacklogStaysBoundedPerTransaction() public {
@@ -708,10 +741,10 @@ contract DLOBTest is Test {
 
     function testSweepOrphanedDot() public {
         // Create market with deposit
-        factory.setMarketCreationDeposit(0.1 ether);
+        factory.setMarketCreationDeposit(10e10);
         MockERC20 base2 = new MockERC20("B2", "B2");
         MockERC20 quote2 = new MockERC20("Q2", "Q2");
-        address dlob2Addr = factory.createMarket{value: 0.1 ether}(
+        address dlob2Addr = factory.createMarket{value: 10e10}(
             TokenConfig(address(base2), ""),
             TokenConfig(address(quote2), ""),
             TICK_SIZE,
@@ -722,11 +755,11 @@ contract DLOBTest is Test {
 
         // Sweep the deposit
         uint128 available = uint128(address(dlob2).balance) - dlob2.totalFeeReserveBalance();
-        assertEq(available, 0.1 ether);
+        assertEq(available, 10e10);
 
         address recipient = address(0x1234);
-        dlob2.sweepOrphanedDot(recipient, uint128(0.1 ether));
-        assertEq(recipient.balance, 0.1 ether);
+        dlob2.sweepOrphanedDot(recipient, uint128(10e10));
+        assertEq(recipient.balance, 10e10);
     }
 
     function testSweepOrphanedDotNotAdmin() public {

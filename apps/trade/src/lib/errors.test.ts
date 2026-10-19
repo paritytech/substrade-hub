@@ -80,6 +80,10 @@ describe("revertError", () => {
     );
   });
 
+  it("explains a halted market", () => {
+    expect(revertError(reverted(dlobError("Halted"))).message).toMatch(/Trading is paused/);
+  });
+
   it("marks a revert with no reason, so the caller can give the likely cause", () => {
     const err = revertError(reverted("0x"));
     expect(err.message).toBe("The contract rejected this transaction");

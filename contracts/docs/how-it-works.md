@@ -36,8 +36,8 @@ The matching engine runs inline during order placement. When a new order crosses
 1. For each price level, it dequeues orders in FIFO order (earliest first)
 2. Each fill transfers tokens between the maker and taker. Buy orders always execute at the **ask price** (the maker's price), so buyers may get a better price than their limit
 3. If a buy order fills at a price lower than its limit, the excess quote tokens are refunded to the buyer immediately
-4. The engine stops after **50 fills** (`MAX_FILLS_PER_TX`). If the incoming order still has remaining amount, it rests on the book at its limit price
-5. Expired orders encountered during the walk are skipped and lazily removed; each one counts toward the 50-fill cap, so a backlog of expired orders cannot make one transaction's work unbounded. `purgeExpired(side, price, maxOrders)` removes expired orders at one price level in bounded batches
+4. The engine stops after **6 fills** (`MAX_FILLS_PER_TX`): each fill needs about 1 MB of proof, and one transaction may use 8 MiB on Asset Hub. If the incoming order still has remaining amount, it rests on the book at its limit price; a market order returns it
+5. Expired orders encountered during the walk are skipped and lazily removed; each one counts toward the 6-fill cap, so a backlog of expired orders cannot make one transaction's work unbounded. `purgeExpired(side, price, maxOrders)` removes expired orders at one price level in bounded batches
 
 ### Self-Trade Prevention
 
