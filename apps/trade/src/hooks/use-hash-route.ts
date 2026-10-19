@@ -10,7 +10,7 @@ import { hashMatches, parseRoute, resolveMarket, routeHash, type Route } from ".
  * Keep the view and the selected market in the URL hash (see `lib/route`). The hash is read at start
  * and on back/forward; navigating writes it back as a new history entry, so Back returns to the
  * previous market or view. A linked market is selected once the markets load; one this network does
- * not list falls back to the first market, with a toast. Also selects the first market when nothing
+ * not list, or a link cut short, falls back to the first market, with a toast. Also selects the first market when nothing
  * names one.
  */
 export function useHashRoute(): void {
@@ -46,10 +46,9 @@ export function useHashRoute(): void {
 
     const { selectedMarket, selectMarket } = useMarketStore.getState();
     const { market, notListed } = resolveMarket(route, markets, selectedMarket);
-    if (notListed) {
-      useToastStore
-        .getState()
-        .addToast("error", `The linked market is not listed on ${activeChain.name}. Showing another market instead.`);
+    if (notListed || (route.view === "trade" && route.brokenLink)) {
+      const what = notListed ? `The linked market is not listed on ${activeChain.name}` : "This link to a market is incomplete";
+      useToastStore.getState().addToast("error", `${what}. Showing another market instead.`);
     }
     if (market && market !== selectedMarket) selectMarket(market);
     resolved.current = true;

@@ -4,8 +4,11 @@
  *   `#/` (or none)        Home
  *   `#/market/<address>`  Trade, on that market
  *   `#/orders`            Trade, with the Open Orders panel in view
+ * A `#/market/…` that is not a full address is Trade with `brokenLink` set, so the app can say so.
  */
-export type Route = { view: "home" } | { view: "trade"; market?: `0x${string}`; focus?: "orders" };
+export type Route =
+  | { view: "home" }
+  | { view: "trade"; market?: `0x${string}`; focus?: "orders"; brokenLink?: true };
 
 const MARKET = /^market\/(0x[0-9a-fA-F]{40})$/;
 
@@ -15,6 +18,7 @@ export function parseRoute(hash: string): Route {
   if (path === "orders") return { view: "trade", focus: "orders" };
   const market = path.match(MARKET)?.[1];
   if (market) return { view: "trade", market: market as `0x${string}` };
+  if (path === "market" || path.startsWith("market/")) return { view: "trade", brokenLink: true };
   return { view: "home" };
 }
 

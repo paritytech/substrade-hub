@@ -13,8 +13,13 @@ describe("parseRoute", () => {
     expect(parseRoute("#/orders")).toEqual({ view: "trade", focus: "orders" });
   });
 
+  it("marks a market link that is not a full address", () => {
+    expect(parseRoute("#/market/0x1234")).toEqual({ view: "trade", brokenLink: true });
+    expect(parseRoute("#/market/")).toEqual({ view: "trade", brokenLink: true });
+    expect(hashMatches("#/market/0x1234", "trade", A)).toBe(false);
+  });
+
   it("treats anything else as Home", () => {
-    expect(parseRoute("#/market/0x1234")).toEqual({ view: "home" });
     expect(parseRoute("#/elsewhere")).toEqual({ view: "home" });
     expect(parseRoute("#section")).toEqual({ view: "home" });
   });
