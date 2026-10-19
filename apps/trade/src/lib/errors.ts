@@ -52,6 +52,7 @@ const FRIENDLY: Record<string, string> = {
   ERC20InsufficientAllowance: "The token approval is too low — approve again and retry",
   CooldownActive: "You've already claimed — wait for the cooldown to pass before claiming again",
   FaucetEmpty: "The faucet is out of test tokens right now — try again later",
+  Halted: "Trading is paused right now — you can still cancel your orders and claim your funds",
 };
 
 /** A contract rejection the app has no specific text for, including a revert with no reason. */

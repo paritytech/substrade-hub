@@ -428,7 +428,7 @@ contract DLOBFuzzTest is Test {
 
     /// @notice Fuzz test: Multiple orders at same price level
     function testFuzzMultipleOrdersSamePrice(uint8 numOrders) public {
-        numOrders = uint8(bound(uint256(numOrders), 2, 10));
+        numOrders = uint8(bound(uint256(numOrders), 2, 6)); // up to MAX_FILLS_PER_TX, all fill at once
 
         uint96 price = 50 * TICK_SIZE;
         uint128 baseAmount = MIN_ORDER_SIZE * 10;

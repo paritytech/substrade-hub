@@ -11,6 +11,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 /// `cooldown`. It never mints — pre-fund it by transferring the token in (the asset admin can mint
 /// straight to this contract's address), and refill the same way. The `owner` can retune the drip and
 /// recover the balance.
+/// @custom:security-contact security@parity.io
 contract Faucet {
     using SafeERC20 for IERC20;
 

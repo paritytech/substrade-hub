@@ -14,6 +14,7 @@ import {TokenConfig} from "./types/TokenConfig.sol";
 
 /// @title DLOB — Decentralized Limit Order Book
 /// @notice Cross-chain order book on Asset Hub. One instance per base/quote token pair.
+/// @custom:security-contact security@parity.io
 /// Deployed by DLOBFactory via EIP-1167 minimal proxy clones.
 contract DLOB {
     using SafeERC20 for IERC20;
@@ -85,7 +86,10 @@ contract DLOB {
     // ──────────────────────── Constants ────────────────────────────────
 
     uint256 internal constant PRECISION = 1e18;
-    uint8 internal constant MAX_FILLS_PER_TX = 50;
+    /// @dev Each fill needs about 1 MB of proof on Asset Hub, and one transaction may prove 8 MiB, so a
+    /// larger cap would let an order run out of proof and revert as a whole. With 6, an order crossing
+    /// more makers fills 6, then rests (limit) or returns the remainder (market).
+    uint8 internal constant MAX_FILLS_PER_TX = 6;
 
     // ──────────────────────── State ──────────────────────────────
 
@@ -186,6 +190,7 @@ contract DLOB {
     error NoExcess();
     error Reentrancy();
     error AlreadyInitialized();
+    error Halted();
 
     // ──────────────────────── Modifiers ──────────────────────────
 
@@ -1063,6 +1068,8 @@ contract DLOB {
         internal
         view
     {
+        // New orders only: cancelling, reducing, claiming and withdrawing stay open while halted.
+        if (factory.halted()) revert Halted();
         if (amount < minOrderSize) revert BelowMinSize();
         if (amount > maxOrderSize) revert AboveMaxSize();
         if (nextOrderId >= type(uint32).max) revert OrderIdOverflow();

@@ -36,6 +36,32 @@ export const dlobFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_MARKET_CREATION_DEPOSIT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_MIN_CROSS_CHAIN_FEE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "SYSTEM_PRECOMPILE",
     "inputs": [],
     "outputs": [
@@ -59,6 +85,13 @@ export const dlobFactoryAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "acceptAdmin",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -213,6 +246,19 @@ export const dlobFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "halted",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "marketCreationDeposit",
     "inputs": [],
     "outputs": [
@@ -258,6 +304,32 @@ export const dlobFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "pendingAdmin",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setHalted",
+    "inputs": [
+      {
+        "name": "halted_",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setMarketCreationDeposit",
     "inputs": [
       {
@@ -297,6 +369,25 @@ export const dlobFactoryAbi = [
   },
   {
     "type": "event",
+    "name": "AdminTransferStarted",
+    "inputs": [
+      {
+        "name": "admin",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "pendingAdmin",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "AdminTransferred",
     "inputs": [
       {
@@ -310,6 +401,19 @@ export const dlobFactoryAbi = [
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "HaltedSet",
+    "inputs": [
+      {
+        "name": "halted",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
       }
     ],
     "anonymous": false
@@ -373,7 +477,17 @@ export const dlobFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "DepositTooHigh",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "FailedDeployment",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "FeeTooHigh",
     "inputs": []
   },
   {
@@ -415,6 +529,11 @@ export const dlobFactoryAbi = [
   {
     "type": "error",
     "name": "NotAdmin",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotPendingAdmin",
     "inputs": []
   },
   {

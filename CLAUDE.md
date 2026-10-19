@@ -81,7 +81,7 @@ pallet-revive enforces the EIP-170 24KB contract-size limit, and two patterns ex
 
 Each market is a `DLOB` contract holding two red-black trees — one for bids, one for asks — giving O(log n) price-level insert/remove and O(1) best bid/ask. Within a price level, orders sit in a FIFO doubly-linked list (time priority).
 
-When an order crosses the spread, the engine walks the opposite tree from the best price and fills **up to 50 orders per transaction** (`MAX_FILLS_PER_TX`); any remainder rests at its limit price. Buys execute at the maker's ask, and excess quote is refunded. Expired orders are cleaned up **lazily** when matching encounters them (no keeper); each cleanup counts toward `MAX_FILLS_PER_TX`, and `purgeExpired` clears a level in bounded batches. **Self-trade prevention** checks both `msg.sender` and `originAccount` (the trader's Substrate `AccountId32`).
+When an order crosses the spread, the engine walks the opposite tree from the best price and fills **up to 6 orders per transaction** (`MAX_FILLS_PER_TX`; each fill needs about 1 MB of the 8 MiB of proof a transaction may use on Asset Hub); any remainder rests at its limit price. Buys execute at the maker's ask, and excess quote is refunded. Expired orders are cleaned up **lazily** when matching encounters them (no keeper); each cleanup counts toward `MAX_FILLS_PER_TX`, and `purgeExpired` clears a level in bounded batches. **Self-trade prevention** checks both `msg.sender` and `originAccount` (the trader's Substrate `AccountId32`).
 
 Source: `src/DLOB.sol`, `src/DLOBFactory.sol`, `src/libraries/` (`RedBlackTree`, `XcmBuilder`, `PriceMath`, `ScaleCodec`), `src/interfaces/`, `src/types/TokenConfig.sol`, `src/mocks/`.
 

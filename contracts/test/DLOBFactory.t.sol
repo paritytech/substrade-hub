@@ -92,28 +92,28 @@ contract DLOBFactoryTest is Test {
     }
 
     function testSetMarketCreationDeposit() public {
-        factory.setMarketCreationDeposit(1 ether);
-        assertEq(factory.marketCreationDeposit(), 1 ether);
+        factory.setMarketCreationDeposit(100e10); // 100 DOT
+        assertEq(factory.marketCreationDeposit(), 100e10);
     }
 
     function testCreateMarketWithDeposit() public {
-        factory.setMarketCreationDeposit(0.1 ether);
+        factory.setMarketCreationDeposit(10e10);
 
-        address dlob = factory.createMarket{value: 0.1 ether}(
+        address dlob = factory.createMarket{value: 10e10}(
             _tc(address(baseToken)),
             _tc(address(quoteToken)),
             TICK_SIZE,
             MIN_ORDER_SIZE,
             MAX_ORDER_SIZE
         );
-        assertEq(address(dlob).balance, 0.1 ether);
+        assertEq(address(dlob).balance, 10e10);
     }
 
     function testCreateMarketInsufficientDeposit() public {
-        factory.setMarketCreationDeposit(0.1 ether);
+        factory.setMarketCreationDeposit(10e10);
 
         vm.expectRevert(DLOBFactory.InsufficientDeposit.selector);
-        factory.createMarket{value: 0.05 ether}(
+        factory.createMarket{value: 5e10}(
             _tc(address(baseToken)),
             _tc(address(quoteToken)),
             TICK_SIZE,
@@ -148,7 +148,53 @@ contract DLOBFactoryTest is Test {
     function testTransferAdmin() public {
         address newAdmin = address(0xCAFE);
         factory.transferAdmin(newAdmin);
+        assertEq(factory.admin(), address(this), "the role moves only once accepted");
+        assertEq(factory.pendingAdmin(), newAdmin);
+
+        vm.prank(newAdmin);
+        factory.acceptAdmin();
         assertEq(factory.admin(), newAdmin);
+        assertEq(factory.pendingAdmin(), address(0));
+    }
+
+    function testAcceptAdminOnlyByPendingAdmin() public {
+        factory.transferAdmin(address(0xCAFE));
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(DLOBFactory.NotPendingAdmin.selector);
+        factory.acceptAdmin();
+    }
+
+    function testTransferAdminToZeroCancels() public {
+        factory.transferAdmin(address(0xCAFE));
+        factory.transferAdmin(address(0));
+        vm.prank(address(0xCAFE));
+        vm.expectRevert(DLOBFactory.NotPendingAdmin.selector);
+        factory.acceptAdmin();
+        assertEq(factory.admin(), address(this));
+    }
+
+    function testFeeAndDepositBounds() public {
+        uint128 maxFee = factory.MAX_MIN_CROSS_CHAIN_FEE();
+        uint128 maxDeposit = factory.MAX_MARKET_CREATION_DEPOSIT();
+
+        factory.setMinCrossChainFee(maxFee);
+        vm.expectRevert(DLOBFactory.FeeTooHigh.selector);
+        factory.setMinCrossChainFee(maxFee + 1);
+
+        factory.setMarketCreationDeposit(maxDeposit);
+        vm.expectRevert(DLOBFactory.DepositTooHigh.selector);
+        factory.setMarketCreationDeposit(maxDeposit + 1);
+    }
+
+    function testSetHaltedAdminOnly() public {
+        factory.setHalted(true);
+        assertTrue(factory.halted());
+        factory.setHalted(false);
+        assertFalse(factory.halted());
+
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(DLOBFactory.NotAdmin.selector);
+        factory.setHalted(true);
     }
 
     function testTransferAdminNotAdmin() public {
@@ -206,6 +252,8 @@ contract DLOBFactoryTest is Test {
     function testCreateMarketFollowsAdminTransfer() public {
         address newAdmin = address(0xCAFE);
         factory.transferAdmin(newAdmin);
+        vm.prank(newAdmin);
+        factory.acceptAdmin();
 
         vm.expectRevert(DLOBFactory.NotAdmin.selector);
         _create(_tc(address(baseToken)), _tc(address(quoteToken)));
