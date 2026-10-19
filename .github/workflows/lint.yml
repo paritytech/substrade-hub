@@ -69,7 +69,11 @@ jobs:
           MIN_MARGIN: 512
           DEPLOYED: DLOB DLOBFactory Faucet RedBlackTree XcmBuilder
         run: |
-          forge build --sizes --json > "$RUNNER_TEMP/sizes.json"
+          # forge exits 1 when a contract exceeds a limit but still writes the report; keep going so the
+          # table and the annotation below name the contract and its (negative) margin.
+          forge_status=0
+          forge build --sizes --json > "$RUNNER_TEMP/sizes.json" || forge_status=$?
+          [ -s "$RUNNER_TEMP/sizes.json" ] || exit "$forge_status"
           {
             echo "| Contract | Runtime | Margin | Initcode | Margin |"
             echo "|---|---|---|---|---|"
@@ -78,13 +82,16 @@ jobs:
                 "$RUNNER_TEMP/sizes.json"
             done
           } >> "$GITHUB_STEP_SUMMARY"
-          status=0
+          status=$forge_status
           for c in $DEPLOYED; do
             read -r runtime init < <(jq -r --arg c "$c" '.[$c] | "\(.runtime_margin // "missing") \(.init_margin // "missing")"' "$RUNNER_TEMP/sizes.json")
             if [ "$runtime" = missing ]; then
               echo "::error::$c is missing from forge's size report"; status=1; continue
             fi
-            if [ "$runtime" -lt "$MIN_MARGIN" ] || [ "$init" -lt "$MIN_MARGIN" ]; then
+            if [ "$runtime" -lt 0 ] || [ "$init" -lt 0 ]; then
+              echo "::error::$c exceeds a size limit (runtime margin $runtime, initcode margin $init)"
+              status=1
+            elif [ "$runtime" -lt "$MIN_MARGIN" ] || [ "$init" -lt "$MIN_MARGIN" ]; then
               echo "::error::$c is within $MIN_MARGIN bytes of a size limit (runtime margin $runtime, initcode margin $init)"
               status=1
             fi
