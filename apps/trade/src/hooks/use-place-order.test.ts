@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { encodeAbiParameters } from "viem";
+import { encodeAbiParameters, encodeEventTopics } from "viem";
+import { dlobAbi } from "../abi/dlob";
 
 const { simulateContractData } = vi.hoisted(() => ({ simulateContractData: vi.fn() }));
 vi.mock("../lib/contract", () => ({ simulateContractData }));
 
-import { limitOrderReturned, liquidityWithin, withinLimit } from "./use-place-order";
+import { limitOrderReturned, liquidityWithin, placedBy, withinLimit } from "./use-place-order";
 import { Side } from "../types/market";
 
 const MARKET = "0x00000000000000000000000000000000000000aa";
@@ -59,5 +60,33 @@ describe("liquidityWithin", () => {
     const bids = [level(100n, 5n), level(99n, 7n), level(97n, 9n)];
     expect(liquidityWithin(Side.Sell, bids, 99n)).toBe(12n);
     expect(liquidityWithin(Side.Buy, [], 101n)).toBe(0n);
+  });
+});
+
+describe("placedBy", () => {
+  const log = (address: `0x${string}`, topics: `0x${string}`[], data: `0x${string}`) => ({ address, topics, data });
+  const trade = (amount: bigint) =>
+    log(
+      MARKET,
+      encodeEventTopics({ abi: dlobAbi, eventName: "Trade", args: { buyOrderId: 1, sellOrderId: 2 } }) as `0x${string}`[],
+      encodeAbiParameters([{ type: "uint96" }, { type: "uint128" }], [10n ** 18n, amount]),
+    );
+  const rested = (amount: bigint) =>
+    log(
+      MARKET,
+      encodeEventTopics({ abi: dlobAbi, eventName: "OrderPlaced", args: { orderId: 3, owner: FROM } }) as `0x${string}`[],
+      encodeAbiParameters(
+        [{ type: "bytes32" }, { type: "uint8" }, { type: "uint96" }, { type: "uint128" }, { type: "uint32" }, { type: "uint64" }],
+        [ZERO, 0, 10n ** 18n, amount, 0, 0n],
+      ),
+    );
+
+  it("adds what the order filled and what rests", () => {
+    expect(placedBy([trade(6n), trade(4n), rested(5n)], MARKET)).toBe(15n);
+  });
+
+  it("ignores other contracts' events and events it cannot decode", () => {
+    const transfer = log(MARKET.replace("aa", "cc") as `0x${string}`, trade(9n).topics, trade(9n).data);
+    expect(placedBy([trade(3n), transfer, log(MARKET, [`0x${"00".repeat(32)}`], "0x")], MARKET)).toBe(3n);
   });
 });

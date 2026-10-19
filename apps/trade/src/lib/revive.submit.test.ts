@@ -59,6 +59,32 @@ const submit = () =>
   submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer });
 
 describe("submitReviveCall", () => {
+  it("returns the contract events the transaction emitted", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    const emitted = {
+      type: "Revive",
+      value: {
+        type: "ContractEmitted",
+        value: { contract: CONTRACT, topics: [`0x${"ab".repeat(32)}`], data: new Uint8Array([1, 2]) },
+      },
+    };
+    mockApi.tx.Revive.call.mockReturnValue(
+      watch([
+        { type: "signed", txHash: "0xhash" },
+        {
+          type: "txBestBlocksState",
+          txHash: "0xhash",
+          found: true,
+          ok: true,
+          block: { hash: "0xblk" },
+          events: [{ type: "System", value: { type: "ExtrinsicSuccess", value: {} } }, emitted],
+        },
+      ]),
+    );
+    const res = await submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer });
+    expect(res.logs).toEqual([{ address: CONTRACT, topics: [`0x${"ab".repeat(32)}`], data: "0x0102" }]);
+  });
+
   it("submits Revive.call with buffered weight (2x ref_time, +10% proof) and storage deposit on a clean dry-run", async () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
@@ -76,7 +102,7 @@ describe("submitReviveCall", () => {
       signer,
     });
 
-    expect(res).toEqual({ txHash: "0xhash", status: "success" });
+    expect(res).toEqual({ txHash: "0xhash", status: "success", logs: [] });
     const arg = mockApi.tx.Revive.call.mock.calls[0][0];
     expect(arg.weight_limit).toEqual({ ref_time: 2000n, proof_size: 2200n }); // 2x ref_time, +10% proof_size
     expect(arg.storage_deposit_limit).toBe(5000n); // 500n * 10 storage buffer

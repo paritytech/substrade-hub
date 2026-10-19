@@ -14,7 +14,7 @@ import { useWalletStore } from "../stores/wallet";
 import { useHostConnectionStore } from "../stores/host-connection";
 import { UserFacingError } from "./user-errors";
 import { AccountId } from "polkadot-api";
-import { dryRunCall, submitReviveCall, ensureMapped } from "./revive";
+import { dryRunCall, submitReviveCall, ensureMapped, type TxLog } from "./revive";
 
 function buildEthTransactTx(
   contractAddress: `0x${string}`,
@@ -150,7 +150,7 @@ export async function writeContract<
   contractAddress: `0x${string}`,
   from: `0x${string}`,
   options?: { value?: bigint; onProgress?: (step: TxStep) => void },
-): Promise<{ txHash: string; status: "success" }> {
+): Promise<{ txHash: string; status: "success"; logs: TxLog[] }> {
   // Inside a host, signing and submitting go through the host channel: with it down, a transaction
   // would wait at the signature step with nothing to answer it.
   if (useHostConnectionStore.getState().connection !== "ok") {
@@ -204,7 +204,12 @@ export async function writeContract<
       if (finalized) onProgress("finalized");
     });
   }
-  return { txHash, status: "success" };
+  const logs = (receipt.logs ?? []).map((l) => ({
+    address: l.address as `0x${string}`,
+    topics: l.topics as `0x${string}`[],
+    data: l.data as `0x${string}`,
+  }));
+  return { txHash, status: "success", logs };
 }
 
 /**

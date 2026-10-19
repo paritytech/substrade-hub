@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { decodeFunctionResult, formatUnits, size, type ContractFunctionArgs } from "viem";
+import { decodeEventLog, decodeFunctionResult, formatUnits, size, type ContractFunctionArgs } from "viem";
 import { writeContract, readContract, simulateContract, simulateContractData } from "../lib/contract";
 import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
@@ -8,6 +8,7 @@ import { useMarketStore } from "../stores/market";
 import { confirmToast, txProgressToast, useToastStore } from "../stores/toast";
 import { quoteAmountCeil, marketApproveAmount } from "../lib/format";
 import type { TxStep } from "../lib/tx-progress";
+import type { TxLog } from "../lib/revive";
 import { parseTokenAmount } from "../lib/format";
 import { Side, type OrderBookLevel } from "../types/market";
 import { activeChain } from "../config/chains";
@@ -68,7 +69,7 @@ export function usePlaceOrder() {
         const progress = (step: TxStep) => txProgressToast(toastId, { pending: label })(step);
 
         let simulate: (remaining: bigint) => Promise<PartOutcome>;
-        let send: (size: bigint) => Promise<unknown>;
+        let send: (size: bigint) => Promise<{ logs: TxLog[] }>;
         let placing: string;
 
         if (isLimit) {
@@ -121,7 +122,9 @@ export function usePlaceOrder() {
             ]);
             if (filled === remaining) return { kind: "whole" };
             if (filled === 0n) return withinLimit(params.side, book[0]?.price, limitPrice) ? { kind: "clears" } : { kind: "none" };
-            if (liquidityWithin(params.side, book, limitPrice) <= filled) return { kind: "whole" };
+            // The book page holds MAX_OB_LEVELS levels: a full page within the limit may go deeper.
+            const seenAll = book.length < MAX_OB_LEVELS || !withinLimit(params.side, book.at(-1)?.price, limitPrice);
+            if (seenAll && liquidityWithin(params.side, book, limitPrice) <= filled) return { kind: "whole" };
             if (filled < market.minOrderSize) return { kind: "clears" };
             return { kind: "part", fills: filled };
           };
@@ -135,17 +138,23 @@ export function usePlaceOrder() {
             amount,
             minOrderSize: market.minOrderSize,
             simulate,
-            confirm: (parts) =>
-              confirmToast(
-                toastId,
-                `This order crosses more resting orders than one transaction can fill. It needs about ${parts} transactions, with a signature each.`,
-                `Place in ${parts} transactions`,
-              ),
+            confirm: (total, sent) =>
+              sent === 0
+                ? confirmToast(
+                    toastId,
+                    `This order crosses more resting orders than one transaction can fill. It needs about ${total} transactions, with a signature each.`,
+                    `Place in ${total} transactions`,
+                  )
+                : confirmToast(
+                    toastId,
+                    `${parts(sent)} went through, and the rest of the order needs more than planned: about ${total} transactions in all.`,
+                    "Continue",
+                  ),
             send: async (size, part, of, outcome) => {
               const what = outcome === "clears" ? CLEARING_FRONT : placing;
               label = of > 1 ? `Part ${part} of about ${of}: ${what}` : capitalize(what);
               updateToast(toastId, "pending", `${label}: waiting for signature...`);
-              await send(size);
+              return placedBy((await send(size)).logs, market.address);
             },
           });
         } catch (err) {
@@ -155,8 +164,12 @@ export function usePlaceOrder() {
             );
           }
           if (err instanceof PartFailedError) {
-            throw new UserFacingError(
-              `${formatOrderError(err.cause)} ${parts(err.sent)} went through; ${base(err.remaining)} was not placed.`,
+            // Says what was not placed, so it stays until closed.
+            throw Object.assign(
+              new UserFacingError(
+                `${formatOrderError(err.cause)} ${parts(err.sent)} went through; ${base(err.remaining)} was not placed.`,
+              ),
+              { sticky: true },
             );
           }
           throw err;
@@ -164,31 +177,46 @@ export function usePlaceOrder() {
 
         const kind = isLimit ? `${capitalize(side)} order` : `Market ${side} order`;
         const done = isLimit ? "placed" : "filled";
+        const sentIn = `${kind} ${done} in ${parts(result.sent)}`;
+        // Endings that leave part of the order unplaced stay until closed: they say what to do next.
+        const notPlaced = (text: string) => updateToast(toastId, "success", text, { sticky: true });
         switch (result.status) {
           case "cancelled":
-            removeToast(toastId);
-            return { placed: false };
+            if (result.sent === 0) {
+              removeToast(toastId);
+              return { placed: false };
+            }
+            notPlaced(`${sentIn}. ${base(result.remaining)} was not placed.`);
+            break;
           case "dry":
             if (result.sent === 0) throw new UserFacingError(noLiquidity(params.side));
-            updateToast(toastId, "success", `${kind} ${done} in ${parts(result.sent)}. No more orders within the price limit, so ${base(result.remaining)} was not filled.`);
+            notPlaced(`${sentIn}. No more orders within the price limit, so ${base(result.remaining)} was not filled.`);
             break;
           case "dust":
-            updateToast(toastId, "success", `${kind} ${done} in ${parts(result.sent)}. The last ${base(result.remaining)} is below the minimum order size and was not placed.`);
+            notPlaced(`${sentIn}. The last ${base(result.remaining)} is below the minimum order size and was not placed.`);
             break;
           case "capped":
-            updateToast(toastId, "success", `${kind} ${done} in ${parts(result.sent)}, the most for one order. ${base(result.remaining)} was not placed: place it again.`);
+            notPlaced(`${sentIn}, the most for one order. ${base(result.remaining)} was not placed: place it again.`);
+            break;
+          case "cleared":
+            if (result.sent === 1) updateToast(toastId, "success", FRONT_CLEARED);
+            else
+              notPlaced(
+                `${kind}: ${parts(result.sent - 1)} went through, then the next one cleared expired or small orders at the front of the book and ${base(result.remaining)} came back. Place it again to fill it.`,
+              );
             break;
           case "done":
-            if (result.final === "clears") updateToast(toastId, "success", FRONT_CLEARED);
-            else updateToast(toastId, "success", result.sent === 1 ? `${kind} ${done}` : `${kind} ${done} in ${parts(result.sent)}`);
+            updateToast(toastId, "success", result.sent === 1 ? `${kind} ${done}` : sentIn);
             break;
         }
         return { placed: true };
       } catch (err) {
-        const txHash = (err as Error & { txHash?: string }).txHash;
+        const { txHash, sticky } = err as Error & { txHash?: string; sticky?: boolean };
         const opts = txHash && activeChain.explorerUrl
           ? { link: { label: "View failed tx on Subscan", href: `${activeChain.explorerUrl}/tx/${txHash}` }, sticky: true }
-          : undefined;
+          : sticky
+            ? { sticky: true }
+            : undefined;
         updateToast(toastId, "error", formatOrderError(err), opts);
         throw err;
       }
@@ -201,6 +229,24 @@ export function usePlaceOrder() {
       queryClient.invalidateQueries({ queryKey: ["tokenAllowance"] });
     },
   });
+}
+
+/**
+ * Base amount an order transaction placed, from its `logs`: what it filled (`Trade`) plus what rests
+ * (`OrderPlaced`). The rest of the order came back to the sender.
+ */
+export function placedBy(logs: readonly TxLog[], marketAddress: `0x${string}`): bigint {
+  let placed = 0n;
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== marketAddress.toLowerCase() || !log.topics.length) continue;
+    try {
+      const event = decodeEventLog({ abi: dlobAbi, topics: log.topics as [`0x${string}`], data: log.data });
+      if ((event.eventName === "Trade" || event.eventName === "OrderPlaced") && event.args) placed += event.args.amount;
+    } catch {
+      // Not a DLOB event.
+    }
+  }
+  return placed;
 }
 
 /** "1 transaction", "3 transactions". */

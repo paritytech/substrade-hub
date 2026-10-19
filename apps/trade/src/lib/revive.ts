@@ -1,5 +1,5 @@
 import { type PolkadotSigner, type SS58String, type SizedHex } from "polkadot-api";
-import { fromHex } from "polkadot-api/utils";
+import { fromHex, toHex } from "polkadot-api/utils";
 import type { Abi } from "viem";
 import { getTypedApi } from "./client";
 import { revertError } from "./errors";
@@ -189,11 +189,33 @@ const STEP_OF_STATUS: Partial<Record<TxStatus, TxStep>> = {
  * parity with the EVM receipt path. Rejects with a formatted message on any failure. `onProgress` keeps
  * receiving steps after it resolves, up to finality.
  */
+/** A contract event a transaction emitted: the emitting contract, its topics and its data. */
+export interface TxLog {
+  address: `0x${string}`;
+  topics: `0x${string}`[];
+  data: `0x${string}`;
+}
+
+type Bytes = Uint8Array | { asHex(): string } | string;
+const hexOf = (b: Bytes) =>
+  (typeof b === "string" ? b : b instanceof Uint8Array ? toHex(b) : b.asHex()) as `0x${string}`;
+
+/** The contract events among a transaction's runtime events (`Revive.ContractEmitted`). */
+export function contractLogs(events: readonly unknown[]): TxLog[] {
+  const logs: TxLog[] = [];
+  for (const event of events as Array<{ type?: string; value?: { type?: string; value?: unknown } }>) {
+    if (event?.type !== "Revive" || event.value?.type !== "ContractEmitted") continue;
+    const { contract, topics, data } = event.value.value as { contract: Bytes; topics: Bytes[]; data: Bytes };
+    logs.push({ address: hexOf(contract), topics: topics.map(hexOf), data: hexOf(data) });
+  }
+  return logs;
+}
+
 async function submitAndAwaitInclusion(
   tx: Parameters<typeof submitAndWatch>[0],
   signer: PolkadotSigner,
   onProgress?: (step: TxStep) => void,
-): Promise<{ txHash: string }> {
+): Promise<{ txHash: string; events: unknown[] }> {
   const res = await submitAndWatch(tx, signer, {
     waitFor: "best-block",
     timeoutMs: INCLUSION_TIMEOUT_MS,
@@ -203,7 +225,7 @@ async function submitAndAwaitInclusion(
     },
   });
   if (!res.ok) throw txError(res.error);
-  return { txHash: res.value.txHash };
+  return { txHash: res.value.txHash, events: res.value.events };
 }
 
 /**
@@ -295,7 +317,7 @@ export interface ReviveCallParams {
  */
 export async function submitReviveCall(
   params: ReviveCallParams,
-): Promise<{ txHash: string; status: "success" }> {
+): Promise<{ txHash: string; status: "success"; logs: TxLog[] }> {
   const api = getTypedApi();
   const value = params.value ?? 0n;
   const data = fromHex(params.callData);
@@ -329,6 +351,6 @@ export async function submitReviveCall(
 
   // A raw DispatchError would not match usePlaceOrder's EVM formatOrderError, so
   // submitAndAwaitInclusion formats it into the thrown Error message.
-  const { txHash } = await submitAndAwaitInclusion(tx, params.signer, params.onProgress);
-  return { txHash, status: "success" };
+  const { txHash, events } = await submitAndAwaitInclusion(tx, params.signer, params.onProgress);
+  return { txHash, status: "success", logs: contractLogs(events) };
 }

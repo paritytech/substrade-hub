@@ -110,10 +110,12 @@ One transaction fills a bounded number of resting orders (6, fewer when settleme
 crosses more, limit or market, the app says how many transactions it needs and, once you agree, places
 it in parts, one signature each. Each part is sized to what a simulation says it fills, and every part
 carries your price (the limit price, or the market order's price limit): orders arriving in between
-change only how much a part fills, never the price. The last part of a limit order rests what does not
-cross; a market order stops when the amount has filled or nothing is left within its limit. Stopping
-midway, or rejecting a signature, leaves what the earlier parts placed; the toast says what was not
-placed. One order goes in at most 10 transactions.
+change only how much a part fills, never the price. What a part did not place (the book moved after
+its simulation) goes into the next one; if the order then needs more transactions than you agreed to,
+the app asks again. The last part of a limit order rests what does not cross; a market order stops when
+the amount has filled or nothing is left within its limit. Stopping midway, or rejecting a signature,
+leaves what the earlier parts placed; the toast says what was not placed, and stays until you close it.
+One order goes in at most 10 transactions.
 
 When the orders in front are expired, or too small for what fits to reach the minimum order size, the
 app sends the order anyway, saying "Clearing expired or small orders at the front of the book". The
