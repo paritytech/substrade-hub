@@ -26,7 +26,7 @@ SubsTrade Hub runs an entire limit order book on-chain: order placement, matchin
 
 The DLOB supports two order types:
 
-- **`placeLimitOrder()`:** Rests on the book at a specific price. If the price crosses the spread, the order fills immediately (within the per-transaction budget), and the unfilled remainder stays on the book. When the budget runs out while the order still crosses, the remainder is returned instead, since resting it would cross the book. An optional `expireTimestamp` causes the order to be skipped (and lazily removed) during matching after expiry.
+- **`placeLimitOrder()`:** Rests on the book at a specific price. If the price crosses the spread, the order fills immediately (within the per-transaction budget), and the unfilled remainder stays on the book. When the budget runs out while the order still crosses, the remainder is returned instead, since resting it would cross the book; the call returns `(orderId, returned)`, the base amount handed back that way. An optional `expireTimestamp` causes the order to be skipped (and lazily removed) during matching after expiry.
 - **`placeMarketOrder()`:** Fills immediately against resting orders and never rests on the book. `limitPrice` is the worst price accepted (the highest ask a buy takes, the lowest bid a sell takes), so a resting order at an extreme price cannot fill it; pass `type(uint96).max` (buy) or `0` (sell) for no limit. `minAmountOut` is the minimum base amount filled; the transaction reverts with `SlippageExceeded` if less fills. Whatever does not fill is returned; with no liquidity within the limit, the order fills nothing and, unless `minAmountOut` is set, does not revert.
 
 ### Matching Engine Details

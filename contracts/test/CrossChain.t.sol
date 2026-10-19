@@ -100,7 +100,7 @@ contract CrossChainTest is Test {
     function testCrossChainBuyLocalSell() public {
         // Alice: cross-chain buyer on para 1000
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
         assertEq(dlob.getOrderFeeReserve(buyId), 1e9);
@@ -127,7 +127,7 @@ contract CrossChainTest is Test {
     function testLocalBuyCrossChainSell() public {
         // Bob: cross-chain seller on para 2000
         vm.prank(bob);
-        uint32 sellId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 sellId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Sell, PRICE, 100e6, BOB_ORIGIN, BOB_SETTLEMENT, PARA_2000, 0
         );
 
@@ -151,7 +151,7 @@ contract CrossChainTest is Test {
     function testCrossChainBuyCrossChainSell() public {
         // Alice: cross-chain buy
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -174,7 +174,7 @@ contract CrossChainTest is Test {
 
         // Alice: cross-chain buy
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -199,7 +199,7 @@ contract CrossChainTest is Test {
         mockXcm.setShouldRevert(true);
 
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -306,7 +306,7 @@ contract CrossChainTest is Test {
     function _stuckFillClaim(uint256 reserve) internal returns (uint32 orderId, uint32 claimId) {
         mockXcm.setShouldRevert(true);
         vm.prank(alice);
-        orderId = dlob.placeLimitOrder{value: reserve}(
+        (orderId,) = dlob.placeLimitOrder{value: reserve}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
         vm.prank(bob);
@@ -416,7 +416,7 @@ contract CrossChainTest is Test {
     function testFeeReserveDeductedPerFill() public {
         // Alice: cross-chain buy with 2x fee for 2 fills
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 2e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 2e9}(
             DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
         assertEq(dlob.getOrderFeeReserve(buyId), 2e9);
@@ -434,7 +434,7 @@ contract CrossChainTest is Test {
 
     function testWithdrawExcessFeeReserve() public {
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 5e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 5e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -459,7 +459,7 @@ contract CrossChainTest is Test {
 
     function testWithdrawExcessFeeReserveNotActive() public {
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 3e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 3e9}(
             DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -477,7 +477,7 @@ contract CrossChainTest is Test {
 
     function testWithdrawExcessFeeReserveZero() public {
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -497,7 +497,7 @@ contract CrossChainTest is Test {
 
         // Use different prices so orders don't match
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 3e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 3e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
         assertEq(dlob.totalFeeReserveBalance(), 3e9);
@@ -525,7 +525,7 @@ contract CrossChainTest is Test {
 
     function testCrossChainCancelCreatesRefundClaim() public {
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 2e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 2e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -634,7 +634,7 @@ contract CrossChainTest is Test {
     function testRedirectByForgedOwnerKeepsBeneficiary() public {
         address sovereign = alice;
         vm.prank(sovereign);
-        uint32 victimOrder = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 victimOrder,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -674,7 +674,7 @@ contract CrossChainTest is Test {
         mockXcm.setShouldRevert(true);
 
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -718,7 +718,7 @@ contract CrossChainTest is Test {
         mockXcm.setShouldRevert(true);
 
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -747,7 +747,7 @@ contract CrossChainTest is Test {
 
         // Alice places cross-chain buy with enough fee for 2 fills
         vm.prank(alice);
-        uint32 buyId = dlob.placeLimitOrder{value: 3e9}(
+        (uint32 buyId,) = dlob.placeLimitOrder{value: 3e9}(
             DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
         );
 
@@ -807,7 +807,7 @@ contract CrossChainTest is Test {
     function _asks(uint256 n, uint32 para) internal returns (uint32 first) {
         for (uint256 i = 0; i < n; i++) {
             vm.prank(alice);
-            uint32 id = dlob.placeLimitOrder{value: para == 0 ? 0 : 1e9}(
+            (uint32 id,) = dlob.placeLimitOrder{value: para == 0 ? 0 : 1e9}(
                 DLOB.Side.Sell,
                 PRICE + uint96(i) * TICK_SIZE,
                 MIN_ORDER_SIZE,

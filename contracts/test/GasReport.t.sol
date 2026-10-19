@@ -157,7 +157,7 @@ contract GasReportTest is Test {
 
         // Cross-chain maker resting (bob)
         vm.prank(bob);
-        uint32 orderId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 orderId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Sell,
             50e15, // price
             100e6, // amount
@@ -182,7 +182,7 @@ contract GasReportTest is Test {
     function testGasCancelOrder() public {
         // Place a local order
         vm.prank(alice);
-        uint32 orderId = dlob.placeLimitOrder(
+        (uint32 orderId,) = dlob.placeLimitOrder(
             DLOB.Side.Buy,
             50e15, // price
             100e6, // amount
@@ -200,7 +200,7 @@ contract GasReportTest is Test {
     function testGasCancelCrossChainOrder() public {
         // Place a cross-chain order
         vm.prank(bob);
-        uint32 orderId = dlob.placeLimitOrder{value: 1e9}(
+        (uint32 orderId,) = dlob.placeLimitOrder{value: 1e9}(
             DLOB.Side.Sell,
             50e15, // price
             100e6, // amount
@@ -218,7 +218,7 @@ contract GasReportTest is Test {
     function testGasReduceOrder() public {
         // Place a local order
         vm.prank(alice);
-        uint32 orderId = dlob.placeLimitOrder(
+        (uint32 orderId,) = dlob.placeLimitOrder(
             DLOB.Side.Buy,
             50e15, // price
             100e6, // amount

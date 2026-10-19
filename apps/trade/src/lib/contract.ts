@@ -112,11 +112,27 @@ export async function simulateContract<
   from: `0x${string}`,
   options?: { value?: bigint },
 ) {
+  const data = await simulateContractData(abi, functionName, args, contractAddress, from, options);
+  return decodeFunctionResult({ abi, functionName, data } as never);
+}
+
+/** `simulateContract`, returning the call's raw return data undecoded. */
+export async function simulateContractData<
+  TAbi extends Abi,
+  TFn extends ContractFunctionName<TAbi, "nonpayable" | "payable">,
+>(
+  abi: TAbi,
+  functionName: TFn,
+  args: ContractFunctionArgs<TAbi, "nonpayable" | "payable", TFn>,
+  contractAddress: `0x${string}`,
+  from: `0x${string}`,
+  options?: { value?: bigint },
+): Promise<`0x${string}`> {
   const callData = encodeFunctionData({ abi, functionName, args } as never);
   const { dry } = await dryRunCall(simulationOrigin(from), contractAddress, options?.value ?? 0n, fromHex(callData), abi as Abi);
   const raw = dry.result.value as { data: Uint8Array | { asBytes(): Uint8Array } };
   const bytes = raw.data instanceof Uint8Array ? raw.data : raw.data.asBytes();
-  return decodeFunctionResult({ abi, functionName, data: toHex(bytes) as `0x${string}` } as never);
+  return toHex(bytes) as `0x${string}`;
 }
 
 /**

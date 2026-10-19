@@ -256,12 +256,12 @@ contract MatchingTest is Test {
     function testMultiUserInterleaved() public {
         // Bob places sell at 50e15 for 100e6
         vm.prank(bob);
-        uint32 bobOrderId =
+        (uint32 bobOrderId,) =
             dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
 
         // Charlie places sell at 45e15 for 50e6 (better price, should match first)
         vm.prank(charlie);
-        uint32 charlieOrderId =
+        (uint32 charlieOrderId,) =
             dlob.placeLimitOrder(DLOB.Side.Sell, 45e15, 50e6, bytes32(0), bytes32(0), 0, 0);
 
         uint256 aliceBaseBalanceBefore = baseToken.balanceOf(alice);
@@ -358,13 +358,14 @@ contract MatchingTest is Test {
         uint256 quoteBefore = quoteToken.balanceOf(alice);
         uint256 baseBefore = baseToken.balanceOf(alice);
         vm.prank(alice);
-        uint32 aliceOrderId =
+        (uint32 aliceOrderId, uint128 returned) =
             dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
 
         uint128 filled = uint128(LOCAL_FILLS_PER_TX) * 10e6;
         DLOB.Order memory o = dlob.getOrder(aliceOrderId);
         assertEq(o.originalAmount, 600e6, "Order original amount should be 600e6");
         assertEq(o.remainingAmount, 0, "Nothing rests");
+        assertEq(returned, 600e6 - filled, "The unfilled amount is reported as returned");
         assertEq(
             quoteBefore - quoteToken.balanceOf(alice),
             uint256(filled) * 50e15 / 1e18,
@@ -390,10 +391,13 @@ contract MatchingTest is Test {
 
         uint256 baseBefore = baseToken.balanceOf(alice);
         vm.prank(alice);
-        uint32 aliceOrderId =
+        (uint32 aliceOrderId, uint128 returned) =
             dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
 
         assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 0, "Nothing rests");
+        assertEq(
+            returned, 600e6 - uint128(LOCAL_FILLS_PER_TX) * 10e6, "The unfilled amount is reported"
+        );
         assertEq(
             baseBefore - baseToken.balanceOf(alice),
             uint256(LOCAL_FILLS_PER_TX) * 10e6,
@@ -423,10 +427,11 @@ contract MatchingTest is Test {
 
         uint256 quoteBefore = quoteToken.balanceOf(alice);
         vm.prank(alice);
-        uint32 aliceOrderId =
+        (uint32 aliceOrderId, uint128 returned) =
             dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
 
         assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 0, "Nothing rests");
+        assertEq(returned, 600e6, "All of it is reported as returned");
         assertEq(quoteToken.balanceOf(alice), quoteBefore, "All of Alice's quote comes back");
         (uint96 bid,) = dlob.getBestPrices();
         assertEq(bid, 0, "No bid rests");
@@ -436,9 +441,10 @@ contract MatchingTest is Test {
     function testOrderWithinBudgetRestsRemainder() public {
         _sellersBeyondBudget();
         vm.prank(alice);
-        uint32 aliceOrderId =
+        (uint32 aliceOrderId, uint128 returned) =
             dlob.placeLimitOrder(DLOB.Side.Buy, 49e15, 600e6, bytes32(0), bytes32(0), 0, 0);
         assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 600e6, "The order rests in full");
+        assertEq(returned, 0, "Nothing is returned");
     }
 
     /// @notice Test that same owner with different originAccount can trade (self-trade allowed)

@@ -56,7 +56,7 @@ contract DLOBHandler is Test {
         try dlob.placeLimitOrder(
             DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0
         ) returns (
-            uint32 id
+            uint32 id, uint128
         ) {
             orderIds.push(id);
             ghostTotalOrders++;
@@ -80,7 +80,7 @@ contract DLOBHandler is Test {
         try dlob.placeLimitOrder(
             DLOB.Side.Sell, price, amount, bytes32(0), bytes32(0), 0, 0
         ) returns (
-            uint32 id
+            uint32 id, uint128
         ) {
             orderIds.push(id);
             ghostTotalOrders++;
@@ -251,7 +251,7 @@ contract DLOBFuzzTest is Test {
         DLOB.Side side = isBuy ? DLOB.Side.Buy : DLOB.Side.Sell;
 
         vm.prank(alice);
-        uint32 orderId = dlob.placeLimitOrder(side, price, amount, bytes32(0), bytes32(0), 0, 0);
+        (uint32 orderId,) = dlob.placeLimitOrder(side, price, amount, bytes32(0), bytes32(0), 0, 0);
 
         // Verify order was stored correctly
         DLOB.Order memory o = dlob.getOrder(orderId);
@@ -287,7 +287,7 @@ contract DLOBFuzzTest is Test {
             uint128 amount = uint128(MIN_ORDER_SIZE * (i + 1));
 
             vm.prank(alice);
-            orderIds[i] =
+            (orderIds[i],) =
                 dlob.placeLimitOrder(DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0);
         }
 
@@ -318,9 +318,8 @@ contract DLOBFuzzTest is Test {
         uint96 price = 50 * TICK_SIZE;
 
         vm.prank(alice);
-        uint32 orderId = dlob.placeLimitOrder(
-            DLOB.Side.Buy, price, originalAmount, bytes32(0), bytes32(0), 0, 0
-        );
+        (uint32 orderId,) =
+            dlob.placeLimitOrder(DLOB.Side.Buy, price, originalAmount, bytes32(0), bytes32(0), 0, 0);
 
         // Reduce order
         vm.prank(alice);
@@ -348,7 +347,7 @@ contract DLOBFuzzTest is Test {
 
         // Alice places sell order with expiry
         vm.prank(alice);
-        uint32 sellOrderId = dlob.placeLimitOrder(
+        (uint32 sellOrderId,) = dlob.placeLimitOrder(
             DLOB.Side.Sell, price, amount, bytes32(0), bytes32(0), 0, expireTime
         );
 
@@ -357,7 +356,7 @@ contract DLOBFuzzTest is Test {
 
         // Bob tries to buy
         vm.prank(bob);
-        uint32 buyOrderId =
+        (uint32 buyOrderId,) =
             dlob.placeLimitOrder(DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0);
 
         // Check results
@@ -387,7 +386,7 @@ contract DLOBFuzzTest is Test {
 
         // Aligned price should work
         vm.prank(alice);
-        uint32 orderId =
+        (uint32 orderId,) =
             dlob.placeLimitOrder(DLOB.Side.Buy, alignedPrice, amount, bytes32(0), bytes32(0), 0, 0);
 
         DLOB.Order memory o = dlob.getOrder(orderId);
@@ -418,7 +417,7 @@ contract DLOBFuzzTest is Test {
         } else {
             // Should succeed
             vm.prank(alice);
-            uint32 orderId =
+            (uint32 orderId,) =
                 dlob.placeLimitOrder(DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0);
 
             DLOB.Order memory o = dlob.getOrder(orderId);
@@ -437,7 +436,7 @@ contract DLOBFuzzTest is Test {
         uint32[] memory orderIds = new uint32[](numOrders);
         for (uint256 i = 0; i < numOrders; i++) {
             vm.prank(bob);
-            orderIds[i] = dlob.placeLimitOrder(
+            (orderIds[i],) = dlob.placeLimitOrder(
                 DLOB.Side.Sell, price, baseAmount, bytes32(0), bytes32(0), 0, 0
             );
         }

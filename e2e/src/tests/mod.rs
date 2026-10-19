@@ -95,7 +95,7 @@ sol! {
         uint8 side, uint96 price, uint128 amount,
         bytes32 originAccount, bytes32 settlementAccount,
         uint32 destParaId, uint64 expireTimestamp
-    ) external payable returns (uint32);
+    ) external payable returns (uint32, uint128);
     function cancelOrder(uint32 orderId, bytes32 originAccount) external;
     function bestBid() external view returns (uint96);
     function bestAsk() external view returns (uint96);

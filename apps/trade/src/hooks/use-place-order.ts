@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { writeContract, readContract, simulateContract } from "../lib/contract";
+import { decodeFunctionResult, formatUnits, size, type ContractFunctionArgs } from "viem";
+import { writeContract, readContract, simulateContract, simulateContractData } from "../lib/contract";
 import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
 import { useWalletStore } from "../stores/wallet";
@@ -71,7 +72,21 @@ export function usePlaceOrder() {
             );
           }
 
-          const placing = `Placing ${sideLabel.toLowerCase()} order`;
+          const limitArgs = [params.side, price, amount, originAccount, ZERO_BYTES32, destParaId, 0n] as const;
+          // One transaction fills only so many resting orders. When this order crosses more, the contract
+          // returns what is left (resting it would cross the book), so ask for a smaller order up front,
+          // unless what fits is too small to place: then the front of the book is expired or small
+          // orders, and sending the order is what clears them.
+          updateToast(toastId, "pending", "Checking the order book...");
+          const returned = await limitOrderReturned(limitArgs, market.address, h160);
+          const clearsFront = returned > 0n && amount - returned < market.minOrderSize;
+          if (returned > 0n && !clearsFront) {
+            throw new UserFacingError(
+              `This order crosses more resting orders than one transaction can fill. Place ${formatUnits(amount - returned, baseDecimals)} ${market.base.symbol} now and the rest in another order.`,
+            );
+          }
+
+          const placing = clearsFront ? CLEARING_FRONT : `Placing ${sideLabel.toLowerCase()} order`;
           updateToast(toastId, "pending", `${placing}: waiting for signature...`);
           console.log("[placeLimitOrder] params:", {
             side: params.side,
@@ -84,18 +99,16 @@ export function usePlaceOrder() {
           const result = await writeContract(
             dlobAbi,
             "placeLimitOrder",
-            [
-              params.side,
-              price,
-              amount,
-              originAccount,
-              ZERO_BYTES32,
-              destParaId,
-              0n,
-            ],
+            limitArgs,
             market.address,
             h160,
-            { value, onProgress: txProgressToast(toastId, { pending: placing, done: `${sideLabel} order placed` }) },
+            {
+              value,
+              onProgress: txProgressToast(toastId, {
+                pending: placing,
+                done: clearsFront ? FRONT_CLEARED : `${sideLabel} order placed`,
+              }),
+            },
           );
           return result;
         } else {
@@ -105,11 +118,8 @@ export function usePlaceOrder() {
           // The order carries the limit the form displayed; it also bounds what a buy can spend. The
           // fresh book only confirms there is something to fill (and prices orders sent without a form).
           const opposite = params.side === Side.Buy ? Side.Sell : Side.Buy;
-          const estimate = estimateMarketOrder(
-            params.side,
-            amount,
-            await fetchOrderBook(market.address, opposite, MAX_OB_LEVELS),
-          );
+          const book = await fetchOrderBook(market.address, opposite, MAX_OB_LEVELS);
+          const estimate = estimateMarketOrder(params.side, amount, book);
           if (!estimate) {
             throw new UserFacingError(
               `No ${params.side === Side.Buy ? "sell-side" : "buy-side"} liquidity to fill this market order right now. Place a limit order instead.`,
@@ -147,16 +157,10 @@ export function usePlaceOrder() {
             destParaId,
           ] as const;
 
-          // Authoritative liquidity check: simulate the order and require a non-zero fill. A market
-          // order matches the opposite side; if nothing there is fillable it silently fills 0 (no
-          // revert) and still burns gas. `getBestPrices` can't catch this because it returns cached
-          // tree prices that still list lazily-expired orders — so an all-expired opposite side would
-          // pass. The simulation runs matching for real (skipping expired makers), and runs after the
-          // approve so a buy's quote transfer / a sell's base escrow succeed in the sim.
-          // Ordering note: it MUST run after approve (a pre-approve sim would revert on the transfer),
-          // so in the rare all-expired case an approve is already on-chain when we block here. The
-          // common empty-book case never reaches this — the form disables submit pre-approve via
-          // getBestPrices — so only that edge spends an approve; the sim still saves the no-op fill gas.
+          // Authoritative liquidity check: simulate the order. A market order with nothing fillable fills
+          // 0 without reverting and still costs a fee. `getBestPrices` cannot tell, since the tree still
+          // lists lazily-expired orders; the simulation runs matching for real. It runs after the approve,
+          // which the escrow transfer needs, so a blocked order may already have spent an approve.
           updateToast(toastId, "pending", "Checking market liquidity...");
           const filled = (await simulateContract(
             dlobAbi,
@@ -166,13 +170,16 @@ export function usePlaceOrder() {
             h160,
             { value },
           )) as bigint;
-          if (filled === 0n) {
+          // Nothing fills although the book lists orders within the limit: expired orders at the front
+          // use up what one transaction may match. Sending the order is what clears them.
+          const clearsFront = filled === 0n && withinLimit(params.side, book[0]?.price, limitPrice);
+          if (filled === 0n && !clearsFront) {
             throw new UserFacingError(
               `No ${params.side === Side.Buy ? "sell-side" : "buy-side"} liquidity to fill this market order right now. Place a limit order instead.`,
             );
           }
 
-          const placing = `Placing market ${sideLabel.toLowerCase()} order`;
+          const placing = clearsFront ? CLEARING_FRONT : `Placing market ${sideLabel.toLowerCase()} order`;
           updateToast(toastId, "pending", `${placing}: waiting for signature...`);
           const result = await writeContract(
             dlobAbi,
@@ -184,7 +191,7 @@ export function usePlaceOrder() {
               value,
               onProgress: txProgressToast(toastId, {
                 pending: placing,
-                done: `Market ${sideLabel.toLowerCase()} order filled`,
+                done: clearsFront ? FRONT_CLEARED : `Market ${sideLabel.toLowerCase()} order filled`,
               }),
             },
           );
@@ -207,6 +214,35 @@ export function usePlaceOrder() {
       queryClient.invalidateQueries({ queryKey: ["tokenAllowance"] });
     },
   });
+}
+
+/** The pending text of an order that can only clear the front of the book. */
+const CLEARING_FRONT = "Clearing expired or small orders at the front of the book";
+
+/** The success text of an order that only cleared the front of the book. */
+const FRONT_CLEARED =
+  "The order cleared expired or small orders at the front of the book, and the rest came back. Place it again to fill it.";
+
+/** Whether a resting order at `price` on the opposite side is within a market order's `limitPrice`. */
+export function withinLimit(side: Side, price: bigint | undefined, limitPrice: bigint): boolean {
+  if (price === undefined) return false;
+  return side === Side.Buy ? price <= limitPrice : price >= limitPrice;
+}
+
+/**
+ * What `placeLimitOrder` would hand back unfilled, from a simulation as `from`: the base amount the
+ * match budget leaves over when the order still crosses, else 0. Markets whose `placeLimitOrder`
+ * returns only the order id rest any remainder, so nothing comes back there.
+ */
+export async function limitOrderReturned(
+  args: ContractFunctionArgs<typeof dlobAbi, "payable", "placeLimitOrder">,
+  marketAddress: `0x${string}`,
+  from: `0x${string}`,
+): Promise<bigint> {
+  const data = await simulateContractData(dlobAbi, "placeLimitOrder", args, marketAddress, from);
+  if (size(data) < 64) return 0n;
+  const [, returned] = decodeFunctionResult({ abi: dlobAbi, functionName: "placeLimitOrder", data });
+  return returned;
 }
 
 const ORDER_ERROR = "Couldn't complete the transaction. Please try again.";

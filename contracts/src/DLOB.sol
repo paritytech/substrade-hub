@@ -258,6 +258,8 @@ contract DLOB {
 
     /// @notice Place a limit order. It fills against the opposite side, then rests at `price`. When
     /// the match budget runs out first, the order does not rest: its remainder is returned.
+    /// @return orderId The new order's id.
+    /// @return returned Base amount returned that way (for a buy, its quote is refunded), or 0.
     function placeLimitOrder(
         Side side,
         uint96 price,
@@ -266,7 +268,7 @@ contract DLOB {
         bytes32 settlementAccount,
         uint32 destParaId,
         uint64 expireTimestamp
-    ) external payable nonReentrant returns (uint32 orderId) {
+    ) external payable nonReentrant returns (uint32 orderId, uint128 returned) {
         // --- Validation ---
         if (!PriceMath.isTickAligned(price, tickSize)) revert NotTickAligned();
         _validateOrderParams(amount, settlementAccount, destParaId);
@@ -324,7 +326,7 @@ contract DLOB {
 
         // An order the budget stopped while it still crossed would cross the book if it rested at its
         // price, so its remainder goes back to the sender, as a market order's does.
-        uint128 returned = exhausted ? remaining : 0;
+        returned = exhausted ? remaining : 0;
         remaining -= returned;
         if (side == Side.Sell && returned > 0) {
             baseToken.safeTransfer(msg.sender, uint256(returned));
