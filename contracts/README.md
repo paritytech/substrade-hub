@@ -64,3 +64,4 @@ Each market is a **DLOB** contract that maintains two red-black trees (one for b
 - [Deployment guide](docs/deployment.md): Deploy factory, create markets, verify on Blockscout
 - [Configuration](docs/configuration.md): Market parameters, factory parameters, trading with DOT
 - [Testing](docs/testing.md): Test suite, invariant tests, gas reporting
+- [Admin powers](docs/admin.md): What the factory admin can do, and custody before mainnet

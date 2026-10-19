@@ -126,6 +126,9 @@ Before deploying it for real use cases, you are responsible for:
 
 For Parity's security disclosure process, and Bug Bounty program, feel free to visit:  https://parity.io/bug-bounty
 
+To report a vulnerability in this repository, see [SECURITY.md](SECURITY.md). Known limitations and
+accepted trade-offs are listed in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+
 ## License
 
 Licensed under the MIT License. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE). The polkadot-sdk precompile interfaces under `contracts/src/interfaces/` retain their upstream licence (the SPDX header in each file is authoritative).
