@@ -5,6 +5,7 @@ import { ah_paseo_v2, ah_previewnet } from "@polkadot-api/descriptors";
 import { activeChain } from "../config/chains";
 import { isInHost } from "./host/detect";
 import { withTimeout } from "./timeout";
+import { UserFacingError } from "./user-errors";
 
 /** The typed API per `.papi` entry; `networks.json` `papiEntry` selects the one for the build's network. */
 const TYPED_APIS = {
@@ -72,9 +73,10 @@ async function hostProvider(attempt = 0): Promise<JsonRpcProvider> {
   );
   const served = discovery?.chains.AssetHub;
   if (discovery && served && served.toLowerCase() !== activeChain.genesis.toLowerCase()) {
-    throw new Error(
-      `This build targets ${activeChain.name} (genesis ${short(activeChain.genesis)}), but the host ` +
-        `serves Asset Hub ${short(served)} on "${discovery.network}". Open the build published for that network.`,
+    throw new UserFacingError(
+      `This app is built for ${activeChain.name}, but the Polkadot host is on another network. ` +
+        "Open the app published for that network.",
+      { cause: `build genesis ${short(activeChain.genesis)}, host serves ${short(served)} on "${discovery.network}"` },
     );
   }
   try {
@@ -83,9 +85,9 @@ async function hostProvider(attempt = 0): Promise<JsonRpcProvider> {
     return provider;
   } catch (e) {
     if (e instanceof ChainNotSupportedError) {
-      throw new Error(
-        `The host does not serve ${activeChain.name} (genesis ${short(activeChain.genesis)}). The chain ` +
-          "may have been reset, or the host is configured for a different network.",
+      throw new UserFacingError(
+        `The Polkadot host does not serve ${activeChain.name}. The network may have been reset, or the host ` +
+          "is set up for a different network.",
         { cause: e },
       );
     }
@@ -99,12 +101,14 @@ async function hostProvider(attempt = 0): Promise<JsonRpcProvider> {
 
 async function verifyGenesis(client: PolkadotClient): Promise<void> {
   const spec = await withTimeout(client.getChainSpecData(), VERIFY_TIMEOUT_MS, () => {
-    throw new Error(`${activeChain.name} did not answer within ${VERIFY_TIMEOUT_MS / 1000}s.`);
+    throw new UserFacingError(`${activeChain.name} did not answer. Check your connection and reload.`, {
+      cause: `no chain spec within ${VERIFY_TIMEOUT_MS / 1000}s`,
+    });
   });
   if (spec.genesisHash.toLowerCase() !== activeChain.genesis.toLowerCase()) {
-    throw new Error(
-      `${activeChain.name} now has genesis ${short(spec.genesisHash)}, but this build expects ` +
-        `${short(activeChain.genesis)}. The network may have been reset; this build needs redeploying.`,
+    throw new UserFacingError(
+      `${activeChain.name} may have been reset, and this app has not been updated for it yet. Try again later.`,
+      { cause: `live genesis ${short(spec.genesisHash)}, build expects ${short(activeChain.genesis)}` },
     );
   }
 }

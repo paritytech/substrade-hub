@@ -6,8 +6,12 @@ import type { Abi } from "viem";
 const { mockApi } = vi.hoisted(() => ({ mockApi: {} as Record<string, any> }));
 vi.mock("./client", () => ({ getTypedApi: () => mockApi }));
 // The revert decoder is exercised in errors.ts' own tests; here we only assert it is invoked.
-vi.mock("./errors", () => ({ extractRevertReason: () => "decoded-revert-reason" }));
+vi.mock("./errors", async () => {
+  const { UserFacingError } = await import("./user-errors");
+  return { revertError: () => new UserFacingError("decoded-revert-reason") };
+});
 
+import { UserFacingError } from "./user-errors";
 import { submitReviveCall, ensureMapped } from "./revive";
 
 const signer = {} as PolkadotSigner;
@@ -139,11 +143,11 @@ describe("submitReviveCall", () => {
       signer,
     }).catch((e) => (e as Error).message);
     await vi.advanceTimersByTimeAsync(31_000);
-    expect(await result).toMatch(/not included within 30s/i);
+    expect(await result).toMatch(/didn't include the transaction in time/i);
     vi.useRealTimers();
   });
 
-  it("throws the decoded revert reason and never submits when the dry-run flags a revert", async () => {
+  it("throws the contract's user-facing error and never submits when the dry-run flags a revert", async () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(
       okDry({ result: { success: true, value: { flags: 1, data: new Uint8Array([1, 2, 3]) } } }),
     );
@@ -163,17 +167,17 @@ describe("submitReviveCall", () => {
     expect(mockApi.tx.Revive.call).not.toHaveBeenCalled();
   });
 
-  it("throws on a dispatch-level dry-run failure without submitting", async () => {
+  it("throws an internal (not user-facing) error on an unexplained dispatch-level dry-run failure", async () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(
       okDry({ result: { success: false, value: { type: "Module" } } }),
     );
     await expect(
       submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer }),
-    ).rejects.toThrow(/dry-run failed/);
+    ).rejects.toSatisfy((e: unknown) => !(e instanceof UserFacingError) && /dry-run failed/.test((e as Error).message));
     expect(mockApi.tx.Revive.call).not.toHaveBeenCalled();
   });
 
-  it("surfaces a formatted dispatch error when the included tx failed", async () => {
+  it("reports a dispatch error the user can act on (not enough funds) in plain words", async () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
@@ -188,17 +192,20 @@ describe("submitReviveCall", () => {
     );
     await expect(
       submitReviveCall({ abi: ABI, contractAddress: CONTRACT, callData: CALLDATA, originSs58: "5A", signer }),
-    ).rejects.toThrow("Transaction failed: Token (FundsUnavailable)");
+    ).rejects.toThrow(/Not enough balance to pay for this transaction/);
   });
 
-  it("explains a BadProof validity error raised before inclusion", async () => {
+  it("reports a BadProof validity error as a rejected signature, without its internals", async () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     const invalid = Object.assign(new Error("Invalid"), {
       name: "InvalidTxError",
       error: { type: "Invalid", value: { type: "BadProof" } },
     });
     mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "signed", txHash: "0xh" }], invalid));
-    await expect(submit()).rejects.toThrow(/BadProof/);
+    const err = await submit().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UserFacingError);
+    expect((err as Error).message).toMatch(/rejected your wallet's signature/);
+    expect((err as Error).message).not.toMatch(/BadProof/);
   });
 
   it("reports a rejected signing request as cancelled", async () => {
@@ -209,37 +216,78 @@ describe("submitReviveCall", () => {
 });
 
 describe("ensureMapped", () => {
+  const included = (ok: boolean, dispatchError?: unknown) =>
+    watch([
+      { type: "signed", txHash: "0xh" },
+      { type: "txBestBlocksState", txHash: "0xh", found: true, ok, block: { hash: "0xblk" }, events: [], dispatchError },
+    ]);
+
   it("no-ops when the account is already mapped", async () => {
     mockApi.query.Revive.OriginalAccount.getValue.mockResolvedValue("5Alice");
-    const signAndSubmit = vi.fn();
-    mockApi.tx.Revive.map_account.mockReturnValue({ signAndSubmit });
     await ensureMapped(H160, signer);
-    expect(signAndSubmit).not.toHaveBeenCalled();
+    expect(mockApi.tx.Revive.map_account).not.toHaveBeenCalled();
   });
 
   it("submits map_account when unmapped", async () => {
     mockApi.query.Revive.OriginalAccount.getValue.mockResolvedValue(undefined);
-    const signAndSubmit = vi.fn().mockResolvedValue({ ok: true });
-    mockApi.tx.Revive.map_account.mockReturnValue({ signAndSubmit });
+    mockApi.tx.Revive.map_account.mockReturnValue(included(true));
     await ensureMapped(H160, signer);
-    expect(signAndSubmit).toHaveBeenCalledOnce();
+    expect(mockApi.tx.Revive.map_account).toHaveBeenCalledOnce();
   });
 
   it("swallows an AccountAlreadyMapped race", async () => {
     mockApi.query.Revive.OriginalAccount.getValue.mockResolvedValue(undefined);
-    mockApi.tx.Revive.map_account.mockReturnValue({
-      signAndSubmit: vi
-        .fn()
-        .mockResolvedValue({ ok: false, dispatchError: { type: "Module", value: { type: "AccountAlreadyMapped" } } }),
-    });
+    mockApi.tx.Revive.map_account.mockReturnValue(
+      included(false, { type: "Module", value: { type: "Revive", value: { type: "AccountAlreadyMapped" } } }),
+    );
     await expect(ensureMapped(H160, signer)).resolves.toBeUndefined();
   });
 
-  it("throws on any other map_account failure", async () => {
+  it("reports a cancelled signature and too little balance like a contract call", async () => {
     mockApi.query.Revive.OriginalAccount.getValue.mockResolvedValue(undefined);
-    mockApi.tx.Revive.map_account.mockReturnValue({
-      signAndSubmit: vi.fn().mockResolvedValue({ ok: false, dispatchError: { type: "Other" } }),
+    mockApi.tx.Revive.map_account.mockReturnValue(watch([], new Error("User rejected the request")));
+    await expect(ensureMapped(H160, signer)).rejects.toThrow("Signing was cancelled.");
+
+    mockApi.tx.Revive.map_account.mockReturnValue(included(false, { type: "Token", value: { type: "FundsUnavailable" } }));
+    await expect(ensureMapped(H160, signer)).rejects.toThrow(/Not enough balance/);
+  });
+
+  it("keeps any other map_account failure internal", async () => {
+    mockApi.query.Revive.OriginalAccount.getValue.mockResolvedValue(undefined);
+    mockApi.tx.Revive.map_account.mockReturnValue(included(false, { type: "Other" }));
+    const err = await ensureMapped(H160, signer).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(UserFacingError);
+  });
+});
+
+describe("submitReviveCall chain errors", () => {
+  it("reports a stale nonce as a pending transaction", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    const stale = Object.assign(new Error("Invalid"), {
+      name: "InvalidTxError",
+      error: { type: "Invalid", value: { type: "Stale" } },
     });
-    await expect(ensureMapped(H160, signer)).rejects.toThrow(/map_account failed/);
+    mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "signed", txHash: "0xh" }], stale));
+    await expect(submit()).rejects.toThrow(/previous transaction is still pending/);
+  });
+
+  it("reports an unmapped account as one to fund first", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(
+      okDry({ result: { success: false, value: { type: "Module", value: { type: "Revive", value: { type: "AccountUnmapped" } } } } }),
+    );
+    await expect(submit()).rejects.toThrow(/not set up on this network yet/);
+  });
+
+  it("keeps an unexplained dispatch error internal", async () => {
+    mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
+    mockApi.tx.Revive.call.mockReturnValue(
+      watch([
+        { type: "signed", txHash: "0xh" },
+        { type: "txBestBlocksState", found: true, ok: false, dispatchError: { type: "BadOrigin" } },
+      ]),
+    );
+    const err = await submit().catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(UserFacingError);
+    expect((err as Error).message).toBe("Transaction failed: BadOrigin");
   });
 });

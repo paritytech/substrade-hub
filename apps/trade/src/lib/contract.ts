@@ -7,7 +7,7 @@ import {
 } from "viem";
 import { fromHex, toHex } from "polkadot-api/utils";
 import { getTypedApi } from "./client";
-import { extractRevertReason } from "./errors";
+import { revertError } from "./errors";
 import { sendTransaction, waitForFinality, waitForReceipt } from "./wallet";
 import type { TxStep } from "./tx-progress";
 import { useWalletStore } from "../stores/wallet";
@@ -40,6 +40,21 @@ function buildEthTransactTx(
 }
 
 /**
+ * The error for a failed `ReviveApi.eth_transact`: its error is `{ type: "Data", value: <revert data> }`
+ * for a contract revert, or `{ type: "Message", value: <text> }` for a failure outside the contract
+ * (kept internal).
+ */
+function ethTransactError(error: unknown, abi: Abi): Error {
+  const e = error as { type?: string; value?: unknown };
+  if (e?.type === "Data") {
+    const v = e.value as Uint8Array | { asBytes?: () => Uint8Array };
+    const data = v instanceof Uint8Array ? v : v?.asBytes?.();
+    return revertError({ value: { data } }, abi);
+  }
+  return new Error(`eth_transact failed: ${typeof e?.value === "string" ? e.value : JSON.stringify(error)}`);
+}
+
+/**
  * Read from a contract using ReviveApi.eth_transact dry-run.
  */
 export async function readContract<
@@ -58,7 +73,7 @@ export async function readContract<
   const result = await api.apis.ReviveApi.eth_transact(tx, { at: "best" });
 
   if (!result.success) {
-    throw new Error(extractRevertReason(result as never, abi));
+    throw ethTransactError(result.value, abi);
   }
 
   return decodeFunctionResult({
@@ -71,7 +86,7 @@ export async function readContract<
 /**
  * Simulate a state-changing contract call (an `eth_transact` dry-run) and return its decoded return
  * value, without submitting. Node-side, so it is account-type-agnostic. A contract revert surfaces via
- * `extractRevertReason`. Unlike a cached view (e.g. `getBestPrices`), this runs the call for real, so
+ * `revertError`. Unlike a cached view (e.g. `getBestPrices`), this runs the call for real, so
  * it reflects execution-time effects like lazy order expiry during matching.
  */
 export async function simulateContract<
@@ -92,7 +107,7 @@ export async function simulateContract<
   const result = await api.apis.ReviveApi.eth_transact(tx, { at: "best" });
 
   if (!result.success) {
-    throw new Error(extractRevertReason(result as never, abi));
+    throw ethTransactError(result.value, abi);
   }
 
   return decodeFunctionResult({

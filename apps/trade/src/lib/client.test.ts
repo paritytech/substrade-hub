@@ -85,7 +85,10 @@ describe("initChainClient", () => {
   it("host: rejects when the host serves a different Asset Hub, without opening a provider", async () => {
     vi.mocked(isInHost).mockReturnValue(true);
     vi.mocked(getHostChainInfo).mockResolvedValue({ network: "paseo", chains: { AssetHub: OTHER } } as never);
-    await expect(initChainClient()).rejects.toThrow(/serves Asset Hub .* on "paseo"/);
+    const err = await initChainClient().catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/Polkadot host is on another network/);
+    expect((err as Error).message).not.toMatch(/0x/); // no genesis hashes on screen
+    expect(String((err as Error).cause)).toMatch(/on "paseo"/); // kept for the console
     expect(getHostProvider).not.toHaveBeenCalled();
     expect(createClient).not.toHaveBeenCalled();
   });

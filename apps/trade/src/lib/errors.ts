@@ -1,16 +1,19 @@
 import { decodeErrorResult, toFunctionSelector, type Abi } from "viem";
+import { formatAbiItem } from "viem/utils";
 import { toHex } from "polkadot-api/utils";
 import { dlobAbi } from "../abi/dlob";
 import { erc20Abi } from "../abi/erc20";
+import { faucetAbi } from "../abi/faucet";
+import { UserFacingError } from "./user-errors";
 
 // Every custom-error fragment we might encounter, so a revert selector resolves regardless of which
 // call produced it (e.g. a DLOB order that reverts inside the ERC20 escrow, or vice versa).
-const KNOWN_ERROR_ABI: Abi = [...dlobAbi, ...erc20Abi].filter((f) => f.type === "error");
+const KNOWN_ERROR_ABI: Abi = [...dlobAbi, ...erc20Abi, ...faucetAbi].filter((f) => f.type === "error");
 
-// toFunctionSelector's public type is function-oriented, but it computes the 4-byte selector for any
-// named fragment (errors included) at runtime — the cast just gets us past the narrow signature.
+// The 4-byte selector of an error fragment: the hash of its signature, e.g. `OrderNotActive(uint32)`.
+// formatAbiItem builds that signature for errors, the way viem's own decodeErrorResult does.
 function fragSelector(frag: unknown): string {
-  return toFunctionSelector(frag as Parameters<typeof toFunctionSelector>[0]).toLowerCase();
+  return toFunctionSelector(formatAbiItem(frag as Parameters<typeof formatAbiItem>[0])).toLowerCase();
 }
 
 // selector (0x + 8 hex) -> error name, so we can name an error from its 4 bytes alone — this works
@@ -45,7 +48,14 @@ const FRIENDLY: Record<string, string> = {
   TransferFailed: "Token transfer failed — check your balance and allowance",
   NotOrderOwner: "You do not own this order",
   OrderNotActive: "That order is no longer active",
+  ERC20InsufficientBalance: "Not enough token balance for this transaction",
+  ERC20InsufficientAllowance: "The token approval is too low — approve again and retry",
+  CooldownActive: "You've already claimed — wait for the cooldown to pass before claiming again",
+  FaucetEmpty: "The faucet is out of test tokens right now — try again later",
 };
+
+/** A contract rejection the app has no specific text for, including a revert with no reason. */
+const UNKNOWN_REVERT = "The contract rejected this transaction";
 
 /** Resolve a selector to an error name using the known set plus any extra `abi` the caller passes. */
 function nameForSelector(selector: string, abi?: Abi): string | undefined {
@@ -114,4 +124,20 @@ export function extractRevertReason(
   } catch {
     return "Transaction reverted (unable to decode reason)";
   }
+}
+
+/**
+ * The error to throw for a contract revert: a `UserFacingError` with the friendly text for a recognised
+ * error, else "the contract rejected this transaction". A revert with no reason is marked
+ * `empty-revert`, so a caller that knows the likely cause can say it (see `isEmptyRevert`). The decoded
+ * detail (`extractRevertReason`) is kept as the cause, for the console.
+ */
+export function revertError(result: { value?: { data?: Uint8Array } }, abi?: Abi): UserFacingError {
+  const detail = extractRevertReason(result, abi);
+  const data = result.value?.data;
+  const hex = data ? toHex(data) : "0x";
+  if (hex === "0x") return new UserFacingError(UNKNOWN_REVERT, { cause: detail, code: "empty-revert" });
+  const name = nameForSelector(hex.slice(0, 10).toLowerCase(), abi);
+  const friendly = name ? FRIENDLY[name] : undefined;
+  return new UserFacingError(friendly ?? UNKNOWN_REVERT, { cause: detail });
 }

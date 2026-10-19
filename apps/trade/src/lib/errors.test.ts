@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { encodeErrorResult } from "viem";
-import { extractRevertReason } from "./errors";
+import { extractRevertReason, revertError } from "./errors";
+import { isEmptyRevert, UserFacingError } from "./user-errors";
 import { erc20Abi } from "../abi/erc20";
+import { dlobAbi } from "../abi/dlob";
 
 /** Build a result whose `.value.data` is the given hex bytes (mirrors the dry-run shape). */
 function reverted(hex: string) {
@@ -10,19 +12,22 @@ function reverted(hex: string) {
   return { value: { data: bytes } };
 }
 
+/** Revert data for DLOB error `name` with no arguments, encoded from the contract's ABI. */
+const dlobError = (name: string) => encodeErrorResult({ abi: dlobAbi, errorName: name as never });
+
 describe("extractRevertReason", () => {
   it("decodes a DLOB custom-error selector to a friendly message (SelfTrade)", () => {
-    // SelfTrade() has no args, so the revert data is just its 4-byte selector.
-    expect(extractRevertReason(reverted("0xdccbe31a"))).toMatch(/own resting order/);
+    expect(dlobError("SelfTrade")).toBe("0xd68a1e65"); // keccak256("SelfTrade()")[0:4], as on chain
+    expect(extractRevertReason(reverted(dlobError("SelfTrade")))).toMatch(/own resting order/);
   });
 
   it("decodes NoLiquidity and NotTickAligned to friendly messages", () => {
-    expect(extractRevertReason(reverted("0xfa27e76e"))).toMatch(/No liquidity/i);
-    expect(extractRevertReason(reverted("0x66e09afc"))).toMatch(/tick size/i);
+    expect(extractRevertReason(reverted(dlobError("NoLiquidity")))).toMatch(/No liquidity/i);
+    expect(extractRevertReason(reverted(dlobError("NotTickAligned")))).toMatch(/tick size/i);
   });
 
   it("decodes a selector even when the caller passes an unrelated ABI (uses the shared error set)", () => {
-    expect(extractRevertReason(reverted("0xdccbe31a"), erc20Abi)).toMatch(/own resting order/);
+    expect(extractRevertReason(reverted(dlobError("SelfTrade")), erc20Abi)).toMatch(/own resting order/);
   });
 
   it("returns the string for a standard Error(string) revert", () => {
@@ -44,7 +49,48 @@ describe("extractRevertReason", () => {
   });
 
   it("falls back to ErrorName(args) for a known error with no friendly mapping", () => {
-    // AlreadyInitialized() = 0xeb0dd890 — a real DLOB error with no FRIENDLY entry.
-    expect(extractRevertReason(reverted("0xeb0dd890"))).toBe("AlreadyInitialized()");
+    // AlreadyInitialized() — a real DLOB error with no FRIENDLY entry.
+    expect(extractRevertReason(reverted(dlobError("AlreadyInitialized")))).toBe("AlreadyInitialized()");
+  });
+});
+
+describe("revertError", () => {
+  it("recognises a custom error that takes arguments", () => {
+    // SafeERC20FailedOperation(address) = 0x5274afe7, then one address word.
+    const data = `0x5274afe7${"00".repeat(12)}${"11".repeat(20)}`;
+    expect(revertError(reverted(data)).message).toMatch(/Token transfer failed/);
+  });
+
+  const encoded = (name: string, args: unknown[]) =>
+    encodeErrorResult({ abi: erc20Abi, errorName: name as never, args: args as never });
+
+  it("gives a recognised contract error its friendly text", () => {
+    const err = revertError(reverted(dlobError("SelfTrade")));
+    expect(err).toBeInstanceOf(UserFacingError);
+    expect(err.message).toMatch(/own resting order/);
+  });
+
+  it("names a missing or too-low token approval, and too little token balance", () => {
+    const spender = "0x0000000000000000000000000000000000000001";
+    expect(revertError(reverted(encoded("ERC20InsufficientAllowance", [spender, 1n, 2n]))).message).toMatch(
+      /approval is too low/,
+    );
+    expect(revertError(reverted(encoded("ERC20InsufficientBalance", [spender, 1n, 2n]))).message).toMatch(
+      /Not enough token balance/,
+    );
+  });
+
+  it("marks a revert with no reason, so the caller can give the likely cause", () => {
+    const err = revertError(reverted("0x"));
+    expect(err.message).toBe("The contract rejected this transaction");
+    expect(isEmptyRevert(err)).toBe(true);
+    expect(isEmptyRevert(revertError(reverted(dlobError("SelfTrade"))))).toBe(false);
+  });
+
+  it("shows no selector, error name or arguments for a revert it has no text for", () => {
+    const unknown = revertError(reverted("0xdeadbeef"));
+    expect(unknown.message).toBe("The contract rejected this transaction");
+    expect(unknown.cause).toContain("0xdeadbeef"); // kept for the console
+    expect(revertError(reverted(dlobError("AlreadyInitialized"))).message).toBe("The contract rejected this transaction");
   });
 });
