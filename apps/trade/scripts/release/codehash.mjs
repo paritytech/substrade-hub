@@ -29,13 +29,13 @@ export function maskedCodehash(hex, mask) {
   return keccak256(code.subarray(0, Math.max(0, code.length - metadata)));
 }
 
-/** The masked ranges and library link offsets of a forge artifact's runtime bytecode. */
+/** The masked ranges and every library link offset of a forge artifact's runtime bytecode. */
 function slotsOf(deployedBytecode) {
   const mask = [];
   const links = {};
   for (const libraries of Object.values(deployedBytecode.linkReferences ?? {})) {
     for (const [name, refs] of Object.entries(libraries)) {
-      links[name] = refs[0].start;
+      links[name] = refs.map((r) => r.start);
       for (const r of refs) mask.push([r.start, r.length]);
     }
   }
@@ -83,13 +83,36 @@ const factoryAbi = parseAbi([
 ]);
 
 /**
+ * The address each library is linked at in `code` (runtime bytecode with this build's layout): the
+ * same 20 bytes must sit at every link offset of a library. Returns the addresses and any problems.
+ */
+export function linkedLibraries(code, links) {
+  const libraries = {};
+  const problems = [];
+  const hex = code.replace(/^0x/, "").toLowerCase();
+  for (const [name, starts] of Object.entries(links ?? {})) {
+    const found = new Set(starts.map((start) => hex.slice(start * 2, (start + 20) * 2)));
+    const [address] = found;
+    if (found.size !== 1 || address.length !== 40) {
+      problems.push(`the implementation does not link one ${name} address at all of its ${starts.length} link sites`);
+    } else {
+      libraries[name] = getAddress(`0x${address}`);
+    }
+  }
+  return { libraries, problems };
+}
+
+/**
  * Compare a network's live code with `codehashes`: the implementation, factory, linked libraries and
  * faucet must have the recorded hashes, every market must be an EIP-1167 proxy to the implementation,
- * and the factory must return each market for its pair. Returns the implementation and library
- * addresses found, and a list of problems (empty when everything matches).
+ * and the factory must return each market for its pair. The libraries are found at the
+ * implementation's link sites, so they are only looked for when the implementation matches this
+ * build: an implementation from another build has its link sites elsewhere. Returns the
+ * implementation and library addresses found, and a list of problems (empty when everything matches).
+ * `client` is a viem public client; one for `net.rpcUrl` is made when it is not given.
  */
-export async function checkLiveCode(net, deployment, codehashes) {
-  const client = createPublicClient({ transport: http(net.rpcUrl, { timeout: 30_000 }) });
+export async function checkLiveCode(net, deployment, codehashes, client = undefined) {
+  client ??= createPublicClient({ transport: http(net.rpcUrl, { timeout: 30_000 }) });
   const code = (address) => withRetry(() => client.getCode({ address })).then((c) => c ?? "0x");
   const read = (functionName, args = []) =>
     withRetry(() => client.readContract({ address: deployment.factory, abi: factoryAbi, functionName, args }));
@@ -97,24 +120,29 @@ export async function checkLiveCode(net, deployment, codehashes) {
   const problems = [];
   const implementation = getAddress(await read("IMPLEMENTATION"));
   const implementationCode = await code(implementation);
-  const libraries = {};
-  for (const name of DLOB_LIBRARIES) {
-    const start = codehashes.contracts.DLOB.links?.[name];
-    if (start === undefined) {
-      problems.push(`the release records no link for ${name}`);
-      continue;
-    }
-    libraries[name] = getAddress(`0x${implementationCode.slice(2 + start * 2, 2 + (start + 20) * 2)}`);
-  }
 
-  const addresses = { DLOB: implementation, DLOBFactory: deployment.factory, ...libraries, Faucet: deployment.faucet };
-  for (const [name, address] of Object.entries(addresses)) {
+  /** Whether `live` (the code at `address`) is contract `name` of this build; records a problem if not. */
+  const matches = (name, address, live) => {
     const recorded = codehashes.contracts[name];
-    const live = name === "DLOB" ? implementationCode : await code(address);
     if (live === "0x") problems.push(`${name} at ${address} has no code`);
     else if (maskedCodehash(live, recorded.mask) !== recorded.codehash) {
       problems.push(`${name} at ${address} runs other code than this release's build`);
+    } else return true;
+    return false;
+  };
+
+  let libraries = {};
+  if (matches("DLOB", implementation, implementationCode)) {
+    const linked = linkedLibraries(implementationCode, codehashes.contracts.DLOB.links);
+    problems.push(...linked.problems);
+    for (const name of DLOB_LIBRARIES) {
+      if (!codehashes.contracts.DLOB.links?.[name]) problems.push(`the release records no link for ${name}`);
     }
+    libraries = linked.libraries;
+    for (const [name, address] of Object.entries(libraries)) matches(name, address, await code(address));
+  }
+  for (const [name, address] of [["DLOBFactory", deployment.factory], ["Faucet", deployment.faucet]]) {
+    matches(name, address, await code(address));
   }
 
   const proxy = eip1167Runtime(implementation);

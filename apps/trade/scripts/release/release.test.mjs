@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compareDeployments, contenthashToCid, deploymentsFromNetworks, gatewayUrl } from "./lib.mjs";
 import { renderHeader } from "./notes.mjs";
 import { diffDeployment } from "./verify.mjs";
-import { eip1167Runtime, maskedCodehash } from "./codehash.mjs";
+import { checkLiveCode, eip1167Runtime, linkedLibraries, maskedCodehash } from "./codehash.mjs";
 
 const A = "0x341c005e16941d904Aee4a71E669362eD3c4fFe9";
 const B = "0xFD6E13f0e3F9690A41b3f3a7605d075849eC01d0";
@@ -125,5 +125,52 @@ describe("eip1167Runtime", () => {
     expect(eip1167Runtime("0x91762b345A73222a0082740D94b9D96aB4f494A8")).toBe(
       "0x363d3d373d3d3d363d7391762b345a73222a0082740d94b9d96ab4f494a85af43d82803e903d91602b57fd5bf3",
     );
+  });
+});
+
+describe("linkedLibraries", () => {
+  const lib = "ab".repeat(20);
+  const code = (a, b) => `0x00${a}00${b}aaaa0002`; // link sites at bytes 1 and 22
+
+  it("finds the library linked at every one of its sites", () => {
+    expect(linkedLibraries(code(lib, lib), { Lib: [1, 22] })).toEqual({
+      libraries: { Lib: "0xABaBaBaBABabABabAbAbABAbABabababaBaBABaB" },
+      problems: [],
+    });
+  });
+
+  it("reports sites that disagree, or code too short for them, without throwing", () => {
+    expect(linkedLibraries(code(lib, "cd".repeat(20)), { Lib: [1, 22] }).problems).toHaveLength(1);
+    expect(linkedLibraries("0x00", { Lib: [1, 22] })).toEqual({
+      libraries: {},
+      problems: ["the implementation does not link one Lib address at all of its 2 link sites"],
+    });
+  });
+});
+
+describe("checkLiveCode", () => {
+  const FACTORY = "0x00000000000000000000000000000000000000f1";
+  const FAUCET = "0x00000000000000000000000000000000000000f2";
+  const IMPL = "0x00000000000000000000000000000000000000f3";
+  const MARKET = { address: "0x00000000000000000000000000000000000000f4", base: "0x0000000000000000000000000000000000000001", quote: "0x0000000000000000000000000000000000000002" };
+  const plain = (body) => `0x${body}aaaa0002`;
+  const codehashes = {
+    contracts: {
+      DLOB: { codehash: maskedCodehash(plain("1111"), []), mask: [], links: {} },
+      DLOBFactory: { codehash: maskedCodehash(plain("2222"), []), mask: [] },
+      Faucet: { codehash: maskedCodehash(plain("3333"), []), mask: [] },
+    },
+  };
+  const client = (implementationCode) => ({
+    getCode: async ({ address }) =>
+      ({ [IMPL]: implementationCode, [FACTORY]: plain("2222"), [FAUCET]: plain("3333"), [MARKET.address]: eip1167Runtime(IMPL) })[address],
+    readContract: async ({ functionName }) => (functionName === "IMPLEMENTATION" ? IMPL : MARKET.address),
+  });
+  const deployment = { factory: FACTORY, faucet: FAUCET, markets: [MARKET] };
+
+  it("reports a pending redeploy without reading libraries at another build's link sites", async () => {
+    const live = await checkLiveCode({}, deployment, codehashes, client(plain("9999")));
+    expect(live.problems).toEqual([`DLOB at ${IMPL} runs other code than this release's build`]);
+    expect(live.libraries).toEqual({});
   });
 });
