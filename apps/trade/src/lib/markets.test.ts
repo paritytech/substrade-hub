@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isKnownQuote, isNonZeroAddress, portfolioTokens, portfolioTotal, valueAt } from "./markets";
+import { isKnownQuote, isNonZeroAddress, holdingValue, portfolioTokens, portfolioTotal, valueAt } from "./markets";
 
 const KNOWN = "0x02faf33a00000000000000000000000001200000";
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -77,5 +77,28 @@ describe("valueAt and portfolioTotal", () => {
     expect(portfolioTotal([100n, 50n])).toEqual({ total: 150n, noTrade: false, unavailable: false });
     expect(portfolioTotal([100n, "no-trade", 50n])).toEqual({ total: 150n, noTrade: true, unavailable: false });
     expect(portfolioTotal([100n, "unavailable"])).toEqual({ total: 100n, noTrade: false, unavailable: true });
+  });
+});
+
+describe("holdingValue", () => {
+  const P = 220_500_000_000_000_000_000n; // 220.5
+  const pending = { failed: false, lastPrice: undefined };
+
+  it("waits for the balance, and a failed balance is final", () => {
+    expect(holdingValue(undefined, true, pending)).toBeUndefined();
+    expect(holdingValue("unavailable", true, pending)).toBe("unavailable");
+  });
+
+  it("needs no price for a zero balance or the quote token", () => {
+    expect(holdingValue(0n, true, pending)).toBe(0n);
+    expect(holdingValue(0n, true, { failed: true, lastPrice: undefined })).toBe(0n);
+    expect(holdingValue(7n, false, pending)).toBe(7n);
+  });
+
+  it("then waits for the price, and a failed price is final", () => {
+    expect(holdingValue(2_500_000n, true, pending)).toBeUndefined();
+    expect(holdingValue(2_500_000n, true, { failed: true, lastPrice: undefined })).toBe("unavailable");
+    expect(holdingValue(2_500_000n, true, { failed: false, lastPrice: null })).toBe("no-trade");
+    expect(holdingValue(2_500_000n, true, { failed: false, lastPrice: P })).toBe(551_250_000n);
   });
 });

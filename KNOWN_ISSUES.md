@@ -56,6 +56,8 @@ around it:
   (#57, #81).
 - **Trade history** reads eth-rpc's logs and scans the last 200 blocks on chain. Trades signed through a
   host or Substrate wallet that are older than that are not shown (#82).
+- **Portfolio values** on Home use the last trade in eth-rpc's logs only, without that scan, so a trade
+  signed through a host or Substrate wallet after it does not move a token's value.
 
 ## 6. Markets whose base and quote decimals differ are not shown
 

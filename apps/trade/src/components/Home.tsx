@@ -12,7 +12,7 @@ import type { MarketInfo } from "../types/market";
 import { useQueries } from "@tanstack/react-query";
 import { tokenBalanceQuery } from "../hooks/use-token-balance";
 import { lastTradePriceQuery } from "../hooks/use-trade-history";
-import { portfolioTokens, portfolioTotal, valueAt, type PortfolioToken, type TokenValue } from "../lib/markets";
+import { holdingValue, portfolioTokens, portfolioTotal, type PortfolioToken, type TokenValue } from "../lib/markets";
 import { Amount } from "./ui/Amount";
 
 function formatCooldown(secs: number): string {
@@ -126,7 +126,7 @@ function PortfolioRow({
   onTrade,
 }: {
   entry: PortfolioToken;
-  balance: bigint | undefined;
+  balance: bigint | "unavailable" | undefined;
   value: TokenValue | undefined;
   onTrade: (m: MarketInfo) => void;
 }) {
@@ -136,7 +136,13 @@ function PortfolioRow({
     <li className="grid grid-cols-[1fr_auto_auto_2.5rem] items-center gap-4 rounded-lg border border-border px-4 py-3 text-sm">
       <span className="font-medium text-text-primary">{entry.token.symbol}</span>
       <span className="text-right text-text-primary">
-        {balance !== undefined ? <Amount value={balance} decimals={entry.token.decimals} /> : "—"}
+        {balance === undefined ? (
+          "—"
+        ) : balance === "unavailable" ? (
+          "Unavailable"
+        ) : (
+          <Amount value={balance} decimals={entry.token.decimals} />
+        )}
       </span>
       <span className="min-w-20 text-right text-text-secondary">
         {value === undefined ? (
@@ -177,19 +183,24 @@ function PortfolioCard() {
 
   const quote = activeChain.knownQuote;
   const entries = markets ? portfolioTokens(quote, markets) : [];
-  // Balances share their query with the trade form; prices are one small log read per market.
+  // Balances share their query with the trade form. A price, one small log read, is loaded only for a
+  // token the wallet holds: an empty holding is worth 0 whatever it trades at.
   const balances = useQueries({ queries: entries.map((e) => tokenBalanceQuery(e.token.addr, h160 ?? undefined)) });
-  const prices = useQueries({ queries: entries.map((e) => lastTradePriceQuery(e.market?.address, !!h160)) });
-
-  const values = entries.map((e, i): TokenValue | undefined => {
-    const balance = balances[i]!.data as bigint | undefined;
-    if (balance === undefined) return undefined;
-    if (!e.market) return balance;
-    const price = prices[i]!;
-    if (price.isError) return "unavailable";
-    if (price.data === undefined) return undefined;
-    return valueAt(balance, price.data as bigint | null);
+  const balanceOf = (i: number): bigint | "unavailable" | undefined =>
+    balances[i]!.isError ? "unavailable" : (balances[i]!.data as bigint | undefined);
+  const prices = useQueries({
+    queries: entries.map((e, i) => {
+      const balance = balanceOf(i);
+      return lastTradePriceQuery(e.market?.address, typeof balance === "bigint" && balance > 0n);
+    }),
   });
+
+  const values = entries.map((e, i) =>
+    holdingValue(balanceOf(i), !!e.market, {
+      failed: prices[i]!.isError,
+      lastPrice: prices[i]!.data as bigint | null | undefined,
+    }),
+  );
   const loaded = values.every((v) => v !== undefined);
   const { total, noTrade, unavailable } = portfolioTotal(values.filter((v): v is TokenValue => v !== undefined));
 
@@ -222,7 +233,7 @@ function PortfolioCard() {
               <PortfolioRow
                 key={entry.token.addr}
                 entry={entry}
-                balance={balances[i]!.data as bigint | undefined}
+                balance={balanceOf(i)}
                 value={values[i]}
                 onTrade={openMarket}
               />
@@ -243,7 +254,7 @@ function PortfolioCard() {
           <p className="mt-3 text-xs text-text-muted">
             {quote.symbol} counts at face value; every other token at its market's last trade.
             {noTrade && " The total excludes the value of assets without a trade in the last 30 days (N/A)."}
-            {unavailable && " Some prices could not be loaded, so those assets are left out of the total."}
+            {unavailable && " Some balances or prices could not be loaded, so those assets are left out of the total."}
           </p>
           <p className="mt-1 text-xs text-text-muted">
             Tokens in your resting orders are held by the market until they fill or you cancel, so they are not

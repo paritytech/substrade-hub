@@ -53,6 +53,23 @@ export function valueAt(balance: bigint, lastPrice: bigint | null): TokenValue {
 }
 
 /**
+ * A holding's value from its balance read and, for a base token, its price read. The balance decides
+ * first: undefined while loading, "unavailable" when it failed, and a zero balance or the quote token
+ * needs no price. Then the price: "unavailable" when it failed, undefined while loading.
+ */
+export function holdingValue(
+  balance: bigint | "unavailable" | undefined,
+  needsPrice: boolean,
+  price: { failed: boolean; lastPrice: bigint | null | undefined },
+): TokenValue | undefined {
+  if (balance === undefined || balance === "unavailable") return balance;
+  if (!needsPrice || balance === 0n) return balance;
+  if (price.failed) return "unavailable";
+  if (price.lastPrice === undefined) return undefined;
+  return valueAt(balance, price.lastPrice);
+}
+
+/**
  * The sum of the priced `values`, and whether any was left out for having no trade, or for a price
  * that could not be loaded.
  */
