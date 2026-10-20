@@ -7,7 +7,7 @@ of the code, see [SECURITY.md](SECURITY.md).
 | # | Limitation | Area | Tracked in |
 |---|---|---|---|
 | 1 | One admin key holds every privileged power | Contracts | [Admin powers](contracts/docs/admin.md), #100, #105 |
-| 2 | The deployed markets cannot halt new orders yet | Contracts | #106 |
+| 2 | paseo-v2's markets cannot halt new orders yet | Contracts | #106 |
 | 3 | Cross-chain order ownership relies on a caller-supplied `originAccount` | Contracts | #60 |
 | 4 | Failed cross-chain settlement waits as a pending claim | Contracts | [How it works](contracts/docs/how-it-works.md#pendingclaim-fallback) |
 | 5 | Orders placed through a host or Substrate wallet are missing from eth-rpc's log index | App | below |
@@ -21,15 +21,15 @@ of the code, see [SECURITY.md](SECURITY.md).
 The factory's `admin` can list markets, set fees, redirect any pending claim and sweep excess DOT, and
 markets cannot be upgraded. The full list, and what a compromised key could do, is in
 [Admin powers](contracts/docs/admin.md). The contracts now move the role in two steps and bound both
-fees (#105); the deployed factories get that with the next contract deployment. Custody before mainnet
-is open (#100).
+fees (#105); previewnet's factory has that, and paseo-v2's gets it with its next contract deployment.
+Custody before mainnet is open (#100).
 
-## 2. The deployed markets cannot halt new orders yet
+## 2. paseo-v2's markets cannot halt new orders yet
 
 Markets are immutable clones. The contracts now have a halt flag on the factory that stops new orders
-on every market while cancelling, reducing, claiming and withdrawing stay open (#106). The markets
-deployed today predate it, so until the next contract deployment, a matching or settlement bug could
-only be met by asking users to stop trading.
+on every market while cancelling, reducing, claiming and withdrawing stay open (#106). Previewnet's
+markets have it. paseo-v2's predate it, so until its next contract deployment, a matching or settlement
+bug there could only be met by asking users to stop trading.
 
 ## 3. Cross-chain order ownership relies on a caller-supplied `originAccount`
 
@@ -91,6 +91,6 @@ cannot rest it at its price without crossing the book. `placeLimitOrder` reports
 app checks it before signing: for an order that needs more than one transaction, limit or market, it
 offers to place it in parts, one signature each (#107). When expired or small orders at the front of
 the book use up the budget, so that what fits is too small to place, the app sends the order anyway: it
-clears them and returns the rest, to be placed again. The markets deployed today still have a flat cap
-of 50 fills, so until the next contract deployment the app refuses such an order before signing: "This
+clears them and returns the rest, to be placed again. paseo-v2's markets still have a flat cap of 50
+fills until its next contract deployment, so there the app refuses such an order before signing: "This
 order crosses too many price levels for one transaction — place a smaller order".

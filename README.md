@@ -96,6 +96,11 @@ The funder pays native funds and administers the test assets, so it must hold PA
 Steps are idempotent and record their progress, so an interrupted run resumes where it stopped. Run
 `node scripts/bootstrap.mjs --help` for every option.
 
+To deploy new contracts on a network and keep its accounts, test assets and faucet, back up the state
+file, remove its `factory`, `markets`, `done` and `progress` entries, and run again: the run deploys a
+new factory and markets, seeds them and creates their trade history. To start over, faucet included,
+delete the state file instead.
+
 To trade from the UI, connect an **EVM wallet** (MetaMask) or a **Substrate wallet** (SubWallet or
 polkadot-js), and claim test tUSD from the faucet on the home page. Supported wallets, the one-time
 network-metadata approval, and troubleshooting are documented in
