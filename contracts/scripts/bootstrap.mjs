@@ -342,6 +342,8 @@ async function main() {
   const state = existsSync(stateFile)
     ? loadJson(stateFile)
     : { genesis: net.genesis, ...(mnemonic ? {} : { keys: {} }), done: {} };
+  // A state file trimmed to redeploy (factory, markets and the seed/history marks removed) may lack it.
+  state.done ??= {};
   const save = () => saveJson(stateFile, state);
 
   /** The EVM private key of `role`: derived from DEPLOY_MNEMONIC, or the random one in the state file. */

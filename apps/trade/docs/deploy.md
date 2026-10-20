@@ -26,7 +26,7 @@ first (`contracts/scripts/bootstrap.mjs`, see the root README). A publish refuse
 
 The app keeps its view in the URL hash: `#/market/<address>` opens a market, `#/orders` the Open Orders
 panel, and `#/` (or no hash) Home. A link such as
-`https://substrade-hub.testnet.li/#/market/0xB28530eA4F78C7c643FDd1ed3be927D60ca0fF6E` reaches the app
+`https://substrade-hub.testnet.li/#/market/0x830cE549b016Ea0D7dC24b6578bbeB0457eAd834` reaches the app
 through the gateway, which hands the hash to the app's frame. Inside a gateway the app runs in that
 frame, so moving between markets updates the frame's history (Back works) but not the address bar,
 which keeps the link that was opened. A link to a market the network does not list, or one cut short
@@ -69,9 +69,9 @@ key: it administers the factory and owns the tUSD faucet.
 
 | Contract | previewnet | paseo-v2 |
 |---|---|---|
-| DLOB factory | `0x341c005e16941d904aee4a71e669362ed3c4ffe9` | `0xfd6e13f0e3f9690a41b3f3a7605d075849ec01d0` |
-| tNVDA/tUSD market | `0xB5bbdC7782Cd93c4Ee10f76Dc0200e02887c2b1a` | `0xD15C41E8d2c5c038A5414eb9aa5A95c614dE83C5` |
-| tMU/tUSD market | `0xB28530eA4F78C7c643FDd1ed3be927D60ca0fF6E` | `0xc6107f3d94a7dE1200B359aa3088B89Cc0f1a60B` |
+| DLOB factory | `0xa51db7701c94dad87ff61c4b23991861fa2efa09` | `0xfd6e13f0e3f9690a41b3f3a7605d075849ec01d0` |
+| tNVDA/tUSD market | `0xe7e37F482369935bbf2a221d492010291Af1168F` | `0xD15C41E8d2c5c038A5414eb9aa5A95c614dE83C5` |
+| tMU/tUSD market | `0x830cE549b016Ea0D7dC24b6578bbeB0457eAd834` | `0xc6107f3d94a7dE1200B359aa3088B89Cc0f1a60B` |
 | tUSD faucet | `0xc675887d5eb476ea482c243067f6850263051e81` | `0xe1bc9e4b52ce0ee2950d14737ebd673a78d6860f` |
 | tUSD token | `0x02faf33a00000000000000000000000001200000` | `0x02faf33a00000000000000000000000001200000` |
 | tNVDA token | `0x02faf33b00000000000000000000000001200000` | `0x02faf33b00000000000000000000000001200000` |
@@ -197,7 +197,9 @@ First setup:
 After a reset, make one PR with steps 1 to 3 of "After a testnet reset" above (step 3 deletes
 `contracts/deployments/paseo-v2.json`, so the next bootstrap ignores every earlier run's progress),
 fund the owner from the faucet again, and run both workflows. A redeploy of new contracts on the same
-chain works the same way: deleting the deployment record makes the bootstrap start fresh.
+chain works the same way, with the deployment record trimmed instead of deleted (see "Bootstrapping a
+network" in the root README): removing `factory`, `markets`, `done` and `progress` keeps the accounts,
+the test assets and the faucet, while deleting the record starts fresh.
 
 ## Manual publish
 
