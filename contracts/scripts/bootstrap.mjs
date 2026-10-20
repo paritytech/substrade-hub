@@ -31,8 +31,9 @@ import { getPolkadotSigner } from "polkadot-api/signer";
 import { getWsProvider } from "polkadot-api/ws";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
-import { TransactionReceiptNotFoundError, WaitForTransactionReceiptTimeoutError, createPublicClient, createWalletClient, defineChain, http, parseAbi, toHex } from "viem";
+import { TransactionReceiptNotFoundError, WaitForTransactionReceiptTimeoutError, createPublicClient, createWalletClient, defineChain, getContractAddress, http, parseAbi, toHex } from "viem";
 import { generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
+import { buildCodehashes, linkedLibraries, maskedCodehash } from "../../apps/trade/scripts/release/codehash.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONTRACTS = resolve(HERE, "..");
@@ -201,7 +202,6 @@ function artifactAbi(file, name) {
 const TX_TIMEOUT_MS = 60_000;
 const TX_ATTEMPTS = 3;
 
-/** Attempts at a forge broadcast; every attempt after the first resumes the previous one. */
 /**
  * The environment forge runs with: the system basics and forge's own settings, plus what a script reads
  * (passed per call). Never DEPLOY_MNEMONIC, FUNDER_URI or anything else from this process: forge only
@@ -213,28 +213,37 @@ function forgeEnv(extra = {}) {
   return { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => keep(name))), ...extra };
 }
 
+/** Attempts at a forge broadcast, the pause between them, and how long one may run before it is stopped. */
 const FORGE_ATTEMPTS = 3;
 const FORGE_RETRY_MS = 15_000;
+const FORGE_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Broadcast a forge script. Forge can give up on a transaction whose receipt is not available yet, and
- * eth-rpc can drop a transaction it accepted. A retry passes `--resume`, which waits for the
- * transactions already sent and resends those that never landed, so nothing is deployed twice.
+ * eth-rpc can drop a transaction it accepted. Each retry runs the script afresh: forge reads the
+ * deployer's nonce from the chain and sends everything from there. A `--resume` retry would instead
+ * wait for the dropped transaction, which never lands. A fresh run may deploy again a contract the
+ * failed attempt did land (a library, say); the addresses recorded come from the latest broadcast, so
+ * the run stays consistent and the cost is that deploy. An attempt running past `timeoutMs` is stopped
+ * and counts as failed, so a stuck broadcast cannot hold the run.
  */
-async function forge(script, rpcUrl, privateKey, env = {}) {
+export async function forge(script, rpcUrl, privateKey, env = {}, { timeoutMs = FORGE_TIMEOUT_MS, retryMs = FORGE_RETRY_MS } = {}) {
   const args = ["script", `script/${script}`, "--rpc-url", rpcUrl, "--private-key", privateKey, "--broadcast", "--slow"];
   for (let attempt = 1; ; attempt++) {
     try {
-      execFileSync("forge", attempt === 1 ? args : [...args, "--resume"], {
+      execFileSync("forge", args, {
         cwd: CONTRACTS,
         stdio: "inherit",
         env: forgeEnv(env),
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
       });
       return;
     } catch (e) {
       if (attempt === FORGE_ATTEMPTS) throw e;
-      console.log(`  forge failed (attempt ${attempt} of ${FORGE_ATTEMPTS}); resuming in ${FORGE_RETRY_MS / 1000}s`);
-      await new Promise((r) => setTimeout(r, FORGE_RETRY_MS));
+      const why = e.code === "ETIMEDOUT" ? `stopped after ${timeoutMs / 1000}s` : "failed";
+      console.log(`  forge ${why} (attempt ${attempt} of ${FORGE_ATTEMPTS}); running it again in ${retryMs / 1000}s`);
+      await new Promise((r) => setTimeout(r, retryMs));
     }
   }
 }
@@ -245,6 +254,26 @@ function broadcastAddress(script, chainId, contractName) {
   const tx = run.transactions.find((t) => t.transactionType === "CREATE" && t.contractName === contractName);
   if (!tx) throw new Error(`No ${contractName} deployment in the ${script} broadcast`);
   return tx.contractAddress;
+}
+
+/** The precompiles the factory is built with: XCM and System, at their fixed Asset Hub addresses. */
+const XCM_PRECOMPILE = "0x00000000000000000000000000000000000a0000";
+const SYSTEM_PRECOMPILE = "0x0000000000000000000000000000000000000900";
+
+/** The creation bytecode of forge artifact `name`, with each library in `libraries` linked in. */
+export function linkedBytecode(name, libraries = {}) {
+  const { bytecode } = loadJson(resolve(CONTRACTS, `out/${name}.sol/${name}.json`));
+  let hex = bytecode.object.replace(/^0x/, "");
+  for (const libs of Object.values(bytecode.linkReferences ?? {})) {
+    for (const [lib, refs] of Object.entries(libs)) {
+      const address = libraries[lib];
+      if (!address) throw new Error(`${name} links ${lib}, which is not deployed yet`);
+      for (const { start, length } of refs) {
+        hex = hex.slice(0, start * 2) + address.replace(/^0x/, "").toLowerCase() + hex.slice((start + length) * 2);
+      }
+    }
+  }
+  return `0x${hex}`;
 }
 
 function priceToRaw(price) {
@@ -501,14 +530,57 @@ async function main() {
   const factoryAbi = () => artifactAbi("DLOBFactory.sol", "DLOBFactory");
   const dlobAbi = () => artifactAbi("DLOB.sol", "DLOB");
 
+  /**
+   * The address of contract `name` running this build's code: `recorded` when its code there matches the
+   * build (by masked codehash, as a release checks it, and linking `libraries`), else a new deploy from
+   * the deployer. A deploy is sent through `sendAndConfirm`, so one that lands without an eth-rpc receipt
+   * still counts: its address follows from the deployer's nonce, and its code is checked there.
+   */
+  const ensureContract = async (name, recorded, { libraries, args = [] } = {}) => {
+    const { codehash, mask, links } = buildCodehashes(CONTRACTS).contracts[name];
+    // The codehash masks library links, so the linked addresses are compared on their own.
+    const runsBuild = (live) => {
+      if (!live || maskedCodehash(live, mask) !== codehash) return false;
+      if (!links) return true;
+      const linked = linkedLibraries(live, links).libraries;
+      return Object.keys(links).every((lib) => linked[lib]?.toLowerCase() === libraries?.[lib]?.toLowerCase());
+    };
+    if (recorded) {
+      const live = await pub.getCode({ address: recorded });
+      if (runsBuild(live)) {
+        console.log(`  ${name} ${recorded} (runs this build)`);
+        return recorded;
+      }
+      console.log(`  ${name} at ${recorded} ${live ? "runs other code or links other libraries" : "has no code"}; deploying a new one`);
+    }
+    const { abi } = loadJson(resolve(CONTRACTS, `out/${name}.sol/${name}.json`));
+    let nonce;
+    await sendAndConfirm("deployer", `deploy ${name}`, (n) => {
+      nonce = n;
+      return wallet("deployer").deployContract({ abi, bytecode: linkedBytecode(name, libraries), args, nonce: n });
+    });
+    const address = getContractAddress({ from: addr("deployer"), nonce: BigInt(nonce) });
+    if (!runsBuild(await pub.getCode({ address }))) throw new Error(`${name} deploy left no matching code at ${address}`);
+    console.log(`  ${name} ${address}`);
+    return address;
+  };
+
   if (run("factory")) {
     console.log("\n== factory ==");
     if (state.factory && (await pub.getCode({ address: state.factory }))) console.log(`  deployed at ${state.factory}`);
     else {
-      await forge("DeployFactory.s.sol", net.rpcUrl, keyOf("deployer"));
-      state.factory = broadcastAddress("DeployFactory.s.sol", net.chainId, "DLOBFactory");
+      // Each contract is recorded as it lands, so a stopped run resumes with the next one.
+      state.libraries ??= {};
+      for (const lib of ["RedBlackTree", "XcmBuilder"]) {
+        state.libraries[lib] = await ensureContract(lib, state.libraries[lib]);
+        save();
+      }
+      state.implementation = await ensureContract("DLOB", state.implementation, { libraries: state.libraries });
       save();
-      console.log(`  DLOBFactory ${state.factory}`);
+      state.factory = await ensureContract("DLOBFactory", undefined, {
+        args: [XCM_PRECOMPILE, SYSTEM_PRECOMPILE, state.implementation],
+      });
+      save();
     }
   }
 
