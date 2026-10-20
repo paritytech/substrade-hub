@@ -101,6 +101,12 @@ file, remove its `factory`, `markets`, `done` and `progress` entries, and run ag
 new factory and markets, seeds them and creates their trade history. To start over, faucet included,
 delete the state file instead.
 
+The factory step deploys the two libraries, the DLOB implementation and the factory one by one, and
+records each in the state file (`libraries`, `implementation`, `factory`) as it lands. A recorded
+contract is reused when its code matches the build (by masked codehash, and for the implementation the
+libraries it links), and deployed again otherwise, so a stopped run resumes with the next contract.
+A deploy that lands without an eth-rpc receipt is found by the deployer's nonce and its code.
+
 To trade from the UI, connect an **EVM wallet** (MetaMask) or a **Substrate wallet** (SubWallet or
 polkadot-js), and claim test tUSD from the faucet on the home page. Supported wallets, the one-time
 network-metadata approval, and troubleshooting are documented in
