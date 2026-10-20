@@ -222,7 +222,7 @@ function PortfolioCard() {
           </div>
           <p className="mt-3 text-xs text-text-muted">
             Each token is valued at its market's last trade.
-            {partial && " N/A: no trade in the last 30 days, so it is left out of the total."}
+            {partial && " The total excludes the value of assets without a trade in the last 30 days (N/A)."}
           </p>
           <p className="mt-1 text-xs text-text-muted">
             Tokens in your resting orders are held by the market until they fill or you cancel, so they are not
