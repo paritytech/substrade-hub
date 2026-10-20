@@ -4,9 +4,11 @@ import { useMarketStore } from "../../stores/market";
 import { useTokenBalance } from "../../hooks/use-token-balance";
 import { Side } from "../../types/market";
 import { Amount } from "../ui/Amount";
+import { maxOrderAmount, parseTokenAmount } from "../../lib/format";
+import { formatUnits } from "viem";
 
 export function AmountInput() {
-  const { amount, setAmount, side } = useTradeFormStore();
+  const { amount, setAmount, side, orderType, price } = useTradeFormStore();
   const h160 = useWalletStore((s) => s.h160);
   const market = useMarketStore((s) => s.selectedMarket);
 
@@ -20,6 +22,17 @@ export function AmountInput() {
 
   const { data: balance } = useTokenBalance(spendToken?.addr, h160 ?? undefined);
 
+  let limitPrice: bigint | undefined;
+  try {
+    limitPrice = price ? parseTokenAmount(price) : undefined;
+  } catch {
+    // An unfinished price: no Max until it parses.
+  }
+  const max =
+    balance != null && market
+      ? maxOrderAmount(side, orderType, balance, limitPrice, { minSize: market.minOrderSize, maxSize: market.maxOrderSize })
+      : undefined;
+
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
@@ -28,7 +41,16 @@ export function AmountInput() {
         </label>
         {balance != null && spendToken && (
           <span className="text-xs text-text-muted">
-            Bal: <Amount value={balance} decimals={spendDecimals} /> {spendToken.symbol}
+            Balance: <Amount value={balance} decimals={spendDecimals} /> {spendToken.symbol}
+            {max !== undefined && max > 0n && (
+              <button
+                type="button"
+                onClick={() => setAmount(formatUnits(max, baseDecimals))}
+                className="ml-2 font-medium text-brand hover:text-brand-light"
+              >
+                Max
+              </button>
+            )}
           </span>
         )}
       </div>

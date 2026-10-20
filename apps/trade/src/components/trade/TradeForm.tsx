@@ -12,7 +12,6 @@ import {
   MAX_PRICE_IMPACT_BPS,
   estimateMarketOrder,
 } from "../../lib/market-order";
-import { useTokenBalance } from "../../hooks/use-token-balance";
 import { FundingNotice } from "../wallet/FundingNotice";
 import {
   parseTokenAmount,
@@ -34,8 +33,6 @@ export function TradeForm() {
   const { data: bestPrices } = useBestPrices();
   // A market order fills against the opposite side: asks for a buy, bids for a sell.
   const { data: oppositeBook } = useOrderBook(side === Side.Buy ? Side.Sell : Side.Buy);
-  const { data: quoteBalance } = useTokenBalance(market?.quote.addr, h160 ?? undefined);
-  const { data: baseBalance } = useTokenBalance(market?.base.addr, h160 ?? undefined);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,26 +114,6 @@ export function TradeForm() {
           Market
         </button>
       </div>
-
-      {h160 && market && (
-        <div className="rounded-lg bg-surface-overlay px-3 py-2">
-          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
-            Available
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-text-secondary">{market.quote.symbol}</span>
-            <span className="text-lg font-semibold text-text-primary">
-              {quoteBalance !== undefined ? <Amount value={quoteBalance} decimals={quoteDecimals} /> : "—"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-text-secondary">{market.base.symbol}</span>
-            <span className="text-lg font-semibold text-text-primary">
-              {baseBalance !== undefined ? <Amount value={baseBalance} decimals={baseDecimals} /> : "—"}
-            </span>
-          </div>
-        </div>
-      )}
 
       {orderType === "limit" && <PriceInput />}
       <AmountInput />
