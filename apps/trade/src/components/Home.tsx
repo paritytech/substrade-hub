@@ -186,8 +186,10 @@ function PortfolioCard() {
   // Balances share their query with the trade form. A price, one small log read, is loaded only for a
   // token the wallet holds: an empty holding is worth 0 whatever it trades at.
   const balances = useQueries({ queries: entries.map((e) => tokenBalanceQuery(e.token.addr, h160 ?? undefined)) });
+  // A read that failed before it ever answered is unavailable. A later failed poll keeps the last answer
+  // (React Query leaves `data` in place on a failed refetch), so it does not erase a known value.
   const balanceOf = (i: number): bigint | "unavailable" | undefined =>
-    balances[i]!.isError ? "unavailable" : (balances[i]!.data as bigint | undefined);
+    balances[i]!.isLoadingError ? "unavailable" : (balances[i]!.data as bigint | undefined);
   const prices = useQueries({
     queries: entries.map((e, i) => {
       const balance = balanceOf(i);
@@ -197,7 +199,7 @@ function PortfolioCard() {
 
   const values = entries.map((e, i) =>
     holdingValue(balanceOf(i), !!e.market, {
-      failed: prices[i]!.isError,
+      failed: prices[i]!.isLoadingError,
       lastPrice: prices[i]!.data as bigint | null | undefined,
     }),
   );
