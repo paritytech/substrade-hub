@@ -63,15 +63,19 @@ describe("portfolioTokens", () => {
 });
 
 describe("valueAt and portfolioTotal", () => {
-  it("values a balance at the last trade price, or not at all without one", () => {
+  it("values a balance at the last trade price", () => {
     // 2.5 base (6 decimals) at 220.5 quote per base: 551.25 quote (6 decimals).
     expect(valueAt(2_500_000n, 220_500_000_000_000_000_000n)).toBe(551_250_000n);
-    expect(valueAt(2_500_000n, null)).toBeNull();
   });
 
-  it("adds what is priced and says when something is left out", () => {
-    expect(portfolioTotal([100n, 50n])).toEqual({ total: 150n, partial: false });
-    expect(portfolioTotal([100n, null, 50n])).toEqual({ total: 150n, partial: true });
-    expect(portfolioTotal([])).toEqual({ total: 0n, partial: false });
+  it("marks a balance without a trade, but counts a zero balance as 0", () => {
+    expect(valueAt(2_500_000n, null)).toBe("no-trade");
+    expect(valueAt(0n, null)).toBe(0n);
+  });
+
+  it("adds what is priced and says what was left out, and why", () => {
+    expect(portfolioTotal([100n, 50n])).toEqual({ total: 150n, noTrade: false, unavailable: false });
+    expect(portfolioTotal([100n, "no-trade", 50n])).toEqual({ total: 150n, noTrade: true, unavailable: false });
+    expect(portfolioTotal([100n, "unavailable"])).toEqual({ total: 100n, noTrade: false, unavailable: true });
   });
 });

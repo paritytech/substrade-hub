@@ -15,6 +15,7 @@ import {
   decodeTradesInBlock,
   estimateTimestamps,
   fetchEvmTrades,
+  fetchLastTradePrice,
 } from "./use-trade-history";
 
 const MARKET = "0x109088bd0e237449fde1a5b884c86f0559aae3a1";
@@ -207,5 +208,57 @@ describe("fetchHostTrades", () => {
     await fetchHostTrades(market);
     expect(hashReads.length).toBeLessThanOrEqual(200);
     expect(Math.min(...hashReads)).toBe(head - 200);
+  });
+});
+
+describe("fetchLastTradePrice", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const HEAD = 2_000_000;
+  const tradeLog = (block: number, price: bigint, txIndex = 0) => ({
+    topics: encodeEventTopics({ abi: dlobAbi, eventName: "Trade", args: { buyOrderId: 1, sellOrderId: 2 } }),
+    data: encodeAbiParameters([{ type: "uint96" }, { type: "uint128" }], [price, 1n]),
+    blockNumber: `0x${block.toString(16)}`,
+    transactionHash: "0x00",
+    transactionIndex: `0x${txIndex.toString(16)}`,
+    logIndex: "0x0",
+  });
+
+  /** eth-rpc that answers `eth_getLogs` with the trades in each requested span, recording the spans. */
+  function rpc(trades: ReturnType<typeof tradeLog>[], fail = false) {
+    const spans: Array<[number, number]> = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      const { method, params } = JSON.parse(init.body);
+      if (fail) return { json: async () => ({ error: { message: "unreachable" } }) };
+      if (method === "eth_blockNumber") return { json: async () => ({ result: `0x${HEAD.toString(16)}` }) };
+      const from = parseInt(params[0].fromBlock, 16), to = parseInt(params[0].toBlock, 16);
+      spans.push([from, to]);
+      const inSpan = trades.filter((t) => { const b = parseInt(t.blockNumber, 16); return b >= from && b <= to; });
+      return { json: async () => ({ result: inSpan }) };
+    });
+    return spans;
+  }
+
+  it("takes the newest trade from the first span back from the head that has one", async () => {
+    const spans = rpc([tradeLog(HEAD - 500, 220n), tradeLog(HEAD - 400, 221n, 0), tradeLog(HEAD - 400, 222n, 1)]);
+    expect(await fetchLastTradePrice(MARKET as `0x${string}`)).toBe(222n);
+    expect(spans).toEqual([[HEAD - 999, HEAD]]);
+  });
+
+  it("searches further back in growing spans", async () => {
+    const spans = rpc([tradeLog(HEAD - 50_000, 230n)]);
+    expect(await fetchLastTradePrice(MARKET as `0x${string}`)).toBe(230n);
+    expect(spans.map(([a, b]) => b - a + 1)).toEqual([1_000, 9_000, 90_000]);
+  });
+
+  it("is null only after the whole window answered with no trade", async () => {
+    const spans = rpc([]);
+    expect(await fetchLastTradePrice(MARKET as `0x${string}`)).toBeNull();
+    expect(spans.at(-1)![0]).toBeLessThan(HEAD - 1_000_000);
+  });
+
+  it("throws when eth-rpc cannot answer, which is not the same as no trade", async () => {
+    rpc([], true);
+    await expect(fetchLastTradePrice(MARKET as `0x${string}`)).rejects.toThrow("unreachable");
   });
 });

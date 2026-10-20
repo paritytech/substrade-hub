@@ -11,9 +11,8 @@ import { useFunding } from "../hooks/use-funding";
 import type { MarketInfo } from "../types/market";
 import { useQueries } from "@tanstack/react-query";
 import { tokenBalanceQuery } from "../hooks/use-token-balance";
-import { tradeHistoryQuery } from "../hooks/use-trade-history";
-import type { TradeEvent } from "../types/trade";
-import { portfolioTokens, portfolioTotal, valueAt, type PortfolioToken } from "../lib/markets";
+import { lastTradePriceQuery } from "../hooks/use-trade-history";
+import { portfolioTokens, portfolioTotal, valueAt, type PortfolioToken, type TokenValue } from "../lib/markets";
 import { Amount } from "./ui/Amount";
 
 function formatCooldown(secs: number): string {
@@ -128,7 +127,7 @@ function PortfolioRow({
 }: {
   entry: PortfolioToken;
   balance: bigint | undefined;
-  value: bigint | null | undefined;
+  value: TokenValue | undefined;
   onTrade: (m: MarketInfo) => void;
 }) {
   const { market } = entry;
@@ -140,7 +139,15 @@ function PortfolioRow({
         {balance !== undefined ? <Amount value={balance} decimals={entry.token.decimals} /> : "—"}
       </span>
       <span className="min-w-20 text-right text-text-secondary">
-        {value === undefined ? "—" : value === null ? "N/A" : <Amount value={value} decimals={quote.decimals} />}
+        {value === undefined ? (
+          "—"
+        ) : value === "no-trade" ? (
+          "N/A"
+        ) : value === "unavailable" ? (
+          "Unavailable"
+        ) : (
+          <Amount value={value} decimals={quote.decimals} />
+        )}
       </span>
       {market ? (
         <button onClick={() => onTrade(market)} className="text-right text-xs text-brand">
@@ -155,11 +162,12 @@ function PortfolioRow({
 
 /**
  * The connected account's wallet balance of every token in the listed markets, each valued in the
- * quote token at its market's last trade, with an estimated total.
+ * quote token at its market's last trade, with an estimated total. It waits for the markets, so it
+ * never shows a partial list as a finished portfolio, and loads prices only with a wallet connected.
  */
 function PortfolioCard() {
   const h160 = useWalletStore((s) => s.h160);
-  const { data: markets } = useMarkets();
+  const { data: markets, isLoading, isError, refetch } = useMarkets();
   const selectMarket = useMarketStore((s) => s.selectMarket);
   const setView = useViewStore((s) => s.setView);
   const openMarket = (m: MarketInfo) => {
@@ -168,27 +176,39 @@ function PortfolioCard() {
   };
 
   const quote = activeChain.knownQuote;
-  const entries = portfolioTokens(quote, markets ?? []);
-  // Shared with the trade form and the chart, so either view finds these cached.
+  const entries = markets ? portfolioTokens(quote, markets) : [];
+  // Balances share their query with the trade form; prices are one small log read per market.
   const balances = useQueries({ queries: entries.map((e) => tokenBalanceQuery(e.token.addr, h160 ?? undefined)) });
-  const histories = useQueries({ queries: entries.map((e) => tradeHistoryQuery(e.market?.address)) });
+  const prices = useQueries({ queries: entries.map((e) => lastTradePriceQuery(e.market?.address, !!h160)) });
 
-  const values = entries.map((e, i) => {
+  const values = entries.map((e, i): TokenValue | undefined => {
     const balance = balances[i]!.data as bigint | undefined;
     if (balance === undefined) return undefined;
     if (!e.market) return balance;
-    const trades = histories[i]!.data as TradeEvent[] | undefined;
-    if (trades === undefined) return undefined;
-    return valueAt(balance, trades.at(-1)?.price ?? null);
+    const price = prices[i]!;
+    if (price.isError) return "unavailable";
+    if (price.data === undefined) return undefined;
+    return valueAt(balance, price.data as bigint | null);
   });
   const loaded = values.every((v) => v !== undefined);
-  const { total, partial } = portfolioTotal(values.filter((v) => v !== undefined));
+  const { total, noTrade, unavailable } = portfolioTotal(values.filter((v): v is TokenValue => v !== undefined));
 
   return (
     <div className="rounded-xl border border-border bg-surface-raised p-5 sm:col-span-2">
       <h3 className="text-sm font-semibold text-text-primary">Portfolio</h3>
       {!h160 ? (
         <p className="mt-1 text-sm text-text-muted">Connect a wallet to see your balances.</p>
+      ) : isLoading ? (
+        <div className="flex justify-center py-4">
+          <Spinner className="h-4 w-4" />
+        </div>
+      ) : isError && !markets ? (
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <p className="text-sm text-text-muted">Couldn't load the markets, so the portfolio is not shown.</p>
+          <button onClick={() => void refetch()} className="text-xs text-brand">
+            Retry
+          </button>
+        </div>
       ) : (
         <>
           <div className="mt-3 grid grid-cols-[1fr_auto_auto_2.5rem] gap-4 px-4 text-xs text-text-muted">
@@ -221,8 +241,9 @@ function PortfolioCard() {
             </span>
           </div>
           <p className="mt-3 text-xs text-text-muted">
-            Each token is valued at its market's last trade.
-            {partial && " The total excludes the value of assets without a trade in the last 30 days (N/A)."}
+            {quote.symbol} counts at face value; every other token at its market's last trade.
+            {noTrade && " The total excludes the value of assets without a trade in the last 30 days (N/A)."}
+            {unavailable && " Some prices could not be loaded, so those assets are left out of the total."}
           </p>
           <p className="mt-1 text-xs text-text-muted">
             Tokens in your resting orders are held by the market until they fill or you cancel, so they are not

@@ -40,21 +40,30 @@ export function portfolioTokens(
   return tokens;
 }
 
+/** A token's value in quote raw units, or why it has none: no trade to price it, or no price loaded. */
+export type TokenValue = bigint | "no-trade" | "unavailable";
+
 /**
- * `balance` of a base token in quote raw units at `lastPrice` (quote raw per base raw, 1e18-scaled), or
- * null when the market has no trade to price it.
+ * `balance` of a base token in quote raw units at `lastPrice` (quote raw per base raw, 1e18-scaled).
+ * Without a trade it is "no-trade", except a zero balance, which is worth 0 whatever the price.
  */
-export function valueAt(balance: bigint, lastPrice: bigint | null): bigint | null {
-  return lastPrice === null ? null : (balance * lastPrice) / 10n ** 18n;
+export function valueAt(balance: bigint, lastPrice: bigint | null): TokenValue {
+  if (balance === 0n) return 0n;
+  return lastPrice === null ? "no-trade" : (balance * lastPrice) / 10n ** 18n;
 }
 
-/** The sum of the known `values`; `partial` when some could not be priced and are left out. */
-export function portfolioTotal(values: readonly (bigint | null)[]): { total: bigint; partial: boolean } {
+/**
+ * The sum of the priced `values`, and whether any was left out for having no trade, or for a price
+ * that could not be loaded.
+ */
+export function portfolioTotal(values: readonly TokenValue[]): { total: bigint; noTrade: boolean; unavailable: boolean } {
   let total = 0n;
-  let partial = false;
+  let noTrade = false;
+  let unavailable = false;
   for (const v of values) {
-    if (v === null) partial = true;
+    if (v === "no-trade") noTrade = true;
+    else if (v === "unavailable") unavailable = true;
     else total += v;
   }
-  return { total, partial };
+  return { total, noTrade, unavailable };
 }

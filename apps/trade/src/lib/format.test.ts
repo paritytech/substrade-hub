@@ -57,20 +57,28 @@ describe("groupThousands (apostrophe separators)", () => {
 });
 
 describe("maxOrderAmount", () => {
+  const bounds = { minSize: 1_000_000n, maxSize: 10n ** 30n };
+
   it("is the whole base balance for a sell, limit or market", () => {
-    expect(maxOrderAmount(Side.Sell, "limit", 5_000_000n, 10n ** 18n)).toBe(5_000_000n);
-    expect(maxOrderAmount(Side.Sell, "market", 5_000_000n, undefined)).toBe(5_000_000n);
+    expect(maxOrderAmount(Side.Sell, "limit", 5_000_000n, 10n ** 18n, bounds)).toBe(5_000_000n);
+    expect(maxOrderAmount(Side.Sell, "market", 5_000_000n, undefined, bounds)).toBe(5_000_000n);
   });
 
   it("is the largest limit buy whose escrow fits the quote balance", () => {
     const price = 220_500_000_000_000_000_000n; // 220.5
-    const max = maxOrderAmount(Side.Buy, "limit", 1_000_000_000n, price)!;
+    const max = maxOrderAmount(Side.Buy, "limit", 1_000_000_000n, price, bounds)!;
     expect(quoteAmountCeil(max, price)).toBeLessThanOrEqual(1_000_000_000n);
     expect(quoteAmountCeil(max + 1n, price)).toBeGreaterThan(1_000_000_000n);
   });
 
+  it("is capped at the market's maximum, and absent below its minimum", () => {
+    expect(maxOrderAmount(Side.Sell, "limit", 5_000_000n, 10n ** 18n, { minSize: 1n, maxSize: 3_000_000n })).toBe(3_000_000n);
+    expect(maxOrderAmount(Side.Sell, "limit", 500_000n, 10n ** 18n, bounds)).toBeUndefined();
+  });
+
   it("is undefined for a market buy, or a limit buy without a price", () => {
-    expect(maxOrderAmount(Side.Buy, "market", 1_000_000n, undefined)).toBeUndefined();
-    expect(maxOrderAmount(Side.Buy, "limit", 1_000_000n, undefined)).toBeUndefined();
+    expect(maxOrderAmount(Side.Buy, "market", 1_000_000n, undefined, bounds)).toBeUndefined();
+    expect(maxOrderAmount(Side.Buy, "limit", 1_000_000n, undefined, bounds)).toBeUndefined();
+    expect(maxOrderAmount(Side.Buy, "limit", 1_000_000n, 0n, bounds)).toBeUndefined();
   });
 });

@@ -28,7 +28,10 @@ export function AmountInput() {
   } catch {
     // An unfinished price: no Max until it parses.
   }
-  const max = balance != null ? maxOrderAmount(side, orderType, balance, limitPrice) : undefined;
+  const max =
+    balance != null && market
+      ? maxOrderAmount(side, orderType, balance, limitPrice, { minSize: market.minOrderSize, maxSize: market.maxOrderSize })
+      : undefined;
 
   return (
     <div>

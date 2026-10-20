@@ -354,7 +354,60 @@ async function fetchTradeHistory(marketAddr: `0x${string}`): Promise<TradeEvent[
   return merged.slice(-MAX_TRADES);
 }
 
-/** The query for a market's trades over the last 30 days, oldest first, shared by the chart and Home. */
+// ---- Last price ------------------------------------------------------------------------
+
+/** Spans searched back from the head before the 30-day history is walked in `LOG_CHUNK_BLOCKS` chunks. */
+const LAST_TRADE_WINDOWS = [1_000, 10_000, 100_000];
+
+/**
+ * The price of the market's newest Trade in eth-rpc's log index within `HISTORY_BLOCKS`, or null when
+ * there is none. It searches back from the head in growing spans, so an active market costs one small
+ * `eth_getLogs`. Throws when eth-rpc cannot be reached: an unanswered window is not "no trade". Trades
+ * signed through a host are missing from that index (see the comment at the top of this file).
+ */
+export async function fetchLastTradePrice(marketAddr: `0x${string}`): Promise<bigint | null> {
+  if (isInHost() && !(await requestRemoteAccess())) {
+    throw new Error("network access to eth-rpc was not granted by the host");
+  }
+  const current = parseInt((await ethRpc("eth_blockNumber")) as string, 16);
+  const oldest = Math.max(1, current - HISTORY_BLOCKS);
+  const spans: Array<[number, number]> = [];
+  let end = current;
+  for (const size of LAST_TRADE_WINDOWS) {
+    const start = Math.max(oldest, current - size + 1);
+    if (start > end) break;
+    spans.push([start, end]);
+    end = start - 1;
+  }
+  if (end >= oldest) spans.push(...blockChunks(oldest, end, LOG_CHUNK_BLOCKS).reverse());
+
+  for (const [start, stop] of spans) {
+    const logs = await fetchTradeLogs(marketAddr, start, stop);
+    if (!logs.length) continue;
+    const newest = logs.reduce((a, b) => {
+      const [x, y] = [logOrder(a), logOrder(b)];
+      return (x[0]! - y[0]! || x[1]! - y[1]! || x[2]! - y[2]!) >= 0 ? a : b;
+    });
+    const dec = decodeEventLog({ abi: dlobAbi, data: newest.data, topics: newest.topics as [`0x${string}`] });
+    if (dec.eventName === "Trade") return (dec.args as { price: bigint }).price;
+  }
+  return null;
+}
+
+/** The query for a market's last trade price (see `fetchLastTradePrice`), for valuing holdings. */
+export function lastTradePriceQuery(marketAddr: `0x${string}` | undefined, enabled: boolean) {
+  return {
+    queryKey: ["lastTradePrice", marketAddr],
+    queryFn: () => fetchLastTradePrice(marketAddr!),
+    enabled: enabled && !!marketAddr,
+    refetchInterval: LAST_PRICE_POLL_MS,
+  };
+}
+
+/** How often a held token's last price is refreshed: holdings move with trades, not every block. */
+const LAST_PRICE_POLL_MS = 30_000;
+
+/** The query for a market's trades over the last 30 days, oldest first. */
 export function tradeHistoryQuery(marketAddr: `0x${string}` | undefined) {
   return {
     queryKey: ["tradeHistory", marketAddr],
