@@ -9,6 +9,12 @@ import { Spinner } from "./ui/Spinner";
 import { FundingNotice } from "./wallet/FundingNotice";
 import { useFunding } from "../hooks/use-funding";
 import type { MarketInfo } from "../types/market";
+import { useQueries } from "@tanstack/react-query";
+import { tokenBalanceQuery } from "../hooks/use-token-balance";
+import { tradeHistoryQuery } from "../hooks/use-trade-history";
+import type { TradeEvent } from "../types/trade";
+import { portfolioTokens, portfolioTotal, valueAt, type PortfolioToken } from "../lib/markets";
+import { Amount } from "./ui/Amount";
 
 function formatCooldown(secs: number): string {
   const h = Math.floor(secs / 3600);
@@ -113,6 +119,121 @@ function MarketsCard() {
   );
 }
 
+/** One token's wallet balance and its value in the quote token, with a link to its market. */
+function PortfolioRow({
+  entry,
+  balance,
+  value,
+  onTrade,
+}: {
+  entry: PortfolioToken;
+  balance: bigint | undefined;
+  value: bigint | null | undefined;
+  onTrade: (m: MarketInfo) => void;
+}) {
+  const { market } = entry;
+  const quote = activeChain.knownQuote;
+  return (
+    <li className="grid grid-cols-[1fr_auto_auto_2.5rem] items-center gap-4 rounded-lg border border-border px-4 py-3 text-sm">
+      <span className="font-medium text-text-primary">{entry.token.symbol}</span>
+      <span className="text-right text-text-primary">
+        {balance !== undefined ? <Amount value={balance} decimals={entry.token.decimals} /> : "—"}
+      </span>
+      <span className="min-w-20 text-right text-text-secondary">
+        {value === undefined ? "—" : value === null ? "N/A" : <Amount value={value} decimals={quote.decimals} />}
+      </span>
+      {market ? (
+        <button onClick={() => onTrade(market)} className="text-right text-xs text-brand">
+          Trade
+        </button>
+      ) : (
+        <span />
+      )}
+    </li>
+  );
+}
+
+/**
+ * The connected account's wallet balance of every token in the listed markets, each valued in the
+ * quote token at its market's last trade, with an estimated total.
+ */
+function PortfolioCard() {
+  const h160 = useWalletStore((s) => s.h160);
+  const { data: markets } = useMarkets();
+  const selectMarket = useMarketStore((s) => s.selectMarket);
+  const setView = useViewStore((s) => s.setView);
+  const openMarket = (m: MarketInfo) => {
+    selectMarket(m);
+    setView("trade");
+  };
+
+  const quote = activeChain.knownQuote;
+  const entries = portfolioTokens(quote, markets ?? []);
+  // Shared with the trade form and the chart, so either view finds these cached.
+  const balances = useQueries({ queries: entries.map((e) => tokenBalanceQuery(e.token.addr, h160 ?? undefined)) });
+  const histories = useQueries({ queries: entries.map((e) => tradeHistoryQuery(e.market?.address)) });
+
+  const values = entries.map((e, i) => {
+    const balance = balances[i]!.data as bigint | undefined;
+    if (balance === undefined) return undefined;
+    if (!e.market) return balance;
+    const trades = histories[i]!.data as TradeEvent[] | undefined;
+    if (trades === undefined) return undefined;
+    return valueAt(balance, trades.at(-1)?.price ?? null);
+  });
+  const loaded = values.every((v) => v !== undefined);
+  const { total, partial } = portfolioTotal(values.filter((v) => v !== undefined));
+
+  return (
+    <div className="rounded-xl border border-border bg-surface-raised p-5 sm:col-span-2">
+      <h3 className="text-sm font-semibold text-text-primary">Portfolio</h3>
+      {!h160 ? (
+        <p className="mt-1 text-sm text-text-muted">Connect a wallet to see your balances.</p>
+      ) : (
+        <>
+          <div className="mt-3 grid grid-cols-[1fr_auto_auto_2.5rem] gap-4 px-4 text-xs text-text-muted">
+            <span>Token</span>
+            <span className="text-right">In wallet</span>
+            <span className="min-w-20 text-right">Value ({quote.symbol})</span>
+            <span />
+          </div>
+          <ul className="mt-2 space-y-2">
+            {entries.map((entry, i) => (
+              <PortfolioRow
+                key={entry.token.addr}
+                entry={entry}
+                balance={balances[i]!.data as bigint | undefined}
+                value={values[i]}
+                onTrade={openMarket}
+              />
+            ))}
+          </ul>
+          <div className="mt-3 flex items-center justify-between px-4 text-sm">
+            <span className="font-medium text-text-primary">Total value (est.)</span>
+            <span className="font-semibold text-text-primary">
+              {loaded ? (
+                <>
+                  <Amount value={total} decimals={quote.decimals} /> {quote.symbol}
+                </>
+              ) : (
+                "—"
+              )}
+            </span>
+          </div>
+          <p className="mt-3 text-xs text-text-muted">
+            Each token is valued at its market's last trade.
+            {partial && " N/A: no trade in the last 30 days, so it is left out of the total."}
+          </p>
+          <p className="mt-1 text-xs text-text-muted">
+            Tokens in your resting orders are held by the market until they fill or you cancel, so they are not
+            counted here.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Home() {
   return (
     <div className="flex-1 overflow-auto">
@@ -137,6 +258,7 @@ export function Home() {
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           <FaucetCard />
           <MarketsCard />
+          <PortfolioCard />
         </div>
       </div>
     </div>

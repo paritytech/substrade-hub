@@ -354,13 +354,18 @@ async function fetchTradeHistory(marketAddr: `0x${string}`): Promise<TradeEvent[
   return merged.slice(-MAX_TRADES);
 }
 
+/** The query for a market's trades over the last 30 days, oldest first, shared by the chart and Home. */
+export function tradeHistoryQuery(marketAddr: `0x${string}` | undefined) {
+  return {
+    queryKey: ["tradeHistory", marketAddr],
+    queryFn: () => fetchTradeHistory(marketAddr!),
+    enabled: !!marketAddr,
+    refetchInterval: POLL_INTERVAL_MS * 2,
+  };
+}
+
 /** The selected market's trades over the last 30 days, oldest first. Ranges filter it client-side. */
 export function useTradeHistory() {
   const market = useMarketStore((s) => s.selectedMarket);
-  return useQuery({
-    queryKey: ["tradeHistory", market?.address],
-    queryFn: () => fetchTradeHistory(market!.address),
-    enabled: !!market,
-    refetchInterval: POLL_INTERVAL_MS * 2,
-  });
+  return useQuery(tradeHistoryQuery(market?.address));
 }

@@ -62,7 +62,7 @@ export function Header() {
         )}
       </div>
       {/* Wallet-style balance next to the wallet button, in the normal flow so it never overlaps it.
-          Hidden on small screens, where the trade form's "Available" shows it. */}
+          Hidden on small screens, where the amount field shows the balance an order spends. */}
       <div className="flex items-center gap-2">
         <div className="hidden md:block">
           <HeaderBalance />

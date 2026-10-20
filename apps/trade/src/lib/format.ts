@@ -11,6 +11,23 @@ export function marketApproveAmount(side: Side, amount: bigint, limitPrice: bigi
 }
 
 /**
+ * The largest base amount an order can use, from the balance of the token it spends: a sell spends its
+ * base balance; a limit buy escrows `amount × price` quote, rounded up, so the largest amount whose
+ * escrow fits the quote balance. Undefined for a market buy (its cost depends on the amount through the
+ * price limit) and for a limit buy without a price.
+ */
+export function maxOrderAmount(
+  side: Side,
+  orderType: "limit" | "market",
+  balance: bigint,
+  price: bigint | undefined,
+): bigint | undefined {
+  if (side === Side.Sell) return balance;
+  if (orderType === "market" || !price) return undefined;
+  return (balance * WAD) / price;
+}
+
+/**
  * Whether a MARKET order can fill against the book. A market order matches the opposite side (a buy
  * takes asks, a sell takes bids); if that side is empty the contract fills nothing (no revert) yet
  * still costs gas, so callers should block the order. `bestBid`/`bestAsk` are 0n when that side is
