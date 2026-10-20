@@ -106,7 +106,7 @@ cannot fill the whole amount within 10% of the best price.
 ### "This order crosses more resting orders than one transaction can fill"
 
 One transaction fills a bounded number of resting orders (6, fewer when settlement is cross-chain; see
-[KNOWN_ISSUES.md](../../../KNOWN_ISSUES.md#9-one-transaction-fits-about-7-fills)). For an order that
+[KNOWN_ISSUES.md](../../../KNOWN_ISSUES.md#8-one-transaction-fits-about-7-fills)). For an order that
 crosses more, limit or market, the app says how many transactions it needs and, once you agree, places
 it in parts, one signature each. Each part is sized to what a simulation says it fills, and every part
 carries your price (the limit price, or the market order's price limit): orders arriving in between

@@ -7,10 +7,6 @@ the factory that created them (`factory.admin()`), so it governs every market at
 what that account can do, what a compromised key could do with it, and how custody should be handled
 before a production deployment.
 
-It describes the current contracts, which previewnet runs. paseo-v2's factory and markets predate the
-two-step transfer, the fee bounds and the halt flag (#105, #106), and keep the previous behaviour until
-its next contract deployment: a one-step `transferAdmin`, no bounds, no `setHalted`.
-
 ## What the admin can do
 
 | Power | Where | What it does | What a compromised key could do |
