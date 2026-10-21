@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { expiryLabel, isExpired, isOpenOrder, orderExpiry } from "./orders";
+import { expiryLabel, isExpired, isOpenOrder, orderExpiry, postOnlyCrosses } from "./orders";
+import { Side } from "../types/market";
 
 const OWNER = "0x2d7e83b2c28b2d72f34f2c87865fa8571030d9db";
 const H160 = "0xbbfa164356c66a791c4c5e2596fe5486594c6c68";
@@ -69,5 +70,24 @@ describe("order expiry", () => {
     expect(expiryLabel(sec + 3_600n + 59n * 60n, now)).toBe("in 1h 59m");
     expect(expiryLabel(sec + 59n * 60n + 30n, now)).toBe("in 59m");
     expect(expiryLabel(sec + 20n, now)).toBe("in 1m");
+  });
+});
+
+describe("postOnlyCrosses", () => {
+  const best = { bestBid: 99n, bestAsk: 101n };
+
+  it("rejects a buy at or above the best ask", () => {
+    expect(postOnlyCrosses(Side.Buy, 101n, best)).toBe(true);
+    expect(postOnlyCrosses(Side.Buy, 100n, best)).toBe(false);
+  });
+
+  it("rejects a sell at or below the best bid", () => {
+    expect(postOnlyCrosses(Side.Sell, 99n, best)).toBe(true);
+    expect(postOnlyCrosses(Side.Sell, 100n, best)).toBe(false);
+  });
+
+  it("accepts any price against an empty side", () => {
+    expect(postOnlyCrosses(Side.Buy, 1_000n, { bestBid: 99n, bestAsk: 0n })).toBe(false);
+    expect(postOnlyCrosses(Side.Sell, 1n, { bestBid: 0n, bestAsk: 101n })).toBe(false);
   });
 });

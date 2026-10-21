@@ -580,6 +580,11 @@ export const dlobAbi = [
         "name": "expireTimestamp",
         "type": "uint64",
         "internalType": "uint64"
+      },
+      {
+        "name": "postOnly",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "outputs": [
@@ -1250,6 +1255,11 @@ export const dlobAbi = [
   },
   {
     "type": "error",
+    "name": "PostOnlyWouldCross",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "ReduceOnly",
     "inputs": []
   },
@@ -1273,11 +1283,6 @@ export const dlobAbi = [
         "internalType": "address"
       }
     ]
-  },
-  {
-    "type": "error",
-    "name": "SelfTrade",
-    "inputs": []
   },
   {
     "type": "error",

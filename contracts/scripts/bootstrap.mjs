@@ -692,7 +692,7 @@ async function main() {
       await write(role, state.assets[m.key], ERC20_ABI, "approve", [market, base]);
     }
     for (const o of orders.slice(progressOf(key))) {
-      await write(role, market, dlobAbi(), "placeLimitOrder", [o.side, priceToRaw(o.price), BigInt(o.amount) * UNIT, `0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`, 0, 0n]);
+      await write(role, market, dlobAbi(), "placeLimitOrder", [o.side, priceToRaw(o.price), BigInt(o.amount) * UNIT, `0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`, 0, 0n, false]);
       advance(key);
       console.log(`  ${label}: ${o.side === 0 ? "bid" : "ask"} ${o.amount} @ ${o.price.toFixed(2)}`);
     }
@@ -727,7 +727,7 @@ async function main() {
         state.done[fundedKey] = true;
         save();
         for (const s of plan.slice(progressOf(doneKey))) {
-          await write(roleOf(s), state.markets[m.key], dlobAbi(), "placeLimitOrder", [s.side, priceToRaw(s.price), BigInt(s.amount) * UNIT, `0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`, 0, 0n]);
+          await write(roleOf(s), state.markets[m.key], dlobAbi(), "placeLimitOrder", [s.side, priceToRaw(s.price), BigInt(s.amount) * UNIT, `0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`, 0, 0n, false]);
           advance(doneKey);
           console.log(`  ${m.key} ${s.type}: ${s.side === 0 ? "buy" : "sell"} ${s.amount} @ ${s.price.toFixed(2)}`);
           if (s.type === "trade") await sleep(TRADE_SPACING_MS);

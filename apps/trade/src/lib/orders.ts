@@ -1,4 +1,5 @@
 import { ORDER_LIFETIME_S } from "../config/constants";
+import { Side } from "../types/market";
 
 /**
  * Whether an order should appear in "Open Orders": a genuinely resting limit order, Active, not fully
@@ -23,6 +24,16 @@ export function isOpenOrder(
     order.owner.toLowerCase() === account.h160.toLowerCase() &&
     order.originAccount.toLowerCase() === account.originAccount.toLowerCase()
   );
+}
+
+/**
+ * Whether a post-only limit order at `price` would be rejected: its price reaches the best price on
+ * the other side (a buy at or above the best ask, a sell at or below the best bid), as the contract
+ * checks it. A best price of 0 means that side is empty.
+ */
+export function postOnlyCrosses(side: Side, price: bigint, best: { bestBid: bigint; bestAsk: bigint }): boolean {
+  if (side === Side.Buy) return best.bestAsk !== 0n && price >= best.bestAsk;
+  return best.bestBid !== 0n && price <= best.bestBid;
 }
 
 /** The `expireTimestamp` (unix seconds) of a limit order sent at `nowMs`: `ORDER_LIFETIME_S` later. */

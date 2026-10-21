@@ -70,7 +70,7 @@ async function main() {
     callData: encodeFunctionData({
       abi: dlobAbi,
       functionName: "placeLimitOrder",
-      args: [Side.Sell, PRICE, AMOUNT, originAccount, ZERO32, 0, 0n],
+      args: [Side.Sell, PRICE, AMOUNT, originAccount, ZERO32, 0, 0n, false],
     }),
   });
   console.log("placed, txHash:", res.txHash);

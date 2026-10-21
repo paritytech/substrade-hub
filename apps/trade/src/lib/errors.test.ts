@@ -16,9 +16,9 @@ function reverted(hex: string) {
 const dlobError = (name: string) => encodeErrorResult({ abi: dlobAbi, errorName: name as never });
 
 describe("extractRevertReason", () => {
-  it("decodes a DLOB custom-error selector to a friendly message (SelfTrade)", () => {
-    expect(dlobError("SelfTrade")).toBe("0xd68a1e65"); // keccak256("SelfTrade()")[0:4], as on chain
-    expect(extractRevertReason(reverted(dlobError("SelfTrade")))).toMatch(/own resting order/);
+  it("decodes a DLOB custom-error selector to a friendly message (PostOnlyWouldCross)", () => {
+    expect(dlobError("PostOnlyWouldCross")).toBe("0x7cf05fcb"); // keccak256("PostOnlyWouldCross()")[0:4], as on chain
+    expect(extractRevertReason(reverted(dlobError("PostOnlyWouldCross")))).toMatch(/post-only order/);
   });
 
   it("decodes NoLiquidity and NotTickAligned to friendly messages", () => {
@@ -27,7 +27,7 @@ describe("extractRevertReason", () => {
   });
 
   it("decodes a selector even when the caller passes an unrelated ABI (uses the shared error set)", () => {
-    expect(extractRevertReason(reverted(dlobError("SelfTrade")), erc20Abi)).toMatch(/own resting order/);
+    expect(extractRevertReason(reverted(dlobError("PostOnlyWouldCross")), erc20Abi)).toMatch(/post-only order/);
   });
 
   it("returns the string for a standard Error(string) revert", () => {
@@ -65,9 +65,9 @@ describe("revertError", () => {
     encodeErrorResult({ abi: erc20Abi, errorName: name as never, args: args as never });
 
   it("gives a recognised contract error its friendly text", () => {
-    const err = revertError(reverted(dlobError("SelfTrade")));
+    const err = revertError(reverted(dlobError("PostOnlyWouldCross")));
     expect(err).toBeInstanceOf(UserFacingError);
-    expect(err.message).toMatch(/own resting order/);
+    expect(err.message).toMatch(/post-only order/);
   });
 
   it("names a missing or too-low token approval, and too little token balance", () => {
@@ -88,7 +88,7 @@ describe("revertError", () => {
     const err = revertError(reverted("0x"));
     expect(err.message).toBe("The contract rejected this transaction");
     expect(isEmptyRevert(err)).toBe(true);
-    expect(isEmptyRevert(revertError(reverted(dlobError("SelfTrade"))))).toBe(false);
+    expect(isEmptyRevert(revertError(reverted(dlobError("PostOnlyWouldCross"))))).toBe(false);
   });
 
   it("shows no selector, error name or arguments for a revert it has no text for", () => {

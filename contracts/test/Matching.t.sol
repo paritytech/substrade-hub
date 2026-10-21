@@ -78,9 +78,9 @@ contract MatchingTest is Test {
 
     function testMarketBuyStopsAtLimitPrice() public {
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(charlie); // an ask at an extreme price behind the normal level
-        dlob.placeLimitOrder(DLOB.Side.Sell, 1000e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 1000e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceQuote = quoteToken.balanceOf(alice);
         vm.prank(alice);
@@ -96,9 +96,9 @@ contract MatchingTest is Test {
 
     function testMarketSellStopsAtLimitPrice() public {
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(charlie); // a bid at the minimum tick behind the normal level
-        dlob.placeLimitOrder(DLOB.Side.Buy, TICK_SIZE, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, TICK_SIZE, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceBase = baseToken.balanceOf(alice);
         vm.prank(alice);
@@ -114,7 +114,7 @@ contract MatchingTest is Test {
 
     function testMarketOrderFillsAtExactlyTheLimitPrice() public {
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(alice);
         uint128 filled =
@@ -124,9 +124,9 @@ contract MatchingTest is Test {
 
     function testMarketOrderLimitAppliesBeforeMinAmountOut() public {
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(charlie);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 1000e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 1000e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // The limit stops the fill at 10e6, below the 50e6 minimum, so the order reverts.
         vm.prank(alice);
@@ -138,22 +138,22 @@ contract MatchingTest is Test {
         // Bob places sell orders at different prices
         // Sell 100e6 base at 50e15
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Sell 100e6 base at 55e15
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 55e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 55e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Sell 100e6 base at 60e15
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceBaseBalanceBefore = baseToken.balanceOf(alice);
         uint256 aliceQuoteBalanceBefore = quoteToken.balanceOf(alice);
 
         // Alice places buy order at 65e15 for 250e6 (should fill all three levels)
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 65e15, 250e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 65e15, 250e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceBaseBalanceAfter = baseToken.balanceOf(alice);
         uint256 aliceQuoteBalanceAfter = quoteToken.balanceOf(alice);
@@ -180,13 +180,13 @@ contract MatchingTest is Test {
     function testBuyMatchesAtAskPrice() public {
         // Bob places sell at 50e15 for 100e6 base
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 bobQuoteBalanceBefore = quoteToken.balanceOf(bob);
 
         // Alice places buy at 60e15 for 100e6 base (should execute at Bob's 50e15)
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 bobQuoteBalanceAfter = quoteToken.balanceOf(bob);
 
@@ -203,10 +203,10 @@ contract MatchingTest is Test {
     function testMarketOrderFull() public {
         // Bob places sell orders
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 55e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 55e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceBaseBalanceBefore = baseToken.balanceOf(alice);
 
@@ -257,12 +257,12 @@ contract MatchingTest is Test {
         // Bob places sell at 50e15 for 100e6
         vm.prank(bob);
         (uint32 bobOrderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Charlie places sell at 45e15 for 50e6 (better price, should match first)
         vm.prank(charlie);
         (uint32 charlieOrderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 45e15, 50e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 45e15, 50e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceBaseBalanceBefore = baseToken.balanceOf(alice);
         uint256 charlieQuoteBalanceBefore = quoteToken.balanceOf(charlie);
@@ -270,7 +270,7 @@ contract MatchingTest is Test {
 
         // Alice places buy at 50e15 for 120e6 (should match Charlie's 50e6 at 45e15, then Bob's 70e6 at 50e15)
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 120e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 120e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceBaseBalanceAfter = baseToken.balanceOf(alice);
         uint256 charlieQuoteBalanceAfter = quoteToken.balanceOf(charlie);
@@ -317,7 +317,7 @@ contract MatchingTest is Test {
             quoteToken.approve(address(dlob), type(uint256).max);
 
             // Each seller places sell order for 10e6 base at 50e15
-            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
             vm.stopPrank();
         }
 
@@ -326,7 +326,7 @@ contract MatchingTest is Test {
         // Alice places buy order for 600e6 base, more than all the sellers offer
         // Should only fill LOCAL_FILLS_PER_TX orders
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceBaseBalanceAfter = baseToken.balanceOf(alice);
 
@@ -345,7 +345,7 @@ contract MatchingTest is Test {
             baseToken.mint(seller, 1000e18);
             vm.startPrank(seller);
             baseToken.approve(address(dlob), type(uint256).max);
-            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
             vm.stopPrank();
         }
     }
@@ -359,7 +359,7 @@ contract MatchingTest is Test {
         uint256 baseBefore = baseToken.balanceOf(alice);
         vm.prank(alice);
         (uint32 aliceOrderId, uint128 returned) =
-            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint128 filled = uint128(LOCAL_FILLS_PER_TX) * 10e6;
         DLOB.Order memory o = dlob.getOrder(aliceOrderId);
@@ -385,14 +385,14 @@ contract MatchingTest is Test {
             quoteToken.mint(buyer, 1000e18);
             vm.startPrank(buyer);
             quoteToken.approve(address(dlob), type(uint256).max);
-            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
             vm.stopPrank();
         }
 
         uint256 baseBefore = baseToken.balanceOf(alice);
         vm.prank(alice);
         (uint32 aliceOrderId, uint128 returned) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0, false);
 
         assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 0, "Nothing rests");
         assertEq(
@@ -419,7 +419,14 @@ contract MatchingTest is Test {
             vm.startPrank(seller);
             baseToken.approve(address(dlob), type(uint256).max);
             dlob.placeLimitOrder(
-                DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, uint64(block.timestamp + 1)
+                DLOB.Side.Sell,
+                50e15,
+                10e6,
+                bytes32(0),
+                bytes32(0),
+                0,
+                uint64(block.timestamp + 1),
+                false
             );
             vm.stopPrank();
         }
@@ -428,7 +435,7 @@ contract MatchingTest is Test {
         uint256 quoteBefore = quoteToken.balanceOf(alice);
         vm.prank(alice);
         (uint32 aliceOrderId, uint128 returned) =
-            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 600e6, bytes32(0), bytes32(0), 0, 0, false);
 
         assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 0, "Nothing rests");
         assertEq(returned, 600e6, "All of it is reported as returned");
@@ -442,26 +449,26 @@ contract MatchingTest is Test {
         _sellersBeyondBudget();
         vm.prank(alice);
         (uint32 aliceOrderId, uint128 returned) =
-            dlob.placeLimitOrder(DLOB.Side.Buy, 49e15, 600e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Buy, 49e15, 600e6, bytes32(0), bytes32(0), 0, 0, false);
         assertEq(dlob.getOrder(aliceOrderId).remainingAmount, 600e6, "The order rests in full");
         assertEq(returned, 0, "Nothing is returned");
     }
 
-    /// @notice Test that same owner with different originAccount can trade (self-trade allowed)
+    /// @notice Test that same owner with different originAccount can trade (no self-trade)
     function testSelfTradeAllowedDiffOrigin() public {
         bytes32 originAccount1 = bytes32(uint256(1));
         bytes32 originAccount2 = bytes32(uint256(2));
 
         // Alice places sell with originAccount1
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, originAccount1, bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, originAccount1, bytes32(0), 0, 0, false);
 
         uint256 aliceBaseBalanceBefore = baseToken.balanceOf(alice);
         uint256 aliceQuoteBalanceBefore = quoteToken.balanceOf(alice);
 
         // Alice places buy with originAccount2 (different origin, should be allowed to match)
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, originAccount2, bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, originAccount2, bytes32(0), 0, 0, false);
 
         uint256 aliceBaseBalanceAfter = baseToken.balanceOf(alice);
         uint256 aliceQuoteBalanceAfter = quoteToken.balanceOf(alice);
@@ -481,14 +488,14 @@ contract MatchingTest is Test {
     function testBuyerRefundExcessQuote() public {
         // Bob places sell at 50e15 for 100e6
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceQuoteBalanceBefore = quoteToken.balanceOf(alice);
         uint256 bobQuoteBalanceBefore = quoteToken.balanceOf(bob);
 
         // Alice places buy at 60e15 for 100e6 (should match at Bob's 50e15)
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceQuoteBalanceAfter = quoteToken.balanceOf(alice);
         uint256 bobQuoteBalanceAfter = quoteToken.balanceOf(bob);
@@ -515,13 +522,13 @@ contract MatchingTest is Test {
     function testBuyerRefundPartialFill() public {
         // Bob places sell at 50e15 for 60e6
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 60e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 60e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceQuoteBalanceBefore = quoteToken.balanceOf(alice);
 
         // Alice places buy at 60e15 for 100e6 — fills 60e6 at 50e15, rests 40e6 at 60e15
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceQuoteBalanceAfter = quoteToken.balanceOf(alice);
 
@@ -546,15 +553,15 @@ contract MatchingTest is Test {
     function testBuyerRefundMultiLevel() public {
         // Bob places sells at two price levels
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 45e15, 50e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 45e15, 50e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 50e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 50e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceQuoteBalanceBefore = quoteToken.balanceOf(alice);
 
         // Alice places buy at 60e15 for 100e6 — fills at 45e15 and 50e15
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 aliceQuoteBalanceAfter = quoteToken.balanceOf(alice);
 
@@ -575,7 +582,7 @@ contract MatchingTest is Test {
     function testMarketBuyRevertsWithoutApproval() public {
         // Bob places a sell order
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Create a fresh user with base tokens but NO quote approval
         address dave = address(0xDA7E);
@@ -591,7 +598,7 @@ contract MatchingTest is Test {
     function testMarketBuySucceedsWithApproval() public {
         // Bob places a sell order at 50e15
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Dave approves and buys
         address dave = address(0xDA7E);
@@ -621,7 +628,7 @@ contract MatchingTest is Test {
     function testMarketBuyInsufficientBalanceNoDust() public {
         // Bob places large sell order
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 1_000e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 1_000e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Dave has approval but almost no quote tokens
         address dave = address(0xDA7E);
@@ -645,7 +652,7 @@ contract MatchingTest is Test {
     function testMarketOrderSlippageRevert() public {
         // Bob places sell at 50e15 for 100e6
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Alice places market buy for 100e6 with minAmountOut = 150e6 (impossible)
         vm.prank(alice);

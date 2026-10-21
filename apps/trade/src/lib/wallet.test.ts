@@ -78,12 +78,12 @@ describe("sendTransaction errors", () => {
   });
 
   it("decodes a revert found while estimating gas, before asking the wallet", async () => {
-    stubRpc({ error: { message: "execution reverted", data: "0xd68a1e65" } }); // SelfTrade()
+    stubRpc({ error: { message: "execution reverted", data: "0x7cf05fcb" } }); // PostOnlyWouldCross()
     const request = vi.fn(async () => ({ hash: "0xaaa" }));
     vi.stubGlobal("window", { ethereum: { request } });
     const err = await sendTransaction(params).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UserFacingError);
-    expect((err as Error).message).toMatch(/own resting order/);
+    expect((err as Error).message).toMatch(/post-only order/);
     expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: "eth_sendTransaction" }));
   });
 });

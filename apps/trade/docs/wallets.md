@@ -85,13 +85,13 @@ The contract rejected the order before any transfer. The common causes:
 ### "Transaction failed: Module (Revive.ContractReverted)" on a market order
 
 The order passed the pre-flight simulation but the contract reverted at execution. This is a
-**market-order race**: the order book moved (another trade filled the level you were going to match, or
-it became your own resting order) between the preview and when your transaction actually ran. It is not
+**market-order race**: the order book moved (another trade filled the level you were going to match)
+between the preview and when your transaction actually ran. It is not
 a signing problem, and it affects the EVM path identically.
 
 - Retry — the book may have settled.
 - Prefer a **limit order that rests** (a sell priced above the best bid, a buy priced below the best
-  ask). A resting order does not match against the other side, so it has no race and no self-trade risk.
+  ask). A resting order does not match against the other side, so it has no race.
 
 ### A market order filled only part of its amount
 
@@ -156,10 +156,20 @@ channel drops, a banner under the header says so, and orders, cancels and claims
 connection to the host is lost. Try again once it is back." instead of waiting at a signature that
 cannot come. The banner goes away when the channel is back.
 
-### "Cannot trade against your own resting order"
+### "This post-only order would trade against the book, so it was not placed"
 
-Self-trade prevention: your incoming order would match an order you already have resting on the book.
-Cancel the resting order first, or use a different account.
+A limit order with **Post only** on only rests on the book; it never trades when it arrives. The
+contract rejects it with `PostOnlyWouldCross` when its price reaches the best price on the other side:
+a buy at or above the best ask, a sell at or below the best bid. The form says so before signing, from
+the best prices it last read, and disables the button; the contract checks the book as it is when the
+transaction runs. An expired order at the best price that nobody has removed yet still counts. Price
+the order away from the other side, or turn Post only off.
+
+### One of your resting orders disappeared after you placed an order on the other side
+
+Self-trade prevention: an order that reaches one of your own resting orders cancels that resting order
+and returns its escrow to you, then keeps matching against other traders' orders. Nothing trades between
+your two orders. Open Orders drops the cancelled one, and your balance shows the escrow back.
 
 ### An order shows "Expired" in Open Orders
 

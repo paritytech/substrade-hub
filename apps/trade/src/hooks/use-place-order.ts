@@ -28,6 +28,8 @@ interface PlaceOrderParams {
   limitPrice?: bigint;
   /** Market orders: fill the whole amount in one transaction, or nothing. */
   allOrNothing?: boolean;
+  /** Limit orders: rest only; the contract rejects the order if it would trade on arrival. */
+  postOnly?: boolean;
 }
 
 /** What placing an order came to: `placed` is false when the user declined before anything was sent. */
@@ -81,7 +83,7 @@ export function usePlaceOrder() {
           const escrow = (size: bigint) => (params.side === Side.Buy ? quoteAmountCeil(size, price) : size);
           // Each part expires ORDER_LIFETIME_S after it is sent.
           const args = (size: bigint) =>
-            [params.side, price, size, originAccount, ZERO_BYTES32, 0, orderExpiry()] as const;
+            [params.side, price, size, originAccount, ZERO_BYTES32, 0, orderExpiry(), !!params.postOnly] as const;
           placing = `placing ${side} order`;
           // One transaction fills only so many resting orders: when this order crosses more, the
           // contract returns what is left (resting it would cross the book), and the simulation says how

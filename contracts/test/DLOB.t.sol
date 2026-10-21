@@ -84,7 +84,8 @@ contract DLOBTest is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0
+            0,
+            false
         );
 
         assertEq(orderId, 1);
@@ -103,7 +104,7 @@ contract DLOBTest is Test {
     function testPlaceSellLimitOrder() public {
         vm.prank(bob);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 200e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 200e6, bytes32(0), bytes32(0), 0, 0, false);
 
         assertEq(orderId, 1);
         DLOB.Order memory o = dlob.getOrder(orderId);
@@ -126,7 +127,8 @@ contract DLOBTest is Test {
             bytes32(uint256(1)), // originAccount
             settlement,
             1000, // destParaId
-            0
+            0,
+            false
         );
 
         assertEq(dlob.getOrderFeeReserve(orderId), 1e9);
@@ -143,20 +145,25 @@ contract DLOBTest is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0
+            0,
+            false
         );
     }
 
     function testRevertMinSize() public {
         vm.prank(alice);
         vm.expectRevert(DLOB.BelowMinSize.selector);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, MIN_ORDER_SIZE - 1, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(
+            DLOB.Side.Buy, 50e15, MIN_ORDER_SIZE - 1, bytes32(0), bytes32(0), 0, 0, false
+        );
     }
 
     function testRevertMaxSize() public {
         vm.prank(alice);
         vm.expectRevert(DLOB.AboveMaxSize.selector);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, MAX_ORDER_SIZE + 1, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(
+            DLOB.Side.Buy, 50e15, MAX_ORDER_SIZE + 1, bytes32(0), bytes32(0), 0, 0, false
+        );
     }
 
     function testRevertSettlementAccountMismatch() public {
@@ -169,7 +176,8 @@ contract DLOBTest is Test {
             bytes32(0),
             bytes32(uint256(1)), // non-zero settlement with destParaId=0
             0,
-            0
+            0,
+            false
         );
     }
 
@@ -183,7 +191,8 @@ contract DLOBTest is Test {
             bytes32(uint256(1)),
             bytes32(0), // zero settlement with destParaId>0
             1000,
-            0
+            0,
+            false
         );
     }
 
@@ -191,14 +200,23 @@ contract DLOBTest is Test {
         vm.prank(alice);
         vm.expectRevert(DLOB.InsufficientFeeReserve.selector);
         dlob.placeLimitOrder{value: 0}(
-            DLOB.Side.Buy, 50e15, 100e6, bytes32(uint256(1)), bytes32(uint256(0xDEAD)), 1000, 0
+            DLOB.Side.Buy,
+            50e15,
+            100e6,
+            bytes32(uint256(1)),
+            bytes32(uint256(0xDEAD)),
+            1000,
+            0,
+            false
         );
     }
 
     function testRevertLocalOrderWithValue() public {
         vm.prank(alice);
         vm.expectRevert(DLOB.LocalOrderWithValue.selector);
-        dlob.placeLimitOrder{value: 1}(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder{value: 1}(
+            DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false
+        );
     }
 
     function testRevertAlreadyExpired() public {
@@ -212,15 +230,17 @@ contract DLOBTest is Test {
             bytes32(0),
             bytes32(0),
             0,
-            500 // already expired
+            500, // already expired
+            false
         );
     }
 
     function testPlaceWithExpiry() public {
         vm.warp(1000);
         vm.prank(alice);
-        (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 2000);
+        (uint32 orderId,) = dlob.placeLimitOrder(
+            DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 2000, false
+        );
 
         DLOB.Order memory o = dlob.getOrder(orderId);
         assertEq(o.expireTimestamp, 2000);
@@ -231,16 +251,16 @@ contract DLOBTest is Test {
     function testHaltRefusesNewOrdersAndKeepsExitsOpen() public {
         vm.prank(alice);
         (uint32 resting,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(alice);
         (uint32 reduced,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 61e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 61e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         factory.setHalted(true);
 
         vm.prank(bob);
         vm.expectRevert(DLOB.Halted.selector);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(bob);
         vm.expectRevert(DLOB.Halted.selector);
         dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
@@ -256,13 +276,13 @@ contract DLOBTest is Test {
         // Resuming lets orders in again.
         factory.setHalted(false);
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
     }
 
     function testCancelOwnOrder() public {
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 balBefore = baseToken.balanceOf(alice);
         vm.prank(alice);
@@ -277,7 +297,7 @@ contract DLOBTest is Test {
     function testRevertCancelOthersOrder() public {
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(bob);
         vm.expectRevert(DLOB.NotOrderOwner.selector);
@@ -287,7 +307,7 @@ contract DLOBTest is Test {
     function testRevertCancelAlreadyCancelled() public {
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(alice);
         dlob.cancelOrder(orderId, bytes32(0));
@@ -300,9 +320,9 @@ contract DLOBTest is Test {
     function testBatchCancel() public {
         vm.startPrank(alice);
         (uint32 id1,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         (uint32 id2,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 70e15, 200e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 70e15, 200e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.stopPrank();
 
         uint32[] memory ids = new uint32[](2);
@@ -345,7 +365,7 @@ contract DLOBTest is Test {
     function testUnfilledMarketSellCannotBeCancelled() public {
         // A resting ask puts base escrow in the market.
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint32 orderId = dlob.nextOrderId();
         uint256 aliceBase = baseToken.balanceOf(alice);
@@ -359,9 +379,9 @@ contract DLOBTest is Test {
 
     function testPartlyFilledMarketSellCannotBeCancelled() public {
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 40e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 40e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(charlie);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint32 orderId = dlob.nextOrderId();
         uint256 aliceBase = baseToken.balanceOf(alice);
@@ -377,9 +397,9 @@ contract DLOBTest is Test {
 
     function testFilledMarketSellCannotBeCancelled() public {
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(charlie);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint32 orderId = dlob.nextOrderId();
         vm.prank(alice);
@@ -391,9 +411,9 @@ contract DLOBTest is Test {
 
     function testMarketBuyCannotBeCancelled() public {
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 50e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 50e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(charlie);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint32 orderId = dlob.nextOrderId();
         vm.prank(alice);
@@ -405,7 +425,7 @@ contract DLOBTest is Test {
     function testRestingOrderStillCancellableAfterMarketOrders() public {
         vm.prank(bob);
         (uint32 restingId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 300e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(alice);
         dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, type(uint96).max, 0, bytes32(0), bytes32(0), 0);
 
@@ -421,7 +441,7 @@ contract DLOBTest is Test {
     function testReduceLocalOrder() public {
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint256 balBefore = baseToken.balanceOf(alice);
         vm.prank(alice);
@@ -438,7 +458,7 @@ contract DLOBTest is Test {
         uint256 aliceQuote = quoteToken.balanceOf(alice);
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 2e6 + 2, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 2e6 + 2, bytes32(0), bytes32(0), 0, 0, false);
         assertEq(aliceQuote - quoteToken.balanceOf(alice), 100_001);
 
         vm.prank(alice);
@@ -463,7 +483,7 @@ contract DLOBTest is Test {
         uint256 aliceQuote = quoteToken.balanceOf(alice);
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Buy, price, amount, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(alice);
         dlob.reduceOrder(orderId, newAmount, bytes32(0));
         vm.prank(alice);
@@ -476,7 +496,7 @@ contract DLOBTest is Test {
     function testReduceBelowMinCancels() public {
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(alice);
         dlob.reduceOrder(orderId, MIN_ORDER_SIZE / 2, bytes32(0));
@@ -489,7 +509,7 @@ contract DLOBTest is Test {
     function testRevertReduceIncrease() public {
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(alice);
         vm.expectRevert(DLOB.ReduceOnly.selector);
@@ -499,7 +519,7 @@ contract DLOBTest is Test {
     function testRevertReduceToZero() public {
         vm.prank(alice);
         (uint32 orderId,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(alice);
         vm.expectRevert(DLOB.ReduceToZero.selector);
@@ -511,14 +531,14 @@ contract DLOBTest is Test {
     function testExactFill() public {
         // Bob places sell at 50e15
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Alice places buy at 50e15 — should match
         uint256 aliceBaseBefore = baseToken.balanceOf(alice);
         uint256 bobQuoteBefore = quoteToken.balanceOf(bob);
 
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Alice got base tokens
         assertEq(baseToken.balanceOf(alice), aliceBaseBefore + 100e6);
@@ -534,10 +554,10 @@ contract DLOBTest is Test {
 
     function testPartialFill() public {
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 200e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 200e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Bob's order should have 100e6 remaining
         DLOB.Order memory bobOrder = dlob.getOrder(1);
@@ -550,10 +570,10 @@ contract DLOBTest is Test {
 
     function testNoMatchPositiveSpread() public {
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Both should rest
         (uint96 bid, uint96 ask) = dlob.getBestPrices();
@@ -564,29 +584,147 @@ contract DLOBTest is Test {
     function testPriceTimePriority() public {
         // Two sells at the same price
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(charlie);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Buy 100 — should fill Bob first (FIFO)
         uint256 bobQuoteBefore = quoteToken.balanceOf(bob);
         uint256 charlieQuoteBefore = quoteToken.balanceOf(charlie);
 
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint128 expectedQuote = uint128((uint256(100e6) * 50e15) / PRECISION);
         assertEq(quoteToken.balanceOf(bob), bobQuoteBefore + expectedQuote);
         assertEq(quoteToken.balanceOf(charlie), charlieQuoteBefore); // Charlie untouched
     }
 
-    function testSelfTradeReverts() public {
+    function testSelfTradeCancelsRestingOrder() public {
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        (uint32 sellId,) =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+        uint256 aliceBase = baseToken.balanceOf(alice);
 
         vm.prank(alice);
-        vm.expectRevert(DLOB.SelfTrade.selector);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        vm.expectEmit(true, false, false, true, address(dlob));
+        emit DLOB.OrderCancelled(sellId, 100e6, 0);
+        (uint32 buyId,) =
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+
+        assertEq(uint8(dlob.getOrder(sellId).status), uint8(DLOB.OrderStatus.Cancelled));
+        assertEq(dlob.getOrder(sellId).remainingAmount, 0);
+        assertEq(
+            baseToken.balanceOf(alice), aliceBase + 100e6, "the resting sell's escrow is refunded"
+        );
+        assertEq(dlob.getOrder(buyId).remainingAmount, 100e6, "the buy rests in full");
+        (uint96 bestBid, uint96 bestAsk) = dlob.getBestPrices();
+        assertEq(bestBid, 50e15);
+        assertEq(bestAsk, 0, "the cancelled sell's level is gone");
+    }
+
+    function testSelfTradeCancelsThenFillsTheNextOrder() public {
+        vm.prank(alice);
+        (uint32 ownId,) =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+        vm.prank(charlie);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+        uint256 charlieQuote = quoteToken.balanceOf(charlie);
+
+        vm.prank(alice);
+        (uint32 buyId,) =
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+
+        assertEq(uint8(dlob.getOrder(ownId).status), uint8(DLOB.OrderStatus.Cancelled));
+        assertEq(dlob.getOrder(buyId).remainingAmount, 0, "the buy filled against charlie");
+        assertEq(quoteToken.balanceOf(charlie), charlieQuote + uint256(100e6) * 50e15 / PRECISION);
+    }
+
+    function testSelfTradeKeepsOrdersFromAnotherOriginAccount() public {
+        vm.prank(alice);
+        (uint32 sellId,) = dlob.placeLimitOrder(
+            DLOB.Side.Sell, 50e15, 100e6, bytes32(uint256(1)), bytes32(0), 0, 0, false
+        );
+        vm.prank(alice);
+        dlob.placeLimitOrder(
+            DLOB.Side.Buy, 50e15, 100e6, bytes32(uint256(2)), bytes32(0), 0, 0, false
+        );
+        assertEq(uint8(dlob.getOrder(sellId).status), uint8(DLOB.OrderStatus.Active));
+        assertEq(dlob.getOrder(sellId).remainingAmount, 0, "the sell filled");
+    }
+
+    function testSelfTradeCancelsForMarketOrders() public {
+        vm.prank(alice);
+        (uint32 sellId,) =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+
+        vm.prank(alice);
+        uint128 filled =
+            dlob.placeMarketOrder(DLOB.Side.Buy, 100e6, 50e15, 0, bytes32(0), bytes32(0), 0);
+
+        assertEq(filled, 0, "nothing else to fill");
+        assertEq(uint8(dlob.getOrder(sellId).status), uint8(DLOB.OrderStatus.Cancelled));
+    }
+
+    function testSelfTradeCancelsCountTowardTheBudget() public {
+        for (uint256 i; i < LOCAL_FILLS_PER_TX; i++) {
+            vm.prank(alice);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
+        }
+        vm.prank(bob);
+        (uint32 bobId,) =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
+
+        vm.prank(alice);
+        (, uint128 returned) =
+            dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
+
+        assertEq(returned, 10e6, "the budget ran out on alice's own orders, so the buy came back");
+        assertEq(dlob.getOrder(bobId).remainingAmount, 10e6, "bob's order is still resting");
+    }
+
+    function testPostOnlyRests() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+
+        vm.prank(alice);
+        (uint32 buyId, uint128 returned) =
+            dlob.placeLimitOrder(DLOB.Side.Buy, 59e15, 100e6, bytes32(0), bytes32(0), 0, 0, true);
+
+        assertEq(returned, 0);
+        assertEq(dlob.getOrder(buyId).remainingAmount, 100e6, "the buy rests below the best ask");
+    }
+
+    function testPostOnlyRestsOnAnEmptyBook() public {
+        vm.prank(alice);
+        (uint32 sellId,) =
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, true);
+        assertEq(dlob.getOrder(sellId).remainingAmount, 100e6);
+    }
+
+    function testPostOnlyRevertsWhenItWouldCross() public {
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+
+        vm.startPrank(alice);
+        vm.expectRevert(DLOB.PostOnlyWouldCross.selector);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, true);
+        vm.expectRevert(DLOB.PostOnlyWouldCross.selector);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0, true);
+        vm.stopPrank();
+    }
+
+    function testPostOnlyTreatsAnUnremovedExpiredBestAsLive() public {
+        vm.warp(1000);
+        vm.prank(bob);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 60e15, 100e6, bytes32(0), bytes32(0), 0, 1500, false);
+        vm.warp(2000);
+
+        vm.prank(alice);
+        vm.expectRevert(DLOB.PostOnlyWouldCross.selector);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 60e15, 100e6, bytes32(0), bytes32(0), 0, 0, true);
     }
 
     function testExpiredOrderSkippedDuringMatching() public {
@@ -594,11 +732,11 @@ contract DLOBTest is Test {
 
         // Bob places sell that expires at 1500
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500, false);
 
         // Charlie places sell at same price, no expiry
         vm.prank(charlie);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Warp past Bob's expiry
         vm.warp(2000);
@@ -606,7 +744,7 @@ contract DLOBTest is Test {
         // Alice buys — should skip Bob (expired) and fill against Charlie
         uint256 charlieQuoteBefore = quoteToken.balanceOf(charlie);
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         uint128 expectedQuote = uint128((uint256(100e6) * 50e15) / PRECISION);
         assertEq(quoteToken.balanceOf(charlie), charlieQuoteBefore + expectedQuote);
@@ -626,7 +764,7 @@ contract DLOBTest is Test {
         for (uint256 i = 0; i < n; i++) {
             vm.prank(charlie);
             dlob.placeLimitOrder(
-                DLOB.Side.Sell, price, MIN_ORDER_SIZE, bytes32(0), bytes32(0), 0, expiry
+                DLOB.Side.Sell, price, MIN_ORDER_SIZE, bytes32(0), bytes32(0), 0, expiry, false
             );
         }
     }
@@ -643,7 +781,7 @@ contract DLOBTest is Test {
         vm.warp(1000);
         uint32 first = _expiringAsks(expired, 50e15, 1500);
         vm.prank(bob); // live liquidity behind the expired level
-        dlob.placeLimitOrder(DLOB.Side.Sell, 51e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 51e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.warp(2000);
 
         // The first taker transaction does at most LOCAL_FILLS_PER_TX units of work: here, all expiries.
@@ -682,7 +820,7 @@ contract DLOBTest is Test {
         uint32 first = _expiringAsks(3, 50e15, 1500);
         vm.prank(bob);
         (uint32 live,) =
-            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 7e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 7e6, bytes32(0), bytes32(0), 0, 0, false);
         _expiringAsks(2, 50e15, 1500);
         vm.warp(2000);
 
@@ -702,7 +840,7 @@ contract DLOBTest is Test {
         vm.warp(1000);
         _expiringAsks(4, 50e15, 1500);
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 52e15, 10e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 52e15, 10e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.warp(2000);
 
         dlob.purgeExpired(DLOB.Side.Sell, 50e15, 100);
@@ -719,18 +857,18 @@ contract DLOBTest is Test {
 
     function testGetSpread() public {
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         assertEq(dlob.getSpread(), 10e15);
     }
 
     function testGetOrderBook() public {
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 40e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 30e15, 200e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 30e15, 200e6, bytes32(0), bytes32(0), 0, 0, false);
 
         (uint96[] memory prices, uint128[] memory volumes, uint8 count) =
             dlob.getOrderBook(DLOB.Side.Buy, 5);
@@ -789,7 +927,7 @@ contract DLOBTest is Test {
             address sender = senders[i % 3];
             vm.prank(sender);
             (orderIds[i],) = dlob.placeLimitOrder(
-                DLOB.Side.Sell, price, orderSize, bytes32(uint256(i + 100)), bytes32(0), 0, 0
+                DLOB.Side.Sell, price, orderSize, bytes32(uint256(i + 100)), bytes32(0), 0, 0, false
             );
         }
 
@@ -828,23 +966,23 @@ contract DLOBTest is Test {
 
         vm.prank(bob);
         (uint32 id1,) = dlob.placeLimitOrder(
-            DLOB.Side.Sell, price, orderSize, bytes32(uint256(10)), bytes32(0), 0, 0
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(10)), bytes32(0), 0, 0, false
         );
         vm.prank(bob);
         (uint32 id2,) = dlob.placeLimitOrder(
-            DLOB.Side.Sell, price, orderSize, bytes32(uint256(11)), bytes32(0), 0, 0
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(11)), bytes32(0), 0, 0, false
         );
         vm.prank(charlie);
         (uint32 id3,) = dlob.placeLimitOrder(
-            DLOB.Side.Sell, price, orderSize, bytes32(uint256(12)), bytes32(0), 0, 0
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(12)), bytes32(0), 0, 0, false
         );
         vm.prank(charlie);
         (uint32 id4,) = dlob.placeLimitOrder(
-            DLOB.Side.Sell, price, orderSize, bytes32(uint256(13)), bytes32(0), 0, 0
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(13)), bytes32(0), 0, 0, false
         );
         vm.prank(bob);
         (uint32 id5,) = dlob.placeLimitOrder(
-            DLOB.Side.Sell, price, orderSize, bytes32(uint256(14)), bytes32(0), 0, 0
+            DLOB.Side.Sell, price, orderSize, bytes32(uint256(14)), bytes32(0), 0, 0, false
         );
 
         assertEq(dlob.getDepthAtPrice(DLOB.Side.Sell, price), 500e6);
