@@ -8,11 +8,14 @@ interface TradeFormState {
   orderType: OrderType;
   price: string;
   amount: string;
+  /** Market orders: fill the whole amount in one transaction, or nothing. */
+  allOrNothing: boolean;
 
   setSide: (side: Side) => void;
   setOrderType: (type: OrderType) => void;
   setPrice: (price: string) => void;
   setAmount: (amount: string) => void;
+  setAllOrNothing: (allOrNothing: boolean) => void;
   reset: () => void;
 }
 
@@ -21,10 +24,12 @@ export const useTradeFormStore = create<TradeFormState>((set) => ({
   orderType: "limit",
   price: "",
   amount: "",
+  allOrNothing: false,
 
   setSide: (side) => set({ side }),
   setOrderType: (orderType) => set({ orderType }),
   setPrice: (price) => set({ price }),
   setAmount: (amount) => set({ amount }),
+  setAllOrNothing: (allOrNothing) => set({ allOrNothing }),
   reset: () => set({ price: "", amount: "" }),
 }));
