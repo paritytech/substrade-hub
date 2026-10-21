@@ -33,7 +33,7 @@ import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
 import { TransactionReceiptNotFoundError, WaitForTransactionReceiptTimeoutError, createPublicClient, createWalletClient, defineChain, getContractAddress, http, parseAbi, toHex } from "viem";
 import { generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
-import { buildCodehashes, linkedLibraries, maskedCodehash } from "../../apps/trade/scripts/release/codehash.mjs";
+import { buildCodehashes, checkLiveCode, linkedLibraries, maskedCodehash } from "../../apps/trade/scripts/release/codehash.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONTRACTS = resolve(HERE, "..");
@@ -198,9 +198,57 @@ function artifactAbi(file, name) {
   return loadJson(resolve(CONTRACTS, `out/${file}/${name}.json`)).abi;
 }
 
-/** How long to wait for an EVM transaction's receipt, and how often to send a lost one. */
+/**
+ * How long to wait for an EVM transaction's receipt per poll, how long one may stay pending after it is
+ * sent, and how often to send a lost one.
+ */
 const TX_TIMEOUT_MS = 60_000;
+const TX_PENDING_MS = 10 * 60_000;
 const TX_ATTEMPTS = 3;
+
+/**
+ * Send a transaction from `account` (`send` receives the nonce to use) and wait for its receipt. eth-rpc
+ * can accept a transaction and then lose it: no receipt, and the node no longer knows its hash. A lost
+ * transaction is sent again with the same nonce, so at most one of the copies executes. eth-rpc can
+ * also miss a transaction that did land: the nonce is used, but it has no record of the hash. Only
+ * this run signs for `account`, so that transaction is ours; it resolves to null, since its outcome is
+ * unknown. A transaction still pending `pendingMs` after it was sent stops the run, since sending it
+ * again would need a higher fee to replace it; a rerun continues once it lands or drops.
+ * `client` is a viem public client.
+ */
+export async function confirmTransaction(
+  client,
+  account,
+  label,
+  send,
+  { timeoutMs = TX_TIMEOUT_MS, pendingMs = TX_PENDING_MS, attempts = TX_ATTEMPTS } = {},
+) {
+  const nonce = await client.getTransactionCount({ address: account, blockTag: "pending" });
+  const used = async () => (await client.getTransactionCount({ address: account })) > nonce;
+  for (let attempt = 1; ; attempt++) {
+    const hash = await send(nonce);
+    const sent = Date.now();
+    for (;;) {
+      try {
+        return await client.waitForTransactionReceipt({ hash, timeout: timeoutMs });
+      } catch (e) {
+        // viem also gives up with "receipt not found" when eth-rpc reports a receipt late.
+        if (!(e instanceof WaitForTransactionReceiptTimeoutError || e instanceof TransactionReceiptNotFoundError)) throw e;
+      }
+      // Still known to the node: pending, so keep waiting until the deadline.
+      const pending = await client.getTransaction({ hash }).catch(() => null);
+      if (pending && Date.now() - sent < pendingMs) continue;
+      if (await used()) {
+        console.log(`  ${label}: ${hash} landed (nonce ${nonce} is used), but eth-rpc has no receipt for it`);
+        return null;
+      }
+      if (pending) throw new Error(`${label}: ${hash} is still pending after ${pendingMs / 1000}s`);
+      break;
+    }
+    if (attempt === attempts) throw new Error(`${label}: the transaction was lost ${attempts} times`);
+    console.log(`  ${label}: ${hash} was lost; sending it again (attempt ${attempt + 1} of ${attempts})`);
+  }
+}
 
 /**
  * The environment forge runs with: the system basics and forge's own settings, plus what a script reads
@@ -413,37 +461,8 @@ async function main() {
   const wallet = (role) => createWalletClient({ chain, transport: http(net.rpcUrl), account: privateKeyToAccount(keyOf(role)) });
   const addr = (role) => privateKeyToAccount(keyOf(role)).address;
 
-  /**
-   * Send a transaction from `role` (`send` receives the nonce to use) and wait for its receipt. eth-rpc
-   * can accept a transaction and then lose it: no receipt, and the node no longer knows its hash. A lost
-   * transaction is sent again with the same nonce, so at most one of the copies executes. eth-rpc can
-   * also miss a transaction that did land: the nonce is used, but it has no record of the hash. Only
-   * this run signs for `role`, so that transaction is ours; it resolves to null, since its outcome is
-   * unknown.
-   */
-  const sendAndConfirm = async (role, label, send) => {
-    const nonce = await pub.getTransactionCount({ address: addr(role), blockTag: "pending" });
-    for (let attempt = 1; ; attempt++) {
-      const hash = await send(nonce);
-      for (;;) {
-        try {
-          return await pub.waitForTransactionReceipt({ hash, timeout: TX_TIMEOUT_MS });
-        } catch (e) {
-          // viem also gives up with "receipt not found" when eth-rpc reports a receipt late.
-          if (!(e instanceof WaitForTransactionReceiptTimeoutError || e instanceof TransactionReceiptNotFoundError)) throw e;
-        }
-        // Still known to the node: pending, so keep waiting.
-        if (await pub.getTransaction({ hash }).catch(() => null)) continue;
-        if ((await pub.getTransactionCount({ address: addr(role) })) > nonce) {
-          console.log(`  ${label}: ${hash} landed (nonce ${nonce} is used), but eth-rpc has no receipt for it`);
-          return null;
-        }
-        break;
-      }
-      if (attempt === TX_ATTEMPTS) throw new Error(`${label}: the transaction was lost ${TX_ATTEMPTS} times`);
-      console.log(`  ${label}: ${hash} was lost; sending it again (attempt ${attempt + 1} of ${TX_ATTEMPTS})`);
-    }
-  };
+  /** Send a transaction from `role` and wait for its receipt (see `confirmTransaction`). */
+  const sendAndConfirm = (role, label, send) => confirmTransaction(pub, addr(role), label, send);
 
   /** Send a contract call from `role` and require a successful receipt, when eth-rpc has one. */
   const write = async (role, address, abi, functionName, fnArgs, value) => {
@@ -567,8 +586,23 @@ async function main() {
 
   if (run("factory")) {
     console.log("\n== factory ==");
-    if (state.factory && (await pub.getCode({ address: state.factory }))) console.log(`  deployed at ${state.factory}`);
-    else {
+    if (state.factory) {
+      // The markets, books and history were made with the recorded factory, so it is kept, and has to run
+      // this build (with this build's implementation and libraries) as a release checks it.
+      const problems = (await pub.getCode({ address: state.factory }))
+        ? await checkLiveCode(net, { factory: state.factory, markets: [] }, buildCodehashes(CONTRACTS), pub).then(
+            (r) => r.problems,
+            (e) => [`DLOBFactory at ${state.factory} could not be read: ${e.shortMessage ?? e.message}`],
+          )
+        : [`DLOBFactory at ${state.factory} has no code`];
+      if (problems.length) {
+        throw new Error(
+          `The recorded factory does not run this build: ${problems.join("; ")}. To deploy new contracts, ` +
+            `remove factory, markets, done and progress from ${stateFile} and run again`,
+        );
+      }
+      console.log(`  DLOBFactory ${state.factory} (runs this build)`);
+    } else {
       // Each contract is recorded as it lands, so a stopped run resumes with the next one.
       state.libraries ??= {};
       for (const lib of ["RedBlackTree", "XcmBuilder"]) {

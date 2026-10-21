@@ -105,10 +105,10 @@ export function linkedLibraries(code, links) {
 
 /**
  * Compare a network's live code with `codehashes`: the implementation, factory, linked libraries and
- * faucet must have the recorded hashes, every market must be an EIP-1167 proxy to the implementation,
- * and the factory must return each market for its pair. The libraries are found at the
- * implementation's link sites, so they are only looked for when the implementation matches this
- * build: an implementation from another build has its link sites elsewhere. Returns the
+ * faucet (when `deployment` has one) must have the recorded hashes, every market must be an EIP-1167
+ * proxy to the implementation, and the factory must return each market for its pair. The libraries
+ * are found at the implementation's link sites, so they are only looked for when the implementation
+ * matches this build: an implementation from another build has its link sites elsewhere. Returns the
  * implementation and library addresses found, and a list of problems (empty when everything matches).
  * `client` is a viem public client; one for `net.rpcUrl` is made when it is not given.
  */
@@ -143,7 +143,7 @@ export async function checkLiveCode(net, deployment, codehashes, client = undefi
     for (const [name, address] of Object.entries(libraries)) matches(name, address, await code(address));
   }
   for (const [name, address] of [["DLOBFactory", deployment.factory], ["Faucet", deployment.faucet]]) {
-    matches(name, address, await code(address));
+    if (address) matches(name, address, await code(address));
   }
 
   const proxy = eip1167Runtime(implementation);
