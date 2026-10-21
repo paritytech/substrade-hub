@@ -119,9 +119,11 @@ If a part goes through but the app cannot read what it placed, nothing more is s
 and your balances before placing the rest.
 One order goes in at most 10 transactions.
 
-When the orders in front are expired, or too small for what fits to reach the minimum order size, the
-app sends the order anyway, saying "Clearing expired or small orders at the front of the book". The
-transaction clears them and returns the rest; place the order again to fill it.
+When the orders in front are expired, too small for what fits to reach the minimum order size, or your
+own (see [below](#one-of-your-resting-orders-disappeared-after-you-placed-an-order-on-the-other-side)),
+the app sends the order anyway, saying "Clearing expired, small or your own orders at the front of the
+book". The transaction clears them, cancelling your own and returning their escrow, and returns the
+rest; place the order again to fill it.
 
 ### "This order cannot fill all or nothing" (or "One transaction cannot fill all of this order")
 

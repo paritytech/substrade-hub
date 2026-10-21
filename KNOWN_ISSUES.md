@@ -81,12 +81,12 @@ per-transaction budget (`MATCH_BUDGET`, #104): 6 local fills, 4 when one leg of 
 cross-chain, or 3 when both do. A larger order fills what fits and returns the remainder: a limit order
 cannot rest it at its price without crossing the book. `placeLimitOrder` reports that amount, and the
 app checks it before signing: for an order that needs more than one transaction, limit or market, it
-offers to place it in parts, one signature each (#107). When expired or small orders at the front of
-the book use up the budget, so that what fits is too small to place, the app sends the order anyway: it
-clears them and returns the rest, to be placed again. Cancelling the trader's own resting orders, which
-an order does when it meets them (#134), counts toward the budget the same way. A market order sent
-with "All or nothing" (#133) is never split: it must fill within one transaction's budget, or it does
-not go in.
+offers to place it in parts, one signature each (#107). Cancelling the trader's own resting orders,
+which an order does when it meets them (#134), counts toward the budget like an expired-order cleanup.
+When expired, small or the trader's own orders at the front of the book use up the budget, so that what
+fits is too small to place, the app sends the order anyway: it clears them and returns the rest, to be
+placed again. A market order sent with "All or nothing" (#133) is never split: it must fill within one
+transaction's budget, or it does not go in.
 
 ## 9. An expired order stays on the book until something removes it
 
