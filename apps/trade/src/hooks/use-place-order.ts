@@ -13,6 +13,7 @@ import { parseTokenAmount } from "../lib/format";
 import { Side, type OrderBookLevel } from "../types/market";
 import { activeChain } from "../config/chains";
 import { MAX_OB_LEVELS } from "../config/constants";
+import { orderExpiry } from "../lib/orders";
 import { estimateMarketOrder } from "../lib/market-order";
 import { fetchOrderBook } from "./use-order-book";
 import { isEmptyRevert, messageFor, userMessage, UserFacingError } from "../lib/user-errors";
@@ -75,7 +76,9 @@ export function usePlaceOrder() {
         if (isLimit) {
           const price = parseTokenAmount(params.price);
           const escrow = (size: bigint) => (params.side === Side.Buy ? quoteAmountCeil(size, price) : size);
-          const args = (size: bigint) => [params.side, price, size, originAccount, ZERO_BYTES32, 0, 0n] as const;
+          // Each part expires ORDER_LIFETIME_S after it is sent.
+          const args = (size: bigint) =>
+            [params.side, price, size, originAccount, ZERO_BYTES32, 0, orderExpiry()] as const;
           placing = `placing ${side} order`;
           // One transaction fills only so many resting orders: when this order crosses more, the
           // contract returns what is left (resting it would cross the book), and the simulation says how

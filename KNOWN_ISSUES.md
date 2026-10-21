@@ -14,6 +14,7 @@ of the code, see [SECURITY.md](SECURITY.md).
 | 6 | Demo networks use demo keys | Deployment | below |
 | 7 | The Paseo networks share one EIP-155 chain id | Deployment | below |
 | 8 | One transaction fits about 7 fills | Contracts | #104 |
+| 9 | An expired order stays on the book until something removes it | Contracts | below |
 
 ## 1. One admin key holds every privileged power
 
@@ -83,3 +84,11 @@ app checks it before signing: for an order that needs more than one transaction,
 offers to place it in parts, one signature each (#107). When expired or small orders at the front of
 the book use up the budget, so that what fits is too small to place, the app sends the order anyway: it
 clears them and returns the rest, to be placed again.
+
+## 9. An expired order stays on the book until something removes it
+
+The DLOB has no keeper: an expired order is removed when a match reaches it, when `purgeExpired` clears
+its price level, or when its owner cancels it, and only then is its escrow returned. Until then the
+order book counts it at its price. Limit orders placed from the app expire after 24 hours (#132), so
+Open Orders keeps listing an expired order, marked "Expired", with its Cancel button, which returns the
+escrow. Orders the bootstrap seeds never expire.
