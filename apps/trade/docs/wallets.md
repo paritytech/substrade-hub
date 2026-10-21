@@ -123,6 +123,22 @@ When the orders in front are expired, or too small for what fits to reach the mi
 app sends the order anyway, saying "Clearing expired or small orders at the front of the book". The
 transaction clears them and returns the rest; place the order again to fill it.
 
+### "This order cannot fill all or nothing" (or "One transaction cannot fill all of this order")
+
+A market order with **All or nothing** on fills the whole amount in one transaction, or nothing: the
+app sends `minAmountOut` equal to the amount, and the contract reverts if less fills. Before signing,
+the app simulates the order, and stops when it would fill less:
+
+- **"The book lists only … within the price limit"**: the book holds less than the amount within the
+  price limit (the best price plus 1% slippage, at most 10% from the best price).
+- **"One transaction cannot fill all of this order"**: the book holds enough, but one transaction fills
+  only a bounded number of resting orders (see
+  [KNOWN_ISSUES.md](../../../KNOWN_ISSUES.md#8-one-transaction-fits-about-7-fills)), expired orders at
+  the front included. An all-or-nothing order is never split across transactions.
+
+Place a smaller amount, or turn All or nothing off to fill what one or more transactions can. If the
+book changes between the check and the transaction, the transaction reverts and nothing fills.
+
 ### "No sell-side liquidity to fill this market order" (or "buy-side")
 
 A market order fills against the **opposite** side of the book — a market buy takes asks, a market sell

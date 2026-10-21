@@ -26,7 +26,7 @@ import { Amount } from "../ui/Amount";
 import { ORDER_LIFETIME_S } from "../../config/constants";
 
 export function TradeForm() {
-  const { side, orderType, setOrderType, price, amount, reset } =
+  const { side, orderType, setOrderType, price, amount, allOrNothing, setAllOrNothing, reset } =
     useTradeFormStore();
   const { h160 } = useWalletStore();
   const market = useMarketStore((s) => s.selectedMarket);
@@ -39,7 +39,7 @@ export function TradeForm() {
     e.preventDefault();
     if (!amount) return;
     placeOrder.mutate(
-      { side, orderType, price, amount, limitPrice: marketEstimate?.limitPrice },
+      { side, orderType, price, amount, limitPrice: marketEstimate?.limitPrice, allOrNothing },
       { onSuccess: ({ placed }) => placed && reset() },
     );
   };
@@ -119,6 +119,18 @@ export function TradeForm() {
       {orderType === "limit" && <PriceInput />}
       <AmountInput />
 
+      {orderType === "market" && (
+        <label className="flex items-center gap-2 text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={allOrNothing}
+            onChange={(e) => setAllOrNothing(e.target.checked)}
+            className="accent-buy"
+          />
+          All or nothing: fill the whole amount in one transaction, or nothing
+        </label>
+      )}
+
       {estimatedTotal && (
         <div className="rounded-lg border border-border bg-surface-overlay px-3 py-2">
           <div className="flex items-center justify-between">
@@ -157,8 +169,8 @@ export function TradeForm() {
           {marketEstimate.fillable < marketAmount && (
             <div className="mt-1.5 text-text-secondary">
               Only <Amount value={marketEstimate.fillable} decimals={baseDecimals} />{" "}
-              {market?.base.symbol} can fill within {maxImpactPercent}% of the best price; the rest
-              is returned unfilled.
+              {market?.base.symbol} can fill within {maxImpactPercent}% of the best price;{" "}
+              {allOrNothing ? "with All or nothing on, the order does not go in." : "the rest is returned unfilled."}
             </div>
           )}
         </div>

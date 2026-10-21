@@ -5,7 +5,8 @@ import { dlobAbi } from "../abi/dlob";
 const { simulateContractData } = vi.hoisted(() => ({ simulateContractData: vi.fn() }));
 vi.mock("../lib/contract", () => ({ simulateContractData }));
 
-import { limitOrderReturned, liquidityWithin, placedBy, withinLimit } from "./use-place-order";
+import { limitOrderReturned, liquidityWithin, notAllOrNothing, placedBy, withinLimit } from "./use-place-order";
+import { MAX_OB_LEVELS } from "../config/constants";
 import { Side } from "../types/market";
 
 const MARKET = "0x00000000000000000000000000000000000000aa";
@@ -60,6 +61,30 @@ describe("liquidityWithin", () => {
     const bids = [level(100n, 5n), level(99n, 7n), level(97n, 9n)];
     expect(liquidityWithin(Side.Sell, bids, 99n)).toBe(12n);
     expect(liquidityWithin(Side.Buy, [], 101n)).toBe(0n);
+  });
+});
+
+describe("notAllOrNothing", () => {
+  const level = (price: bigint, totalAmount: bigint) => ({ price, totalAmount, orderCount: 0 });
+  const base = (amount: bigint) => `${amount} tMU`;
+
+  it("says the side is empty when nothing is listed within the limit", () => {
+    expect(notAllOrNothing(Side.Buy, 10n, [level(105n, 50n)], 101n, base)).toMatch(/^No sell-side liquidity/);
+  });
+
+  it("says how much the book lists when that is less than the amount", () => {
+    const asks = [level(100n, 4n), level(101n, 3n), level(105n, 50n)];
+    expect(notAllOrNothing(Side.Buy, 10n, asks, 101n, base)).toMatch(/^The book lists only 7 tMU within the price limit/);
+  });
+
+  it("blames the one-transaction bound when the book lists enough", () => {
+    const bids = [level(100n, 4n), level(99n, 8n)];
+    expect(notAllOrNothing(Side.Sell, 10n, bids, 99n, base)).toMatch(/^One transaction cannot fill all of this order/);
+  });
+
+  it("blames the one-transaction bound when the page is full within the limit", () => {
+    const asks = Array.from({ length: MAX_OB_LEVELS }, (_, i) => level(100n + BigInt(i), 1n));
+    expect(notAllOrNothing(Side.Buy, 50n, asks, 200n, base)).toMatch(/^One transaction cannot fill all of this order/);
   });
 });
 

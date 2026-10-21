@@ -26,6 +26,8 @@ interface PlaceOrderParams {
   amount: string;
   /** Market orders: the price limit the form displayed, so the order carries what the user saw. */
   limitPrice?: bigint;
+  /** Market orders: fill the whole amount in one transaction, or nothing. */
+  allOrNothing?: boolean;
 }
 
 /** What placing an order came to: `placed` is false when the user declined before anything was sent. */
@@ -46,6 +48,7 @@ export function usePlaceOrder() {
 
       const side = params.side === Side.Buy ? "buy" : "sell";
       const isLimit = params.orderType === "limit";
+      const allOrNothing = !isLimit && !!params.allOrNothing;
       const toastId = addToast("pending", `Preparing ${side} order...`);
       const base = (amount: bigint) => `${formatUnits(amount, market.base.decimals)} ${market.base.symbol}`;
 
@@ -109,7 +112,10 @@ export function usePlaceOrder() {
           );
           if (!estimate) throw new UserFacingError(noLiquidity(params.side));
           const limitPrice = params.limitPrice ?? estimate.limitPrice;
-          const args = (size: bigint) => [params.side, size, limitPrice, 0n, originAccount, ZERO_BYTES32, 0] as const;
+          // All or nothing sends `minAmountOut = size`: the contract reverts unless the whole size fills.
+          const minOut = (size: bigint) => (allOrNothing ? size : 0n);
+          const args = (size: bigint, min = 0n) =>
+            [params.side, size, limitPrice, min, originAccount, ZERO_BYTES32, 0] as const;
           placing = `placing market ${side} order`;
           // The simulation runs matching for real: `getBestPrices` cannot tell what fills, since the tree
           // still lists lazily-expired orders. It runs after the approve, which the escrow transfer needs.
@@ -124,6 +130,8 @@ export function usePlaceOrder() {
               fetchOrderBook(market.address, opposite, MAX_OB_LEVELS),
             ]);
             if (filled === remaining) return { kind: "whole" };
+            // All or nothing is one transaction that fills everything: anything short stops here.
+            if (allOrNothing) throw new UserFacingError(notAllOrNothing(params.side, remaining, book, limitPrice, base));
             if (filled === 0n) return withinLimit(params.side, book[0]?.price, limitPrice) ? { kind: "clears" } : { kind: "none" };
             // The book page holds MAX_OB_LEVELS levels: a full page within the limit may go deeper.
             const seenAll = book.length < MAX_OB_LEVELS || !withinLimit(params.side, book.at(-1)?.price, limitPrice);
@@ -132,7 +140,9 @@ export function usePlaceOrder() {
             return { kind: "part", fills: filled };
           };
           send = (size) =>
-            writeContract(dlobAbi, "placeMarketOrder", args(size), market.address, h160, { onProgress: progress });
+            writeContract(dlobAbi, "placeMarketOrder", args(size, minOut(size)), market.address, h160, {
+              onProgress: progress,
+            });
         }
 
         let result: PartsResult;
@@ -157,7 +167,9 @@ export function usePlaceOrder() {
               const what = outcome === "clears" ? CLEARING_FRONT : placing;
               label = of > 1 ? `Part ${part} of about ${of}: ${what}` : capitalize(what);
               updateToast(toastId, "pending", `${label}: waiting for signature...`);
-              return placedBy((await send(size)).logs, market.address);
+              const { logs } = await send(size);
+              // An included all-or-nothing order filled its whole size: anything less reverts.
+              return allOrNothing ? size : placedBy(logs, market.address);
             },
           });
         } catch (err) {
@@ -268,6 +280,28 @@ function capitalize(text: string): string {
 
 function noLiquidity(side: Side): string {
   return `No ${side === Side.Buy ? "sell-side" : "buy-side"} liquidity to fill this market order right now. Place a limit order instead.`;
+}
+
+/**
+ * Why an all-or-nothing market order for `amount` cannot go in, once its simulation filled less: the
+ * book lists less than the amount within the price limit, or one transaction cannot fill all of it (it
+ * fills a bounded number of resting orders, and expired ones at the front count too).
+ */
+export function notAllOrNothing(
+  side: Side,
+  amount: bigint,
+  book: readonly OrderBookLevel[],
+  limitPrice: bigint,
+  base: (amount: bigint) => string,
+): string {
+  const off = "Place a smaller amount, or turn off All or nothing.";
+  const seenAll = book.length < MAX_OB_LEVELS || !withinLimit(side, book.at(-1)?.price, limitPrice);
+  const listed = liquidityWithin(side, book, limitPrice);
+  if (seenAll && listed === 0n) return noLiquidity(side);
+  if (seenAll && listed < amount) {
+    return `The book lists only ${base(listed)} within the price limit, so this order cannot fill all or nothing. ${off}`;
+  }
+  return `One transaction cannot fill all of this order: it fills a bounded number of resting orders, expired ones included. ${off}`;
 }
 
 /** Base amount the opposite side `levels` lists within a market order's `limitPrice`. */
