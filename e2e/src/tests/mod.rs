@@ -94,7 +94,7 @@ sol! {
     function placeLimitOrder(
         uint8 side, uint96 price, uint128 amount,
         bytes32 originAccount, bytes32 settlementAccount,
-        uint32 destParaId, uint64 expireTimestamp
+        uint32 destParaId, uint64 expireTimestamp, bool postOnly
     ) external payable returns (uint32, uint128);
     function cancelOrder(uint32 orderId, bytes32 originAccount) external;
     function bestBid() external view returns (uint96);
@@ -317,6 +317,7 @@ fn encode_place_limit_order(
         settlementAccount: FixedBytes::from(settlement_account),
         destParaId: dest_para_id,
         expireTimestamp: expire_timestamp,
+        postOnly: false,
     }
     .abi_encode()
 }

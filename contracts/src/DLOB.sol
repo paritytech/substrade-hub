@@ -179,7 +179,7 @@ contract DLOB {
     error OrderNotActive(uint32 orderId);
     error NotOrderOwner();
     error WrongOriginAccount();
-    error SelfTrade();
+    error PostOnlyWouldCross();
     error AlreadyExpired();
     error NoLiquidity();
     error SlippageExceeded();
@@ -258,6 +258,8 @@ contract DLOB {
 
     /// @notice Place a limit order. It fills against the opposite side, then rests at `price`. When
     /// the match budget runs out first, the order does not rest: its remainder is returned.
+    /// @param postOnly Rest only: revert with `PostOnlyWouldCross` if `price` reaches the best price
+    /// on the opposite side, so the order never takes.
     /// @return orderId The new order's id.
     /// @return returned Base amount returned that way (for a buy, its quote is refunded), or 0.
     function placeLimitOrder(
@@ -267,7 +269,8 @@ contract DLOB {
         bytes32 originAccount,
         bytes32 settlementAccount,
         uint32 destParaId,
-        uint64 expireTimestamp
+        uint64 expireTimestamp,
+        bool postOnly
     ) external payable nonReentrant returns (uint32 orderId, uint128 returned) {
         // --- Validation ---
         if (!PriceMath.isTickAligned(price, tickSize)) revert NotTickAligned();
@@ -275,6 +278,14 @@ contract DLOB {
         if (expireTimestamp != 0 && expireTimestamp <= uint64(block.timestamp)) {
             revert AlreadyExpired();
         }
+        // The best price can still be an expired order nobody has removed yet: post-only treats it
+        // as live.
+        if (
+            postOnly
+                && (side == Side.Buy
+                        ? bestAsk != 0 && price >= bestAsk
+                        : bestBid != 0 && price <= bestBid)
+        ) revert PostOnlyWouldCross();
 
         // --- Calculate escrow ---
         uint128 escrowAmount;
@@ -535,7 +546,7 @@ contract DLOB {
             uint32 next = orderLinks[orderId].next;
             uint64 expiry = orders[orderId].expireTimestamp;
             if (expiry != 0 && uint64(block.timestamp) >= expiry) {
-                _expireOrder(orderId);
+                _dropMaker(orderId, true);
                 purged++;
             }
             orderId = next;
@@ -767,25 +778,23 @@ contract DLOB {
                 Order storage maker = orders[makerOrderId];
                 uint32 nextMaker = orderLinks[makerOrderId].next;
 
-                // Lazy expiry. Counts toward MATCH_BUDGET, so expired orders cannot make one
-                // transaction's work unbounded.
+                // Lazy expiry, and self-trade prevention: a taker that meets its own resting order
+                // cancels it and moves on. Both count toward MATCH_BUDGET like a local fill, so
+                // neither can make one transaction's work unbounded.
                 bool expired =
                     maker.expireTimestamp != 0 && uint64(block.timestamp) >= maker.expireTimestamp;
-                uint8 cost = expired ? FILL_COST : _fillCost(takerDestParaId, makerOrderId);
+                bool drop =
+                    expired || (msg.sender == maker.owner && originAccount == maker.originAccount);
+                uint8 cost = drop ? FILL_COST : _fillCost(takerDestParaId, makerOrderId);
                 if (used + cost > MATCH_BUDGET) {
                     exhausted = true;
                     break;
                 }
                 used += cost;
-                if (expired) {
-                    _expireOrder(makerOrderId);
+                if (drop) {
+                    _dropMaker(makerOrderId, expired);
                     makerOrderId = nextMaker;
                     continue;
-                }
-
-                // Self-trade check
-                if (msg.sender == maker.owner && originAccount == maker.originAccount) {
-                    revert SelfTrade();
                 }
 
                 uint128 fillAmount =
@@ -833,25 +842,23 @@ contract DLOB {
                 Order storage maker = orders[makerOrderId];
                 uint32 nextMaker = orderLinks[makerOrderId].next;
 
-                // Lazy expiry. Counts toward MATCH_BUDGET, so expired orders cannot make one
-                // transaction's work unbounded.
+                // Lazy expiry, and self-trade prevention: a taker that meets its own resting order
+                // cancels it and moves on. Both count toward MATCH_BUDGET like a local fill, so
+                // neither can make one transaction's work unbounded.
                 bool expired =
                     maker.expireTimestamp != 0 && uint64(block.timestamp) >= maker.expireTimestamp;
-                uint8 cost = expired ? FILL_COST : _fillCost(takerDestParaId, makerOrderId);
+                bool drop =
+                    expired || (msg.sender == maker.owner && originAccount == maker.originAccount);
+                uint8 cost = drop ? FILL_COST : _fillCost(takerDestParaId, makerOrderId);
                 if (used + cost > MATCH_BUDGET) {
                     exhausted = true;
                     break;
                 }
                 used += cost;
-                if (expired) {
-                    _expireOrder(makerOrderId);
+                if (drop) {
+                    _dropMaker(makerOrderId, expired);
                     makerOrderId = nextMaker;
                     continue;
-                }
-
-                // Self-trade check
-                if (msg.sender == maker.owner && originAccount == maker.originAccount) {
-                    revert SelfTrade();
                 }
 
                 uint128 fillAmount =
@@ -1070,7 +1077,10 @@ contract DLOB {
         emit OrderCancelled(orderId, refundAmount, claimId);
     }
 
-    function _expireOrder(uint32 orderId) internal {
+    /// @dev Take a resting order off its price level and refund its escrow: an expired order
+    /// (`OrderExpired`), or a taker's own resting order (`OrderCancelled`). The caller, a matching
+    /// loop or `purgeExpired`, removes the level once it is empty.
+    function _dropMaker(uint32 orderId, bool expired) internal {
         Order storage o = orders[orderId];
         o.status = OrderStatus.Cancelled;
         uint128 refundAmount = o.remainingAmount;
@@ -1085,9 +1095,11 @@ contract DLOB {
 
         _dequeueOrder(orderId, orderLinks[orderId].priceNodeId);
 
-        _refundEscrow(orderId, _escrowFor(o.side, refundAmount, o.price), o.side, o.owner);
+        uint32 claimId =
+            _refundEscrow(orderId, _escrowFor(o.side, refundAmount, o.price), o.side, o.owner);
 
-        emit OrderExpired(orderId, refundAmount);
+        if (expired) emit OrderExpired(orderId, refundAmount);
+        else emit OrderCancelled(orderId, refundAmount, claimId);
     }
 
     // ──────────────────────── Internal: XCM Location ───────────

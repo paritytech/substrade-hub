@@ -86,7 +86,7 @@ contract CrossChainTest is Test {
 
     function testLocalBuyLocalSell() public {
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, PRICE, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, PRICE, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         vm.prank(bob);
         uint128 filled =
@@ -101,7 +101,7 @@ contract CrossChainTest is Test {
         // Alice: cross-chain buyer on para 1000
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
         assertEq(dlob.getOrderFeeReserve(buyId), 1e9);
 
@@ -128,7 +128,7 @@ contract CrossChainTest is Test {
         // Bob: cross-chain seller on para 2000
         vm.prank(bob);
         (uint32 sellId,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Sell, PRICE, 100e6, BOB_ORIGIN, BOB_SETTLEMENT, PARA_2000, 0
+            DLOB.Side.Sell, PRICE, 100e6, BOB_ORIGIN, BOB_SETTLEMENT, PARA_2000, 0, false
         );
 
         uint256 aliceBaseBefore = baseToken.balanceOf(alice);
@@ -152,7 +152,7 @@ contract CrossChainTest is Test {
         // Alice: cross-chain buy
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         // Bob: cross-chain sell matches
@@ -175,7 +175,7 @@ contract CrossChainTest is Test {
         // Alice: cross-chain buy
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         // Bob: local sell matches — inline XCM fails, fallback to claim
@@ -200,7 +200,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -228,7 +228,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -250,7 +250,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -276,7 +276,7 @@ contract CrossChainTest is Test {
         // Place with exact min fee — fee stays in reserve since inline failed
         vm.prank(alice);
         dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -307,7 +307,7 @@ contract CrossChainTest is Test {
         mockXcm.setShouldRevert(true);
         vm.prank(alice);
         (orderId,) = dlob.placeLimitOrder{value: reserve}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
         vm.prank(bob);
         dlob.placeMarketOrder(DLOB.Side.Sell, 100e6, 0, 0, bytes32(0), bytes32(0), 0);
@@ -417,7 +417,7 @@ contract CrossChainTest is Test {
         // Alice: cross-chain buy with 2x fee for 2 fills
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 2e9}(
-            DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
         assertEq(dlob.getOrderFeeReserve(buyId), 2e9);
 
@@ -435,7 +435,7 @@ contract CrossChainTest is Test {
     function testWithdrawExcessFeeReserve() public {
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 5e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         // Fill completely
@@ -460,7 +460,7 @@ contract CrossChainTest is Test {
     function testWithdrawExcessFeeReserveNotActive() public {
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 3e9}(
-            DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         // Partial fill
@@ -478,7 +478,7 @@ contract CrossChainTest is Test {
     function testWithdrawExcessFeeReserveZero() public {
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         // Fill completely — uses exactly 1e9 fee
@@ -498,14 +498,14 @@ contract CrossChainTest is Test {
         // Use different prices so orders don't match
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 3e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
         assertEq(dlob.totalFeeReserveBalance(), 3e9);
 
         uint96 highAsk = PRICE * 2;
         vm.prank(bob);
         dlob.placeLimitOrder{value: 2e9}(
-            DLOB.Side.Sell, highAsk, 100e6, BOB_ORIGIN, BOB_SETTLEMENT, PARA_2000, 0
+            DLOB.Side.Sell, highAsk, 100e6, BOB_ORIGIN, BOB_SETTLEMENT, PARA_2000, 0, false
         );
         assertEq(dlob.totalFeeReserveBalance(), 5e9);
 
@@ -526,7 +526,7 @@ contract CrossChainTest is Test {
     function testCrossChainCancelCreatesRefundClaim() public {
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 2e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(alice);
@@ -546,7 +546,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -569,7 +569,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -587,7 +587,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -613,7 +613,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -635,7 +635,7 @@ contract CrossChainTest is Test {
         address sovereign = alice;
         vm.prank(sovereign);
         (uint32 victimOrder,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         // The other trader, behind the same sender, presents the victim's originAccount.
@@ -675,7 +675,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -719,7 +719,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -748,7 +748,7 @@ contract CrossChainTest is Test {
         // Alice places cross-chain buy with enough fee for 2 fills
         vm.prank(alice);
         (uint32 buyId,) = dlob.placeLimitOrder{value: 3e9}(
-            DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 200e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         // Two separate sellers fill partially
@@ -787,7 +787,7 @@ contract CrossChainTest is Test {
 
         vm.prank(alice);
         dlob.placeLimitOrder{value: 1e9}(
-            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0
+            DLOB.Side.Buy, PRICE, 100e6, ALICE_ORIGIN, ALICE_SETTLEMENT, PARA_1000, 0, false
         );
 
         vm.prank(bob);
@@ -814,7 +814,8 @@ contract CrossChainTest is Test {
                 ALICE_ORIGIN,
                 para == 0 ? bytes32(0) : ALICE_SETTLEMENT,
                 para,
-                0
+                0,
+                false
             );
             if (i == 0) first = id;
         }
@@ -861,7 +862,8 @@ contract CrossChainTest is Test {
                 ALICE_ORIGIN,
                 para == 0 ? bytes32(0) : ALICE_SETTLEMENT,
                 para,
-                0
+                0,
+                false
             );
         }
         assertEq(_sweep(6, 0), 5 * MIN_ORDER_SIZE, "fills while the budget lasts");

@@ -24,10 +24,21 @@ import { Side } from "../../types/market";
 import { Spinner } from "../ui/Spinner";
 import { Amount } from "../ui/Amount";
 import { ORDER_LIFETIME_S } from "../../config/constants";
+import { postOnlyCrosses } from "../../lib/orders";
 
 export function TradeForm() {
-  const { side, orderType, setOrderType, price, amount, allOrNothing, setAllOrNothing, reset } =
-    useTradeFormStore();
+  const {
+    side,
+    orderType,
+    setOrderType,
+    price,
+    amount,
+    allOrNothing,
+    setAllOrNothing,
+    postOnly,
+    setPostOnly,
+    reset,
+  } = useTradeFormStore();
   const { h160 } = useWalletStore();
   const market = useMarketStore((s) => s.selectedMarket);
   const placeOrder = usePlaceOrder();
@@ -39,7 +50,15 @@ export function TradeForm() {
     e.preventDefault();
     if (!amount) return;
     placeOrder.mutate(
-      { side, orderType, price, amount, limitPrice: marketEstimate?.limitPrice, allOrNothing },
+      {
+        side,
+        orderType,
+        price,
+        amount,
+        limitPrice: marketEstimate?.limitPrice,
+        allOrNothing,
+        postOnly: orderType === "limit" && postOnly,
+      },
       { onSuccess: ({ placed }) => placed && reset() },
     );
   };
@@ -74,6 +93,16 @@ export function TradeForm() {
   const maxImpactPercent = Number(MAX_PRICE_IMPACT_BPS) / 100;
 
   const isBuy = side === Side.Buy;
+  // The contract rejects a post-only order that would trade on arrival; the cached best prices let the
+  // form say so before signing.
+  let postOnlyRejected = false;
+  if (orderType === "limit" && postOnly && price && bestPrices) {
+    try {
+      postOnlyRejected = postOnlyCrosses(side, parseTokenAmount(price), bestPrices);
+    } catch {
+      // Invalid input
+    }
+  }
   // Cheap UX hint: a market order fills against the opposite side, so disable submit when that side is
   // visibly empty. This uses cached best prices and does NOT account for lazily-expired orders; the
   // authoritative expiry-aware check is a pre-submit simulation in usePlaceOrder.
@@ -118,6 +147,25 @@ export function TradeForm() {
 
       {orderType === "limit" && <PriceInput />}
       <AmountInput />
+
+      {orderType === "limit" && (
+        <label className="flex items-center gap-2 text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={postOnly}
+            onChange={(e) => setPostOnly(e.target.checked)}
+            className="accent-buy"
+          />
+          Post only: rest on the book, never trade on arrival
+        </label>
+      )}
+
+      {postOnlyRejected && (
+        <div className="rounded border border-border bg-surface-overlay px-2 py-1.5 text-xs text-text-secondary">
+          At this price the order would trade at once, so a post-only order is rejected. Price it{" "}
+          {isBuy ? "below the best ask" : "above the best bid"}, or turn off Post only.
+        </div>
+      )}
 
       {orderType === "market" && (
         <label className="flex items-center gap-2 text-xs text-text-secondary">
@@ -193,7 +241,14 @@ export function TradeForm() {
 
       <button
         type="submit"
-        disabled={placeOrder.isPending || !h160 || !amount || noLiquidity || (orderType === "market" && !marketEstimate)}
+        disabled={
+          placeOrder.isPending ||
+          !h160 ||
+          !amount ||
+          noLiquidity ||
+          postOnlyRejected ||
+          (orderType === "market" && !marketEstimate)
+        }
         className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium text-white disabled:opacity-60 ${buttonColor}`}
       >
         {placeOrder.isPending && <Spinner className="h-4 w-4" />}

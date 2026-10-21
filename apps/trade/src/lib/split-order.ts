@@ -15,7 +15,10 @@ export type PartOutcome =
   | { kind: "whole" }
   /** It takes `fills` and stops at the match budget; the rest needs another transaction. */
   | { kind: "part"; fills: bigint }
-  /** It only clears expired or small orders at the front of the book, and the rest comes back. */
+  /**
+   * It only clears expired, small or the trader's own orders at the front of the book, and the rest
+   * comes back.
+   */
   | { kind: "clears" }
   /** It fills nothing: no orders within the price. */
   | { kind: "none" };

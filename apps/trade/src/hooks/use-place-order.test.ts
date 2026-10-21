@@ -12,7 +12,7 @@ import { Side } from "../types/market";
 const MARKET = "0x00000000000000000000000000000000000000aa";
 const FROM = "0x00000000000000000000000000000000000000bb";
 const ZERO = `0x${"00".repeat(32)}` as const;
-const ARGS = [0, 10n ** 18n, 10n ** 6n, ZERO, ZERO, 0, 0n] as const;
+const ARGS = [0, 10n ** 18n, 10n ** 6n, ZERO, ZERO, 0, 0n, false] as const;
 
 describe("limitOrderReturned", () => {
   it("reads what the match budget returns", async () => {

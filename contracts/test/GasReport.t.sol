@@ -71,42 +71,43 @@ contract GasReportTest is Test {
             bytes32(0), // originAccount
             bytes32(0), // settlementAccount
             0, // destParaId
-            0 // expireTimestamp (GTC)
+            0, // expireTimestamp (GTC)
+            false
         );
     }
 
     function testGasNewPriceLevel() public {
         // Place 5 orders at different prices
         vm.startPrank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 51e15, 100e6, bytes32(0), bytes32(0), 0, 0);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 52e15, 100e6, bytes32(0), bytes32(0), 0, 0);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 53e15, 100e6, bytes32(0), bytes32(0), 0, 0);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 54e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 51e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 52e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 53e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 54e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Place one more at a new price level
-        dlob.placeLimitOrder(DLOB.Side.Buy, 55e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 55e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.stopPrank();
     }
 
     function testGasExistingPriceLevel() public {
         vm.startPrank(alice);
         // Place first order at a price level
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Place second order at the same price level (enqueue)
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.stopPrank();
     }
 
     function testGasWithLocalMatch() public {
         // Place a sell order
         vm.prank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Place a buy order that matches (local settlement)
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
     }
 
     function testGasWithCrossChainMatchInline() public {
@@ -119,12 +120,13 @@ contract GasReportTest is Test {
             bytes32(uint256(2)), // originAccount
             bytes32(uint256(0xB0B)), // settlementAccount
             1000, // destParaId
-            0 // expireTimestamp (GTC)
+            0, // expireTimestamp (GTC)
+            false
         );
 
         // Local taker matches (alice) - inline XCM
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
     }
 
     function testGasWithCrossChainMatchFallback() public {
@@ -140,12 +142,13 @@ contract GasReportTest is Test {
             bytes32(uint256(2)), // originAccount
             bytes32(uint256(0xB0B)), // settlementAccount
             1000, // destParaId
-            0 // expireTimestamp (GTC)
+            0, // expireTimestamp (GTC)
+            false
         );
 
         // Local taker matches (alice) - creates fallback claim
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Reset for other tests
         mockXcm.setShouldRevert(false);
@@ -164,12 +167,13 @@ contract GasReportTest is Test {
             bytes32(uint256(2)), // originAccount
             bytes32(uint256(0xB0B)), // settlementAccount
             1000, // destParaId
-            0 // expireTimestamp (GTC)
+            0, // expireTimestamp (GTC)
+            false
         );
 
         // Local taker matches (alice) - creates fallback claim
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
 
         // Reset MockXcm
         mockXcm.setShouldRevert(false);
@@ -189,7 +193,8 @@ contract GasReportTest is Test {
             bytes32(0), // originAccount
             bytes32(0), // settlementAccount
             0, // destParaId
-            0 // expireTimestamp (GTC)
+            0, // expireTimestamp (GTC)
+            false
         );
 
         // Cancel the order
@@ -207,7 +212,8 @@ contract GasReportTest is Test {
             bytes32(uint256(2)), // originAccount
             bytes32(uint256(0xB0B)), // settlementAccount
             1000, // destParaId
-            0 // expireTimestamp (GTC)
+            0, // expireTimestamp (GTC)
+            false
         );
 
         // Cancel the cross-chain order (creates refund claim)
@@ -225,7 +231,8 @@ contract GasReportTest is Test {
             bytes32(0), // originAccount
             bytes32(0), // settlementAccount
             0, // destParaId
-            0 // expireTimestamp (GTC)
+            0, // expireTimestamp (GTC)
+            false
         );
 
         // Reduce the order
@@ -239,14 +246,14 @@ contract GasReportTest is Test {
 
         // Place 5 sell orders with expireTimestamp=1500
         vm.startPrank(bob);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500);
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500, false);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500, false);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500, false);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500, false);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 1500, false);
 
         // Place 1 sell order with expireTimestamp=0 (GTC)
-        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         vm.stopPrank();
 
         // Warp time so the 5 orders are expired
@@ -254,7 +261,7 @@ contract GasReportTest is Test {
 
         // Alice places buy - should skip 5 expired, match the 1 valid
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
     }
 
     function testGas10OrderMatch() public {
@@ -267,11 +274,11 @@ contract GasReportTest is Test {
 
             // Place sell order at 50e15 for 100e6 each
             vm.prank(seller);
-            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0);
+            dlob.placeLimitOrder(DLOB.Side.Sell, 50e15, 100e6, bytes32(0), bytes32(0), 0, 0, false);
         }
 
         // Alice buys 1000e6 at 50e15 (fills all 10 orders)
         vm.prank(alice);
-        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 1000e6, bytes32(0), bytes32(0), 0, 0);
+        dlob.placeLimitOrder(DLOB.Side.Buy, 50e15, 1000e6, bytes32(0), bytes32(0), 0, 0, false);
     }
 }

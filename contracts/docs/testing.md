@@ -60,7 +60,7 @@ forge test --match-test "testFuzz" -vv
 
 | File                | Tests | Coverage                                                                 |
 | ------------------- | ----- | ------------------------------------------------------------------------ |
-| `DLOB.t.sol`        | 32    | Order placement, cancellation, reduction, matching, expiry, depth integrity, views, admin |
+| `DLOB.t.sol`        | 53    | Order placement, post-only, cancellation, reduction, matching, self-trade, expiry, depth integrity, views, admin |
 | `DLOBFactory.t.sol` | 17    | Market creation, duplicate prevention, parameter validation, admin config |
 | `Matching.t.sol`    | 19    | Multi-level fills, market orders and their limit price, max fills cap, self-trade, slippage, buyer refunds, pull validation |
 | `CrossChain.t.sol`  | 25    | Inline XCM, claim fallback, fee reserve lifecycle, claim redirect, XCM failure recovery (see [how it works](how-it-works.md)) |

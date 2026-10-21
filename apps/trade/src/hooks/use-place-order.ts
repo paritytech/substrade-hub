@@ -28,6 +28,8 @@ interface PlaceOrderParams {
   limitPrice?: bigint;
   /** Market orders: fill the whole amount in one transaction, or nothing. */
   allOrNothing?: boolean;
+  /** Limit orders: rest only; the contract rejects the order if it would trade on arrival. */
+  postOnly?: boolean;
 }
 
 /** What placing an order came to: `placed` is false when the user declined before anything was sent. */
@@ -81,12 +83,12 @@ export function usePlaceOrder() {
           const escrow = (size: bigint) => (params.side === Side.Buy ? quoteAmountCeil(size, price) : size);
           // Each part expires ORDER_LIFETIME_S after it is sent.
           const args = (size: bigint) =>
-            [params.side, price, size, originAccount, ZERO_BYTES32, 0, orderExpiry()] as const;
+            [params.side, price, size, originAccount, ZERO_BYTES32, 0, orderExpiry(), !!params.postOnly] as const;
           placing = `placing ${side} order`;
           // One transaction fills only so many resting orders: when this order crosses more, the
           // contract returns what is left (resting it would cross the book), and the simulation says how
-          // much. What fits below the minimum order size means expired or small orders at the front of
-          // the book, which sending the order clears.
+          // much. What fits below the minimum order size means expired, small or the trader's own orders
+          // at the front of the book, which sending the order clears (it cancels the trader's own).
           simulate = async (remaining) => {
             await ensureAllowance(escrow(remaining));
             updateToast(toastId, "pending", "Checking the order book...");
@@ -217,7 +219,7 @@ export function usePlaceOrder() {
             if (result.sent === 1) notPlaced(FRONT_CLEARED);
             else
               notPlaced(
-                `${kind}: ${parts(result.sent - 1)} went through, then the next one cleared expired or small orders at the front of the book and ${base(result.remaining)} came back. Place it again to fill it.`,
+                `${kind}: ${parts(result.sent - 1)} went through, then the next one cleared expired, small or your own orders at the front of the book and ${base(result.remaining)} came back. Place it again to fill it.`,
               );
             break;
           case "unconfirmed":
@@ -315,11 +317,11 @@ export function liquidityWithin(side: Side, levels: readonly OrderBookLevel[], l
 }
 
 /** The pending text of an order that can only clear the front of the book. */
-const CLEARING_FRONT = "clearing expired or small orders at the front of the book";
+const CLEARING_FRONT = "clearing expired, small or your own orders at the front of the book";
 
 /** The success text of an order that only cleared the front of the book. */
 const FRONT_CLEARED =
-  "The order cleared expired or small orders at the front of the book, and the rest came back. Place it again to fill it.";
+  "The order cleared expired, small or your own orders at the front of the book, and the rest came back. Any of your own were cancelled, with their escrow returned. Place it again to fill it.";
 
 /** Whether a resting order at `price` on the opposite side is within a market order's `limitPrice`. */
 export function withinLimit(side: Side, price: bigint | undefined, limitPrice: bigint): boolean {

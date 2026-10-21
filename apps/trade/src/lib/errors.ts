@@ -30,7 +30,7 @@ for (const frag of KNOWN_ERROR_ABI) {
 // Friendly, user-facing text for the errors a trader can actually hit. Unlisted names fall back to
 // `ErrorName(args)`, still far better than "reverted without reason".
 const FRIENDLY: Record<string, string> = {
-  SelfTrade: "Cannot trade against your own resting order — use a different account",
+  PostOnlyWouldCross: "This post-only order would trade against the book, so it was not placed",
   NoLiquidity: "No liquidity available to fill this order right now",
   BelowMinSize: "Order amount is below the market minimum",
   AboveMaxSize: "Order amount exceeds the market maximum",
