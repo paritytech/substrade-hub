@@ -26,7 +26,7 @@ first (`contracts/scripts/bootstrap.mjs`, see the root README). A publish refuse
 
 The app keeps its view in the URL hash: `#/market/<address>` opens a market, `#/orders` the Open Orders
 panel, and `#/` (or no hash) Home. A link such as
-`https://substrade-hub.testnet.li/#/market/0x830cE549b016Ea0D7dC24b6578bbeB0457eAd834` reaches the app
+`https://substrade-hub.testnet.li/#/market/0x7C264EB1F1012a417B97b5c7290407506B4ff562` reaches the app
 through the gateway, which hands the hash to the app's frame. Inside a gateway the app runs in that
 frame, so moving between markets updates the frame's history (Back works) but not the address bar,
 which keeps the link that was opened. A link to a market the network does not list, or one cut short
@@ -69,9 +69,9 @@ key: it administers the factory and owns the tUSD faucet.
 
 | Contract | previewnet | paseo-v2 |
 |---|---|---|
-| DLOB factory | `0xa51db7701c94dad87ff61c4b23991861fa2efa09` | `0xe18c2dd30cd82288c08a30ea77fe4fa3582e7bb0` |
-| tNVDA/tUSD market | `0xe7e37F482369935bbf2a221d492010291Af1168F` | `0xFf2B7D2B2171A96bb25Ab3B138B83Acf32eFbFB0` |
-| tMU/tUSD market | `0x830cE549b016Ea0D7dC24b6578bbeB0457eAd834` | `0xBc65B527E96b0277BEC95679dfDe9010E1573E91` |
+| DLOB factory | `0x55472d51EBE3122929F5d5BA2097B065D78e2B38` | `0xe18c2dd30cd82288c08a30ea77fe4fa3582e7bb0` |
+| tNVDA/tUSD market | `0x87e367b55Eb332cec410a252F74Cb34CED34FDb2` | `0xFf2B7D2B2171A96bb25Ab3B138B83Acf32eFbFB0` |
+| tMU/tUSD market | `0x7C264EB1F1012a417B97b5c7290407506B4ff562` | `0xBc65B527E96b0277BEC95679dfDe9010E1573E91` |
 | tUSD faucet | `0xc675887d5eb476ea482c243067f6850263051e81` | `0xe1bc9e4b52ce0ee2950d14737ebd673a78d6860f` |
 | tUSD token | `0x02faf33a00000000000000000000000001200000` | `0x02faf33a00000000000000000000000001200000` |
 | tNVDA token | `0x02faf33b00000000000000000000000001200000` | `0x02faf33b00000000000000000000000001200000` |

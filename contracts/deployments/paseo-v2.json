@@ -1,15 +1,5 @@
 {
   "genesis": "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a",
-  "done": {
-    "seed:tNVDA": true,
-    "seed:tMU": true,
-    "history:tNVDA:funded": true,
-    "history:tNVDA": true,
-    "history:tMU:funded": true,
-    "history:tMU": true,
-    "replenish:tNVDA": true,
-    "replenish:tMU": true
-  },
   "assets": {
     "tUSD": "0x02faf33a00000000000000000000000001200000",
     "tNVDA": "0x02faf33b00000000000000000000000001200000",
@@ -20,18 +10,5 @@
     "RedBlackTree": "0x5366e4E83d0c1B88BB3336cA5634858558fa173F",
     "XcmBuilder": "0x7172a3B4915dD3BC0479F939DCF188ba942491ee"
   },
-  "implementation": "0xf616A93d24124593D75b38388aBB6100728C9fed",
-  "factory": "0xe18c2Dd30Cd82288C08a30ea77fE4FA3582e7BB0",
-  "markets": {
-    "tNVDA": "0xFf2B7D2B2171A96bb25Ab3B138B83Acf32eFbFB0",
-    "tMU": "0xBc65B527E96b0277BEC95679dfDe9010E1573E91"
-  },
-  "progress": {
-    "seed:tNVDA": 20,
-    "seed:tMU": 20,
-    "history:tNVDA": 106,
-    "history:tMU": 106,
-    "replenish:tNVDA": 20,
-    "replenish:tMU": 20
-  }
+  "implementation": "0xf616A93d24124593D75b38388aBB6100728C9fed"
 }
