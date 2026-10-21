@@ -48,6 +48,7 @@ export function usePlaceOrder() {
 
       const side = params.side === Side.Buy ? "buy" : "sell";
       const isLimit = params.orderType === "limit";
+      const allOrNothing = !isLimit && !!params.allOrNothing;
       const toastId = addToast("pending", `Preparing ${side} order...`);
       const base = (amount: bigint) => `${formatUnits(amount, market.base.decimals)} ${market.base.symbol}`;
 
@@ -112,7 +113,7 @@ export function usePlaceOrder() {
           if (!estimate) throw new UserFacingError(noLiquidity(params.side));
           const limitPrice = params.limitPrice ?? estimate.limitPrice;
           // All or nothing sends `minAmountOut = size`: the contract reverts unless the whole size fills.
-          const minOut = (size: bigint) => (params.allOrNothing ? size : 0n);
+          const minOut = (size: bigint) => (allOrNothing ? size : 0n);
           const args = (size: bigint, min = 0n) =>
             [params.side, size, limitPrice, min, originAccount, ZERO_BYTES32, 0] as const;
           placing = `placing market ${side} order`;
@@ -130,7 +131,7 @@ export function usePlaceOrder() {
             ]);
             if (filled === remaining) return { kind: "whole" };
             // All or nothing is one transaction that fills everything: anything short stops here.
-            if (params.allOrNothing) throw new UserFacingError(notAllOrNothing(params.side, remaining, book, limitPrice, base));
+            if (allOrNothing) throw new UserFacingError(notAllOrNothing(params.side, remaining, book, limitPrice, base));
             if (filled === 0n) return withinLimit(params.side, book[0]?.price, limitPrice) ? { kind: "clears" } : { kind: "none" };
             // The book page holds MAX_OB_LEVELS levels: a full page within the limit may go deeper.
             const seenAll = book.length < MAX_OB_LEVELS || !withinLimit(params.side, book.at(-1)?.price, limitPrice);
@@ -166,7 +167,9 @@ export function usePlaceOrder() {
               const what = outcome === "clears" ? CLEARING_FRONT : placing;
               label = of > 1 ? `Part ${part} of about ${of}: ${what}` : capitalize(what);
               updateToast(toastId, "pending", `${label}: waiting for signature...`);
-              return placedBy((await send(size)).logs, market.address);
+              const { logs } = await send(size);
+              // An included all-or-nothing order filled its whole size: anything less reverts.
+              return allOrNothing ? size : placedBy(logs, market.address);
             },
           });
         } catch (err) {
