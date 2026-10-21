@@ -1,11 +1,12 @@
-// Tests for the bootstrap's contract deploys. Run with `node --test scripts/bootstrap.test.mjs` from
+// Tests for the bootstrap's contract deploys and transaction confirmation. Run with `node --test scripts/bootstrap.test.mjs` from
 // contracts/, after `forge build`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { forge, linkedBytecode } from "./bootstrap.mjs";
+import { WaitForTransactionReceiptTimeoutError } from "viem";
+import { confirmTransaction, forge, linkedBytecode } from "./bootstrap.mjs";
 
 /**
  * A fake `forge` on PATH that logs each call's arguments and acts by call number: `fail` exits 1,
@@ -75,4 +76,48 @@ test("the implementation's creation code links the given libraries at every link
     }
   }
   assert.throws(() => linkedBytecode("DLOB", { RedBlackTree: libraries.RedBlackTree }), /links XcmBuilder/);
+});
+
+/**
+ * A fake public client for `confirmTransaction`. No receipt ever arrives. `pending(hash)` says whether
+ * the node still knows the transaction, and `landed()` whether its nonce is used; `sent` logs each
+ * hash sent and the nonce it was sent with.
+ */
+function fakeClient({ pending, landed }) {
+  const sent = [];
+  return {
+    sent,
+    send: async (nonce) => {
+      sent.push({ nonce, hash: `0x${sent.length + 1}` });
+      return sent.at(-1).hash;
+    },
+    client: {
+      getTransactionCount: async ({ blockTag }) => (blockTag === "pending" ? 7 : landed() ? 8 : 7),
+      waitForTransactionReceipt: async ({ hash }) => {
+        await new Promise((r) => setTimeout(r, 5));
+        throw new WaitForTransactionReceiptTimeoutError({ hash });
+      },
+      getTransaction: async ({ hash }) => (pending(hash) ? { hash } : null),
+    },
+  };
+}
+
+const quick = { timeoutMs: 5, pendingMs: 100, attempts: 3 };
+
+test("a transaction pending past the deadline stops the run, sent once", async () => {
+  const fake = fakeClient({ pending: () => true, landed: () => false });
+  await assert.rejects(confirmTransaction(fake.client, "0xa", "deploy DLOB", fake.send, quick), /0x1 is still pending after 0.1s/);
+  assert.deepEqual(fake.sent, [{ nonce: 7, hash: "0x1" }]);
+});
+
+test("a transaction the node still lists as pending, whose nonce is used, landed", async () => {
+  const fake = fakeClient({ pending: () => true, landed: () => true });
+  assert.equal(await confirmTransaction(fake.client, "0xa", "deploy DLOB", fake.send, quick), null);
+  assert.equal(fake.sent.length, 1);
+});
+
+test("a lost transaction is sent again with the same nonce, up to the attempts", async () => {
+  const fake = fakeClient({ pending: () => false, landed: () => false });
+  await assert.rejects(confirmTransaction(fake.client, "0xa", "deploy DLOB", fake.send, quick), /lost 3 times/);
+  assert.deepEqual(fake.sent.map((t) => t.nonce), [7, 7, 7]);
 });

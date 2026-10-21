@@ -105,7 +105,11 @@ The factory step deploys the two libraries, the DLOB implementation and the fact
 records each in the state file (`libraries`, `implementation`, `factory`) as it lands. A recorded
 contract is reused when its code matches the build (by masked codehash, and for the implementation the
 libraries it links), and deployed again otherwise, so a stopped run resumes with the next contract.
-A deploy that lands without an eth-rpc receipt is found by the deployer's nonce and its code.
+Once a factory is recorded, the markets and their books belong to it, so it is kept: it, its
+implementation and the libraries that implementation links must run this build, as a release checks
+them, or the run stops and asks for the state file to be trimmed as above. A deploy that lands without
+an eth-rpc receipt is found by the deployer's nonce and its code. A transaction still pending 10
+minutes after it was sent stops the run; run it again once that transaction has landed or dropped.
 
 To trade from the UI, connect an **EVM wallet** (MetaMask) or a **Substrate wallet** (SubWallet or
 polkadot-js), and claim test tUSD from the faucet on the home page. Supported wallets, the one-time
