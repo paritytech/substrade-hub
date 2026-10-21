@@ -12,3 +12,6 @@ export const WAD = 10n ** 18n;
 
 /** Safety margin multiplier for gas/storage estimates */
 export const GAS_MARGIN = 2n;
+
+/** How long a limit order placed from the app rests before it expires, in seconds. */
+export const ORDER_LIFETIME_S = 24 * 60 * 60;

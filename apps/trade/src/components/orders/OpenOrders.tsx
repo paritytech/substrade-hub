@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUserOrders } from "../../hooks/use-user-orders";
 import { useCancelOrder } from "../../hooks/use-cancel-order";
 import { useMarketStore } from "../../stores/market";
 import { useViewStore } from "../../stores/view";
 import { Side } from "../../types/market";
 import { formatTokenAmount, tickToDisplayDecimals } from "../../lib/format";
+import { expiryLabel, isExpired } from "../../lib/orders";
 import { Spinner } from "../ui/Spinner";
 
 export function OpenOrders() {
@@ -13,6 +14,12 @@ export function OpenOrders() {
   const { data, isLoading } = useUserOrders();
   const orders = data?.orders;
   const cancelOrder = useCancelOrder();
+  // The expiry column counts down between polls, which only re-render when the orders change.
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // `#/orders` brings this panel into view (on a phone it sits below the form and the book).
   const ref = useRef<HTMLDivElement>(null);
@@ -49,6 +56,7 @@ export function OpenOrders() {
               <th className="px-3 py-1 font-medium">Price</th>
               <th className="px-3 py-1 font-medium">Amount</th>
               <th className="px-3 py-1 font-medium">Filled</th>
+              <th className="px-3 py-1 font-medium">Expires</th>
               <th className="px-3 py-1 font-medium"></th>
             </tr>
           </thead>
@@ -72,6 +80,15 @@ export function OpenOrders() {
                 <td className="px-3 py-1 text-text-muted">
                   {formatTokenAmount(order.filled, market?.base.decimals ?? 6)}
                 </td>
+                <td
+                  className={`px-3 py-1 ${
+                    isExpired(order.expireTimestamp, now)
+                      ? "text-sell"
+                      : "text-text-muted"
+                  }`}
+                >
+                  {expiryLabel(order.expireTimestamp, now)}
+                </td>
                 <td className="px-3 py-1">
                   <button
                     onClick={() => cancelOrder.mutate(order.orderId)}
@@ -86,7 +103,7 @@ export function OpenOrders() {
             {orders?.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-3 py-4 text-center text-text-muted"
                 >
                   No open orders

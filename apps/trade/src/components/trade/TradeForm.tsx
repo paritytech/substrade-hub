@@ -23,6 +23,7 @@ import {
 import { Side } from "../../types/market";
 import { Spinner } from "../ui/Spinner";
 import { Amount } from "../ui/Amount";
+import { ORDER_LIFETIME_S } from "../../config/constants";
 
 export function TradeForm() {
   const { side, orderType, setOrderType, price, amount, reset } =
@@ -127,6 +128,10 @@ export function TradeForm() {
             <span className="text-sm font-medium text-text-primary">
               {estimatedTotal} {market?.quote.symbol}
             </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs text-text-secondary">
+            <span>Expires</span>
+            <span>in {ORDER_LIFETIME_S / 3600}h, unless it fills first</span>
           </div>
         </div>
       )}

@@ -145,6 +145,14 @@ cannot come. The banner goes away when the channel is back.
 Self-trade prevention: your incoming order would match an order you already have resting on the book.
 Cancel the resting order first, or use a different account.
 
+### An order shows "Expired" in Open Orders
+
+A limit order placed from the app expires 24 hours after it is sent (the form says so under the order),
+unless it fills first. An expired order no longer fills, but it keeps its escrow until a match reaches
+it, someone clears its price level, or you cancel it: **Cancel** returns the escrow straight away. Until
+then the order book still counts it at its price (see
+[KNOWN_ISSUES.md](../../../KNOWN_ISSUES.md#9-an-expired-order-stays-on-the-book-until-something-removes-it)).
+
 ## Developer notes
 
 ### The `pjs-signer` patch

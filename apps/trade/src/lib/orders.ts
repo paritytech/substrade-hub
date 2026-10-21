@@ -1,3 +1,5 @@
+import { ORDER_LIFETIME_S } from "../config/constants";
+
 /**
  * Whether an order should appear in "Open Orders": a genuinely resting limit order, Active, not fully
  * filled, and owned by the account. Ownership needs both the sender (`owner`, the only party that can
@@ -21,4 +23,26 @@ export function isOpenOrder(
     order.owner.toLowerCase() === account.h160.toLowerCase() &&
     order.originAccount.toLowerCase() === account.originAccount.toLowerCase()
   );
+}
+
+/** The `expireTimestamp` (unix seconds) of a limit order sent at `nowMs`: `ORDER_LIFETIME_S` later. */
+export function orderExpiry(nowMs: number = Date.now()): bigint {
+  return BigInt(Math.floor(nowMs / 1000) + ORDER_LIFETIME_S);
+}
+
+/** Whether an order has expired at `nowMs`: the contract treats it as expired from `expireTimestamp` on. */
+export function isExpired(expireTimestamp: bigint, nowMs: number = Date.now()): boolean {
+  return expireTimestamp !== 0n && Number(expireTimestamp) <= Math.floor(nowMs / 1000);
+}
+
+/**
+ * When an order expires, for Open Orders: "Never" (`expireTimestamp` 0), "Expired" once it has, else
+ * the time left in hours and minutes.
+ */
+export function expiryLabel(expireTimestamp: bigint, nowMs: number = Date.now()): string {
+  if (expireTimestamp === 0n) return "Never";
+  if (isExpired(expireTimestamp, nowMs)) return "Expired";
+  const left = Number(expireTimestamp) - Math.floor(nowMs / 1000);
+  if (left >= 3600) return `in ${Math.floor(left / 3600)}h ${Math.floor((left % 3600) / 60)}m`;
+  return `in ${Math.max(1, Math.floor(left / 60))}m`;
 }
