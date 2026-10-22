@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Errors the app shows the user. Only two kinds are shown: user errors the user can act on (a cancelled
  * signature, too little balance, a transaction still pending, no liquidity) and decoded contract errors.

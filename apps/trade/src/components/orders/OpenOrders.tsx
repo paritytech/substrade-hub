@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useEffect, useRef, useState } from "react";
 import { useUserOrders } from "../../hooks/use-user-orders";
 import { useCancelOrder } from "../../hooks/use-cancel-order";

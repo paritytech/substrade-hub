@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { createClient, type JsonRpcProvider, type PolkadotClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { ChainNotSupportedError, getHostChainInfo, getHostProvider } from "@parity/product-sdk-host";

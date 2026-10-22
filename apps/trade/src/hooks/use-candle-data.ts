@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useMemo } from "react";
 import { useTradeHistory } from "./use-trade-history";
 import { useMarketStore } from "../stores/market";

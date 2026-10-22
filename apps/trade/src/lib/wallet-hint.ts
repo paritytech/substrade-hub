@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * A non-sensitive hint persisted to localStorage so a Substrate connection can be re-established on
  * reload. NEVER stores the signer — only the extension name and the (public) derived addresses. The

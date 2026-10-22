@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Check the chain against a release: each network's dotNS name must point at the release's CID, its
  * contracts must match the release's deployments.json (same factory, faucet, quote and markets, each

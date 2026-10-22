@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { writeContract } from "../lib/contract";
 import { dlobAbi } from "../abi/dlob";

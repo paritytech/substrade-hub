@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Diagnostic + unblock: place a Substrate limit order using a PAPI-NATIVE signer (seed-derived),
  * bypassing the wallet extension / pjs-signer bridge. Uses the exact same tx-construction code as the

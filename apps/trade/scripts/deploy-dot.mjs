@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Publish the built app to the network named by VITE_NETWORK: uploads `dist/` to that network's Bulletin
  * chain and points its dotNS name at it, registering the name first when it is free. The name and the

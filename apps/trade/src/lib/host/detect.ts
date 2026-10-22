@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Detect whether the app is running inside a Polkadot Triangle host (Polkadot Desktop webview, dot.li /
  * testnet.li iframe, or the `@parity/host-api-test-sdk` harness) vs a plain browser tab. Uses the

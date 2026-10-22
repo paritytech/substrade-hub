@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { Header } from "./components/layout/Header";
 import { ConnectionBanner } from "./components/layout/ConnectionBanner";
 import { Home } from "./components/Home";

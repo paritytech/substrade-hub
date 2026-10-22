@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * The app's URL, kept in the hash so the static bundle needs no server routes (dot.li gateways and
  * IPFS serve one `index.html`):

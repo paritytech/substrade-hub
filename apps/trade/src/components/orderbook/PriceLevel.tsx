@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { Side, type OrderBookLevel } from "../../types/market";
 import { formatTokenAmount } from "../../lib/format";
 import { useTradeFormStore } from "../../stores/trade-form";

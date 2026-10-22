@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect } from "vitest";
 import { hostSyncAction } from "./sync";
 import type { SignerAccount, SignerState } from "@parity/product-sdk-signer";

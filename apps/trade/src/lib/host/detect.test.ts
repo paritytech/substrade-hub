@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Controllable stand-in for the SDK's container check.

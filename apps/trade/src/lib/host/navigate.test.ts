@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { navigateTo, inHost } = vi.hoisted(() => ({ navigateTo: vi.fn(), inHost: { value: true } }));

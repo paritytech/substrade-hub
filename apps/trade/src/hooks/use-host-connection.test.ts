@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostConnectionStatus } from "@parity/product-sdk-host";
 

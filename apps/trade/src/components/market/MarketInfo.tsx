@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useMarketStore } from "../../stores/market";
 import { erc20ToAssetId } from "../../lib/format";
 import { activeChain } from "../../config/chains";

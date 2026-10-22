@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useWalletStore } from "../stores/wallet";
 import { useNativeBalance } from "./use-native-balance";
 import { useNativeToken } from "./use-native-token";

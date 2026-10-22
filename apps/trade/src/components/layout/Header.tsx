@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { MarketSelector } from "../market/MarketSelector";
 import { MarketInfo } from "../market/MarketInfo";
 import { WalletButton } from "../wallet/WalletButton";

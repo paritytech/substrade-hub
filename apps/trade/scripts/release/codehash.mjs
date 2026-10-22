@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Which code is live. A release records, for each deployed contract, the keccak256 of its runtime
  * bytecode with the parts that differ per deployment masked: linked library addresses, immutables and

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { create } from "zustand";
 
 export type TimeRange = "1H" | "12H" | "7D" | "30D";

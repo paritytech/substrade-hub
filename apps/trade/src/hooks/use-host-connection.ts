@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useEffect } from "react";
 import { subscribeConnectionStatus } from "@parity/product-sdk-host";
 import { isInHost } from "../lib/host/detect";

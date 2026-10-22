@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useQuery } from "@tanstack/react-query";
 import { AccountId } from "polkadot-api";
 import { fromHex } from "polkadot-api/utils";

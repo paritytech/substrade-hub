@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 // Rebuild the SubsTrade Hub demo on a network from scratch: fund accounts, create the test assets,
 // deploy the DLOB factory and the tUSD faucet, create the demo markets, seed their order books,
 // generate a trade history for the candle chart, and write the resulting addresses into the app's

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Build a release's notes header and assets from the chain, after every network has published:
  *   release-manifest.json  version, commit, and per network the dotNS name, gateway URL and CID

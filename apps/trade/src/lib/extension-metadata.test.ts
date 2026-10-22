@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /// <reference types="node" />
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 

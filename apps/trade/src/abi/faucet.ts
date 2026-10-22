@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 // Minimal ABI for the demo tUSD Faucet (contracts/src/Faucet.sol).
 export const faucetAbi = [
   { type: "function", name: "claim", inputs: [], outputs: [], stateMutability: "nonpayable" },

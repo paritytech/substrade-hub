@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect } from "vitest";
 import { fromHex } from "polkadot-api/utils";
 import { h160ToOriginAccount, ss58ToOriginAccount, pubkeyToH160 } from "./account";
