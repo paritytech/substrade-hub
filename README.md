@@ -130,6 +130,10 @@ cd e2e && cargo test -- --nocapture
 
 See the [e2e README](e2e/README.md) for test scenarios.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report issues, open pull requests and run the checks.
+
 ## Security
 
 Before deploying it for real use cases, you are responsible for:
