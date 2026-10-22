@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { activeChain } from "../config/chains";
 import { revertError } from "./errors";
 import { UserFacingError } from "./user-errors";

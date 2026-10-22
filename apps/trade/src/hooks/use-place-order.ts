@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { decodeEventLog, decodeFunctionResult, formatUnits, size, type ContractFunctionArgs } from "viem";
 import { writeContract, readContract, simulateContract, simulateContractData } from "../lib/contract";

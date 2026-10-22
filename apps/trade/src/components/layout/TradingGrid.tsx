@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { OrderBook } from "../orderbook/OrderBook";
 import { TradeForm } from "../trade/TradeForm";
 import { OpenOrders } from "../orders/OpenOrders";

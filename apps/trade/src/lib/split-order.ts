@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Placing an order that one transaction cannot fill, in several transactions. One transaction does a
  * bounded amount of matching (the contracts' match budget), so an order crossing more resting orders

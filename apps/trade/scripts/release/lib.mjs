@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * What a release publishes, read from the chain: each network's dotNS contenthash (the published build)
  * and its contracts (factory, faucet, quote token and every market). `notes.mjs` builds the GitHub

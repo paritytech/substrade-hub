@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useEffect } from "react";
 import { connectExtension, watchAccounts, isAccountPresent } from "../lib/substrate-wallet";
 import { ensureExtensionMetadata } from "../lib/extension-metadata";

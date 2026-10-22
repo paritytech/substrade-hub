@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 // One controllable SignerManager instance behind the mocked constructor. `new SignerManager()` returns

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useQuery } from "@tanstack/react-query";
 import { getTypedApi } from "../lib/client";
 import { useMarketStore } from "../stores/market";

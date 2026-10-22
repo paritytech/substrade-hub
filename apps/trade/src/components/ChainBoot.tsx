@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useEffect, useState, type ReactNode } from "react";
 import { initChainClient } from "../lib/client";
 import { isInHost } from "../lib/host/detect";

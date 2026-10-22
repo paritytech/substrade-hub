@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useState } from "react";
 import { useFunding } from "../../hooks/use-funding";
 import { activeChain } from "../../config/chains";

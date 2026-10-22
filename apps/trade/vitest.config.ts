@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { defineConfig } from "vitest/config";
 
 // Dedicated config so unit tests do not load the app's vite plugins (react/tailwind).

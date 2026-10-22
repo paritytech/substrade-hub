@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 // Tests for the bootstrap's contract deploys and transaction confirmation. Run with `node --test scripts/bootstrap.test.mjs` from
 // contracts/, after `forge build`.
 import { test } from "node:test";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useTradeFormStore } from "../../stores/trade-form";
 import { useMarketStore } from "../../stores/market";
 import { alignToTick, tickToDisplayDecimals } from "../../lib/format";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const OTHER_QUOTE = "0x000007c000000000000000000000000001200000";

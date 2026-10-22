@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { confirmToast, txProgressToast, useToastStore } from "./toast";
 

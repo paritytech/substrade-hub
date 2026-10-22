@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { create } from "zustand";
 
 /** Top-level view, mirrored in the URL hash (see lib/route.ts and hooks/use-hash-route.ts). */

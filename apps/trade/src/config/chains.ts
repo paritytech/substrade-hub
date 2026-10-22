@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Network configuration. Every network the app can target lives in `networks.json`, and the build picks
  * one with `VITE_NETWORK` (no default, so a build never silently targets the wrong chain). After a chain

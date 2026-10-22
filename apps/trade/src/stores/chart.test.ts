@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect } from "vitest";
 import { shortestRangeWithTrades, RANGE_SECONDS, HISTORY_BLOCKS, BLOCK_SECONDS } from "./chart";
 

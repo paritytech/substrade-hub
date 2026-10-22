@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { navigateTo } from "@parity/product-sdk-host";
 import { isInHost } from "./detect";
 

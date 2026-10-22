@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { SideToggle } from "./SideToggle";
 import { PriceInput } from "./PriceInput";
 import { AmountInput } from "./AmountInput";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import type { MarketInfo, TokenInfo } from "../types/market";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /** Order book polling interval in milliseconds */
 export const POLL_INTERVAL_MS = 2_000;
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { AccountId, type SS58String } from "polkadot-api";
 import { toHex } from "polkadot-api/utils";
 import { keccak256 } from "viem";

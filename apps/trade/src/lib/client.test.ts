@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
 const GENESIS = `0x${"ab".repeat(32)}`;

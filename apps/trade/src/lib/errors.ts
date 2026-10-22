@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { decodeErrorResult, toFunctionSelector, type Abi } from "viem";
 import { formatAbiItem } from "viem/utils";
 import { toHex } from "polkadot-api/utils";

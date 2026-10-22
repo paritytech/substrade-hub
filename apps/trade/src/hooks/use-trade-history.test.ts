@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { encodeAbiParameters, encodeEventTopics, fromHex } from "viem";
 import { dlobAbi } from "../abi/dlob";

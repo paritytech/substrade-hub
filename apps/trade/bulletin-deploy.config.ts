@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 // Product manifest for `bulletin-deploy` (run through scripts/deploy-dot.mjs). It publishes the built
 // `dist/` to the Bulletin chain and points the network's dotNS name (networks.json `dotnsName`) at it.
 // See docs/deploy.md.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useState } from "react";
 import { useWalletStore } from "../../stores/wallet";
 import { disconnectHost } from "../../lib/host/signer";

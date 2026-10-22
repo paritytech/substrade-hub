@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { type PolkadotSigner, type SS58String, type SizedHex } from "polkadot-api";
 import { fromHex, toHex } from "polkadot-api/utils";
 import type { Abi } from "viem";

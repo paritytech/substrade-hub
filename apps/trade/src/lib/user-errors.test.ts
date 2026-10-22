@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GENERIC_ERROR, messageFor, userMessage, UserFacingError } from "./user-errors";
 

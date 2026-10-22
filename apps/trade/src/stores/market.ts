@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { create } from "zustand";
 import type { MarketInfo } from "../types/market";
 

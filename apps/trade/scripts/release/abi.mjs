@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * What changed in the contracts' interface. A release attaches `abis.json`, the DLOB's and the
  * factory's ABIs from its build, and its notes list what changed since the previous release: a removed

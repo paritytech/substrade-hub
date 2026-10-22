@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PriceLevel } from "./PriceLevel";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 //! Tests for foreign asset markets.
 //!
 //! Foreign assets use the `0x0220` ERC20 precompile prefix and require an explicit

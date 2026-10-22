@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useHostConnectionStore } from "../../stores/host-connection";
 
 /** A strip under the header while the host channel is down. Renders nothing while it is up. */

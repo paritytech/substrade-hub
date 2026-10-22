@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { getClient } from "./client";
 
 /** An `@polkadot/types` ExtDef entry: field name -> type string, for `extrinsic` and `payload` parts. */

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 export interface TradeEvent {
   blockNumber: number;
   txIndex: number;

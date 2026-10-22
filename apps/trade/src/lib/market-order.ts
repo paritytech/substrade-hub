@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { WAD } from "../config/constants";
 import { Side, type OrderBookLevel } from "../types/market";
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect } from "vitest";
 import { marketApproveAmount, feeWarningThreshold, hasMarketLiquidity, groupThousands, maxOrderAmount, quoteAmountCeil } from "./format";
 import { Side } from "../types/market";

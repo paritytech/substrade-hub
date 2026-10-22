@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Host account + signer via `@parity/product-sdk-signer`. `SignerManager.getSigner()` returns a PAPI
  * `PolkadotSigner` — the same type the wallet store already holds and `submitReviveCall` consumes — so

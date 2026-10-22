@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, expect, it, vi } from "vitest";
 import { MAX_PARTS, PartFailedError, placeInParts, TooManyPartsError, type PartOutcome } from "./split-order";
 

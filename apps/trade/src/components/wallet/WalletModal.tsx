@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useState, useCallback, useEffect } from "react";
 import type { InjectedExtension, InjectedPolkadotAccount } from "polkadot-api/pjs-signer";
 import { isMetaMaskAvailable, connectMetaMask } from "../../lib/wallet";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { useState, useRef, useEffect } from "react";
 import { useMarkets } from "../../hooks/use-markets";
 import { useMarketStore } from "../../stores/market";

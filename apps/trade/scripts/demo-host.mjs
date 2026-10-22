@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Demo host harness: wrap the running dev server in a real Polkadot Triangle host (via
  * @parity/host-api-test-sdk) so the app can be tried "inside a host" in any browser tab — no Polkadot

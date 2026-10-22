@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 //! Emulated XCM integration tests for substrade-hub.
 //!
 //! Uses polkadot-sdk's `xcm-emulator` to run the full Westend relay + Asset Hub +

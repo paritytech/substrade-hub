@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect } from "vitest";
 import type { InjectedPolkadotAccount } from "polkadot-api/pjs-signer";
 import { isAccountPresent } from "./substrate-wallet";
