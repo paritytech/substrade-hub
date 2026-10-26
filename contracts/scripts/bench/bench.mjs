@@ -31,6 +31,12 @@ const { values: args } = parseArgs({
     check: { type: "string" },
     // Append the results to this file as a Markdown table (CI passes $GITHUB_STEP_SUMMARY).
     summary: { type: "string" },
+    // Warn about each row that moved more than this share (%) from the tables in docs/benchmarks.md.
+    drift: { type: "string" },
+    // Replace the tables in docs/benchmarks.md with this run's results.
+    "write-docs": { type: "boolean", default: false },
+    // Report on a saved --out file, without a fork.
+    from: { type: "string" },
   },
 });
 
@@ -39,6 +45,93 @@ const net = NETWORKS[args.network];
 if (!net) throw new Error(`Unknown network "${args.network}"; pick one of ${Object.keys(NETWORKS).join(", ")}`);
 
 const sections = new Set(args.sections.split(","));
+const DOCS = new URL("../../docs/benchmarks.md", import.meta.url);
+const START = "<!-- bench:results:start -->";
+const END = "<!-- bench:results:end -->";
+
+/** A row's label as the docs show it: a function name in code style, anything else capitalised. */
+const docLabel = (label) => label.replace(/^([a-z]+[A-Z]\w*)/, "`$1`").replace(/^[a-z]/, (c) => c.toUpperCase());
+/** The inverse of `docLabel`. */
+const rowLabel = (cell) => cell.replaceAll("`", "").replace(/^[A-Z](?=[a-z ])/, (c) => c.toLowerCase());
+
+/** The results as the docs' tables, one per group. */
+function tables(results) {
+  const pas = (planck) => {
+    const v = Number(BigInt(planck)) / 1e10;
+    return v === 0 ? "0" : v < 0.0001 ? "< 0.0001" : v.toFixed(4);
+  };
+  const note = (r) => (r.outcome === "ok" ? "" : r.outcome === "does not fit" ? "**does not fit**" : r.outcome.startsWith("Error(") ? "reverts (#144)" : `reverts ${r.outcome}`);
+  return [...new Set(results.map((r) => r.group))]
+    .map((g) => {
+      const rows = results.filter((r) => r.group === g).map((r) => `| ${docLabel(r.label)} | ${(Number(r.proof) / 1e6).toFixed(2)} | ${r.proofPct}% | ${r.refTimePct}% | ${pas(r.deposit)} | ${pas(r.weightFee)} | ${note(r)} |`);
+      return `### ${g}\n\n| Operation | Proof (MB) | Proof limit | ref_time limit | Deposit (PAS) | Weight fee (PAS) | Note |\n| --- | ---: | ---: | ---: | ---: | ---: | --- |\n${rows.join("\n")}\n`;
+    })
+    .join("\n");
+}
+
+/** The proof and ref_time shares (%) the docs report, by row label. */
+function documented() {
+  const doc = readFileSync(DOCS, "utf8");
+  const shares = new Map();
+  for (const line of doc.slice(doc.indexOf(START), doc.indexOf(END)).split("\n")) {
+    const cells = line.split("|").map((c) => c.trim());
+    if (cells.length < 5 || !cells[3]?.endsWith("%")) continue;
+    shares.set(rowLabel(cells[1]), { proofPct: Number.parseFloat(cells[3]), refTimePct: Number.parseFloat(cells[4]) });
+  }
+  return shares;
+}
+
+/**
+ * The rows whose proof or ref_time share moved more than `max` percent of its documented value. Shares
+ * under 1% of a limit are skipped: the docs round them to two decimals, which alone can move them 5%.
+ */
+function drifted(results, max) {
+  const docs = documented();
+  const out = [];
+  for (const r of results) {
+    const d = docs.get(r.label);
+    if (!d) {
+      out.push({ label: r.label, detail: "not in docs/benchmarks.md" });
+      continue;
+    }
+    for (const [key, name] of [["proofPct", "proof"], ["refTimePct", "ref_time"]]) {
+      const was = d[key];
+      if (was >= 1 && Math.abs(r[key] - was) / was > max / 100) out.push({ label: r.label, detail: `${name} ${was}% in the docs, ${r[key]}% now` });
+    }
+  }
+  return out;
+}
+
+/** Write the summary, the docs and the drift warnings for `results`, and exit. */
+function report(results, runtimeName, contracts) {
+  const max = args.check === undefined ? undefined : Number(args.check);
+  const over = max === undefined ? [] : results.filter((r) => !r.probe && (r.proofPct > max || r.refTimePct > max));
+  const drift = args.drift === undefined ? [] : drifted(results, Number(args.drift));
+  if (args.summary) {
+    const rows = results.map((r) => `| ${r.group} | ${r.label}${r.probe ? " (ceiling probe)" : ""} | ${r.proofPct}% | ${r.refTimePct}% | ${r.outcome} |`);
+    const verdict = max === undefined ? "" : over.length ? `**${over.length} over ${max}% of a limit.**` : `Every call fits within ${max}% of the limits.`;
+    const stale = args.drift === undefined ? "" : drift.length ? `\n\n**docs/benchmarks.md is out of date** (moved more than ${args.drift}%): run \`pnpm bench --write-docs\` and commit it.\n\n${drift.map((x) => `- ${x.label}: ${x.detail}`).join("\n")}` : `\n\ndocs/benchmarks.md is up to date (within ${args.drift}%).`;
+    appendFileSync(args.summary, `## Contract benchmarks\n\n${runtimeName}, contracts: ${contracts}. ${verdict}${stale}\n\n| Group | Operation | Proof | ref_time | Outcome |\n| --- | --- | ---: | ---: | --- |\n${rows.join("\n")}\n`);
+  }
+  for (const x of drift) console.log(`${process.env.GITHUB_ACTIONS ? "::warning title=Benchmarks out of date::" : "drift: "}${x.label}: ${x.detail}`);
+  if (args["write-docs"]) {
+    if (results.length !== new Set(results.map((r) => r.label)).size) throw new Error("Duplicate row labels");
+    const doc = readFileSync(DOCS, "utf8");
+    const a = doc.indexOf(START);
+    const b = doc.indexOf(END);
+    if (a < 0 || b < a) throw new Error(`${DOCS.pathname} has no ${START} ... ${END} block`);
+    writeFileSync(DOCS, `${doc.slice(0, a + START.length)}\n\n${tables(results)}\n${doc.slice(b)}`);
+    console.log(`Wrote ${results.length} rows to docs/benchmarks.md (${runtimeName}); run npx prettier@3.3.3 --write on it before committing.`);
+  }
+  for (const r of over) console.error(`${r.label}: proof ${r.proofPct}%, ref_time ${r.refTimePct}%, over ${max}%`);
+  // 2, so CI can tell a call over the limit (a retry changes nothing) from a failed run (exit 1).
+  process.exit(over.length ? 2 : 0);
+}
+
+if (args.from) {
+  const saved = JSON.parse(readFileSync(args.from, "utf8"));
+  report(saved.results, saved.runtime, saved.contracts ?? "build");
+}
 
 const PAS = 10n ** 10n;
 const UNIT = 10n ** 6n;
@@ -442,19 +535,7 @@ if (sections.has("expired")) {
 }
 
 console.log(`\n${results.length} measurements`);
-if (args.out) writeFileSync(args.out, `${JSON.stringify(plain({ runtime: `${runtime.spec_name} ${runtime.spec_version}`, limits, results }), null, 2)}\n`);
-
-const max = args.check === undefined ? undefined : Number(args.check);
-const over = max === undefined ? [] : results.filter((r) => !r.probe && (r.proofPct > max || r.refTimePct > max));
-if (args.summary) {
-  const rows = results.map((r) => `| ${r.group} | ${r.label}${r.probe ? " (ceiling probe)" : ""} | ${r.proofPct}% | ${r.refTimePct}% | ${r.outcome} |`);
-  const verdict = max === undefined ? "" : over.length ? `**${over.length} over ${max}% of a limit.**\n\n` : `Every call fits within ${max}% of the limits.\n\n`;
-  appendFileSync(
-    args.summary,
-    `## Contract benchmarks\n\n${runtime.spec_name} ${runtime.spec_version}, contracts: ${args.contracts}. ${verdict}| Group | Operation | Proof | ref_time | Outcome |\n| --- | --- | ---: | ---: | --- |\n${rows.join("\n")}\n`,
-  );
-}
-for (const r of over) console.error(`${r.label}: proof ${r.proofPct}%, ref_time ${r.refTimePct}%, over ${max}%`);
+if (args.out) writeFileSync(args.out, `${JSON.stringify(plain({ runtime: `${runtime.spec_name} ${runtime.spec_version}`, contracts: args.contracts, limits, results }), null, 2)}\n`);
+if (args["write-docs"] && (sections.size < 7 || args.levels !== "64,256")) throw new Error("--write-docs needs every section at the default --levels");
 client.destroy();
-// 2, so CI can tell a call over the limit (a retry changes nothing) from a failed run (exit 1).
-process.exit(over.length ? 2 : 0);
+report(plain(results), `${runtime.spec_name} ${runtime.spec_version}`, args.contracts);
