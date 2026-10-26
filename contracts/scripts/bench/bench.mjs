@@ -44,7 +44,10 @@ const NETWORKS = JSON.parse(readFileSync(new URL("../../../apps/trade/src/config
 const net = NETWORKS[args.network];
 if (!net) throw new Error(`Unknown network "${args.network}"; pick one of ${Object.keys(NETWORKS).join(", ")}`);
 
+const ALL_SECTIONS = ["empty", "ladder", "level", "self", "tree", "cross-chain", "expired"];
+const DEFAULT_LEVELS = "64,256";
 const sections = new Set(args.sections.split(","));
+for (const name of sections) if (!ALL_SECTIONS.includes(name)) throw new Error(`Unknown section "${name}"; pick from ${ALL_SECTIONS.join(", ")}`);
 const DOCS = new URL("../../docs/benchmarks.md", import.meta.url);
 const START = "<!-- bench:results:start -->";
 const END = "<!-- bench:results:end -->";
@@ -102,8 +105,12 @@ function drifted(results, max) {
   return out;
 }
 
-/** Write the summary, the docs and the drift warnings for `results`, and exit. */
-function report(results, runtimeName, contracts) {
+/**
+ * Write the summary, the docs and the drift warnings for `results`, and exit. `run` says how they were
+ * measured: `runtime`, `contracts`, and the `sections` and `levels` that ran.
+ */
+function report(results, run) {
+  const { runtime: runtimeName, contracts } = run;
   const max = args.check === undefined ? undefined : Number(args.check);
   const over = max === undefined ? [] : results.filter((r) => !r.probe && (r.proofPct > max || r.refTimePct > max));
   const drift = args.drift === undefined ? [] : drifted(results, Number(args.drift));
@@ -115,6 +122,11 @@ function report(results, runtimeName, contracts) {
   }
   for (const x of drift) console.log(`${process.env.GITHUB_ACTIONS ? "::warning title=Benchmarks out of date::" : "drift: "}${x.label}: ${x.detail}`);
   if (args["write-docs"]) {
+    // The tables are the whole picture: only a run of every section at the default levels replaces them.
+    const all = run.sections && ALL_SECTIONS.every((name) => run.sections.includes(name)) && run.sections.length === ALL_SECTIONS.length;
+    if (!all || run.levels !== DEFAULT_LEVELS) {
+      throw new Error(`--write-docs needs a run of every section at --levels ${DEFAULT_LEVELS}; this one ran ${run.sections?.join(",") ?? "unknown sections"} at ${run.levels ?? "unknown levels"}`);
+    }
     if (results.length !== new Set(results.map((r) => r.label)).size) throw new Error("Duplicate row labels");
     const doc = readFileSync(DOCS, "utf8");
     const a = doc.indexOf(START);
@@ -130,7 +142,7 @@ function report(results, runtimeName, contracts) {
 
 if (args.from) {
   const saved = JSON.parse(readFileSync(args.from, "utf8"));
-  report(saved.results, saved.runtime, saved.contracts ?? "build");
+  report(saved.results, saved);
 }
 
 const PAS = 10n ** 10n;
@@ -498,6 +510,13 @@ if (sections.has("cross-chain")) {
     await measure("Cross-chain", `limit buy filling ${k} level${k > 1 ? "s" : ""}, taker cross-chain${k === 5 ? " (budget stops at 4)" : ""}`, taker, market, DLOB, ...xLimit(BUY, px(10_100 + k - 1), BigInt(k) * UNIT, taker), { value: reserve });
   }
 
+  // A fill whose settlement fails leaves a fill claim, which takes one minCrossChainFee from the
+  // order's reserve.
+  const XCM_FAILS = "Error(XCM execute failed: message may be invalid or execution constraints not satisfied)";
+  await send(taker, market, DLOB, ...xLimit(BUY, px(10_100), UNIT, taker), reserve);
+  const fillClaim = (await read(market, DLOB, "nextClaimId")) - 1;
+  await measure("Cross-chain", "claimSettlement, fill claim", taker, market, DLOB, "claimSettlement", [fillClaim], { expect: XCM_FAILS });
+
   await rewind(ready);
   for (let i = 0; i < 4; i++) await send(makers[i], market, DLOB, ...xLimit(SELL, px(10_100 + i), UNIT, makers[i]), reserve);
   const xAsk = (await nextOrderId()) - 4;
@@ -507,9 +526,15 @@ if (sections.has("cross-chain")) {
   await measure("Cross-chain", "limit buy filling 1 level, maker cross-chain", taker, market, DLOB, ...limit(BUY, px(10_100), UNIT, { owner: taker }));
   await measure("Cross-chain", "cancel a cross-chain order", makers[0], market, DLOB, "cancelOrder", [xAsk, makers[0].origin]);
   await send(makers[0], market, DLOB, "cancelOrder", [xAsk, makers[0].origin]);
-  const claimId = (await read(market, DLOB, "nextClaimId")) - 1;
-  await measure("Cross-chain", "claimSettlement", taker, market, DLOB, "claimSettlement", [claimId], { value: minFee, expect: "Error(XCM execute failed: message may be invalid or execution constraints not satisfied)" });
-  await measure("Cross-chain", "redirectClaim", makers[0], market, DLOB, "redirectClaim", [claimId, makers[0].origin, 1502]);
+  // Cancelling a cross-chain order leaves a refund claim, which sends the whole reserve.
+  const refundClaim = (await read(market, DLOB, "nextClaimId")) - 1;
+  await measure("Cross-chain", "claimSettlement, refund claim", taker, market, DLOB, "claimSettlement", [refundClaim], { value: minFee, expect: XCM_FAILS });
+  await measure("Cross-chain", "redirectClaim, refund claim", makers[0], market, DLOB, "redirectClaim", [refundClaim, makers[0].origin, 1502]);
+
+  // The taker's own cross-chain orders at the front: each is cancelled and refunded through a claim.
+  await rewind(ready);
+  for (let i = 0; i < 7; i++) await send(taker, market, DLOB, ...xLimit(SELL, px(10_000 + i), UNIT, taker), reserve);
+  await measure("Cross-chain", "limit buy cancelling 6 own cross-chain orders (budget stops)", taker, market, DLOB, ...limit(BUY, px(10_100), UNIT, { owner: taker }));
 }
 
 // == expired orders (last: moving the clock forward and then rewinding the fork breaks block production) ==
@@ -521,9 +546,13 @@ if (sections.has("expired")) {
   for (const m of makers.slice(0, 7)) await send(m, market, DLOB, ...limit(SELL, px(10_000), UNIT, { owner: m, expire }));
   const purgeFirst = await nextOrderId();
   await sendMany(makers[13], market, DLOB, Array.from({ length: 60 }, () => limit(SELL, px(10_099), UNIT, { owner: makers[13], expire })));
+  // Cross-chain bids that expire: each is removed and refunded through a claim.
+  const minFee = await read(factory, FACTORY, "minCrossChainFee");
+  for (const m of makers.slice(7, 14)) await send(m, market, DLOB, "placeLimitOrder", [BUY, px(9_900), UNIT, m.origin, m.origin, 1000, expire, false], minFee * 7n);
   await rpc("dev_timeTravel", [Number((expire + 120n) * 1000n)]);
   await rpc("dev_newBlock", [{ count: 1 }]);
   await measure("Limit order, taking", "limit buy clearing 6 expired orders (budget stops)", taker, market, DLOB, ...limit(BUY, px(10_100), UNIT, { owner: taker }));
+  await measure("Limit order, taking", "limit sell clearing 6 expired cross-chain orders (budget stops)", taker, market, DLOB, ...limit(SELL, px(9_800), UNIT, { owner: taker }));
   await measure("Cancel and reduce", "cancel an expired order", makers[0], market, DLOB, "cancelOrder", [expiredFirst, makers[0].origin]);
   // The docs say up to 25 and 20 orders fit.
   for (const n of [5, 10, 20, 25, 30]) {
@@ -535,7 +564,7 @@ if (sections.has("expired")) {
 }
 
 console.log(`\n${results.length} measurements`);
-if (args.out) writeFileSync(args.out, `${JSON.stringify(plain({ runtime: `${runtime.spec_name} ${runtime.spec_version}`, contracts: args.contracts, limits, results }), null, 2)}\n`);
-if (args["write-docs"] && (sections.size < 7 || args.levels !== "64,256")) throw new Error("--write-docs needs every section at the default --levels");
+const measured = { runtime: `${runtime.spec_name} ${runtime.spec_version}`, contracts: args.contracts, sections: [...sections], levels: args.levels };
+if (args.out) writeFileSync(args.out, `${JSON.stringify(plain({ ...measured, limits, results }), null, 2)}\n`);
 client.destroy();
-report(plain(results), `${runtime.spec_name} ${runtime.spec_version}`, args.contracts);
+report(plain(results), measured);

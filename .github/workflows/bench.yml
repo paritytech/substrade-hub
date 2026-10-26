@@ -25,7 +25,7 @@ jobs:
   bench:
     name: Contract benchmarks (paseo-v2 fork)
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,18 +71,22 @@ jobs:
 
       # The fork reads live state from the public RPC node, which drops connections at times: a run that
       # fails or hangs is retried once on a new fork. A call over the threshold (exit 2) is not retried.
+      # The fork runs in its own process group (npx and the Chopsticks process under it), killed whole
+      # after each attempt, so the retry starts on a free port and the cache is saved from a closed
+      # database. Two attempts of 25 minutes fit the job's limit; a run takes about 11.
       - name: Benchmark
         working-directory: contracts
         run: |
           for attempt in 1 2; do
-            npx -y @acala-network/chopsticks@1.5.2 --config scripts/bench/paseo-v2.yml > "$RUNNER_TEMP/fork-$attempt.log" 2>&1 &
+            setsid npx -y @acala-network/chopsticks@1.5.2 --config scripts/bench/paseo-v2.yml > "$RUNNER_TEMP/fork-$attempt.log" 2>&1 &
+            fork=$!
             for _ in $(seq 1 100); do grep -q listening "$RUNNER_TEMP/fork-$attempt.log" && break; sleep 3; done
             status=0
-            timeout 30m node scripts/bench/bench.mjs --levels 64 --check 95 --drift 5 --summary "$GITHUB_STEP_SUMMARY" || status=$?
-            pkill -f "chopsticks@1.5.2" || true
+            timeout 25m node scripts/bench/bench.mjs --levels 64 --check 95 --drift 5 --summary "$GITHUB_STEP_SUMMARY" || status=$?
+            kill -- -"$fork" 2>/dev/null || true
+            wait "$fork" 2>/dev/null || true
             if [ "$status" -eq 0 ] || [ "$status" -eq 2 ]; then exit "$status"; fi
             echo "::warning::Benchmark attempt $attempt failed (exit $status)"
             tail -n 40 "$RUNNER_TEMP/fork-$attempt.log"
-            sleep 5
           done
           exit 1

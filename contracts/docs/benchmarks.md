@@ -51,7 +51,8 @@ restart both, and the next run reuses the cache.
 
 A dry run may use up to the block's 10 MiB of proof (125% of one transaction's), so a call too large
 for one transaction can still succeed in it; one larger than the block runs out of gas there. The
-tables mark both as **does not fit**.
+tables mark both as **does not fit**, and a row at 124.93% (10.48 MB) is that cap: `batchCancelOrders`
+with 30 orders and with 40 both stop there, which is no measure of what either would cost.
 
 ## In CI
 
@@ -60,7 +61,9 @@ The Benchmark workflow (`.github/workflows/bench.yml`) runs on pull requests tha
 with every section, the `tree` one at 64 levels, and fails when a call uses more than 95% of the proof
 or ref_time limit. The rows sized past the documented ceilings (`purgeExpired` above 25 orders,
 `batchCancelOrders` above 20) are left out of that check. It also warns about each row that moved
-more than 5% from the tables below. The table and the warnings are in the run's summary.
+more than 5% from the tables below. The table and the warnings are in the run's summary. CI runs the
+`tree` section at 64 levels only, so the 256-level rows are not compared: refresh the tables by hand
+after a change that could move them, such as one to the red-black tree.
 
 ## Keeping the results up to date
 
@@ -167,8 +170,8 @@ otherwise. "Levels" are price levels on the side the order takes from.
 | Limit buy filling 4 levels, both legs cross-chain (budget stops at 3) |       6.25 |      74.49% |         33.22% |             0 |           0.5510 |                |
 | Limit buy filling 1 level, maker cross-chain                          |       1.92 |      22.93% |          6.22% |        0.0206 |           0.1697 |                |
 | Cancel a cross-chain order                                            |       1.15 |      13.69% |          0.72% |        0.0206 |           0.1013 |                |
-| `claimSettlement` (fails: see the docs)                               |       0.62 |       7.44% |          5.23% |             0 |           0.0551 | reverts (#144) |
-| `redirectClaim`                                                       |       0.14 |       1.68% |          0.07% |             0 |           0.0124 |                |
+| `claimSettlement`, refund claim                                       |       0.62 |       7.44% |          5.23% |             0 |           0.0551 | reverts (#144) |
+| `redirectClaim`, refund claim                                         |       0.14 |       1.68% |          0.07% |             0 |           0.0124 |                |
 
 ### Purge expired
 
@@ -186,7 +189,10 @@ otherwise. "Levels" are price levels on the side the order takes from.
 
 - **The matching budget fits.** A local fill costs 0.7 to 1.1 MB of proof, about 0.8 MB on average,
   and a cross-chain leg about 0.55 MB more, in line with the estimates behind `MATCH_BUDGET`. A full
-  budget uses at most 68% of the limit with local fills, and 75% with cross-chain legs.
+  budget uses at most 68% of the limit with local fills, and 75% with cross-chain legs. The taker's own
+  cross-chain orders, and expired cross-chain orders, are each refunded through a claim and charged
+  like a local fill. A full budget of six of each is measured by the `cross-chain` and `expired`
+  sections; the next full run adds their rows, and the fill claim's, to the tables.
 - **Every call that returns escrow fits.** Cancelling the only order at its level costs the most, and
   grows slowly with the book: 12% with 7 levels, 20% with 256.
 - **Caller-sized batches have a ceiling.** `purgeExpired` costs about 3.5% of the limit per order it
@@ -194,6 +200,9 @@ otherwise. "Levels" are price levels on the side the order takes from.
   app calls neither.
 - **Cross-chain rows measure the fallback path.** On paseo-v2, the settlement XCM fails inside the
   market, so every cross-chain fill creates a pending claim, and `claimSettlement` reverts (#144). The
+  fill rows include that failed attempt and the claim creation. `claimSettlement` is measured on both
+  kinds of claim: a fill claim, which sends one `minCrossChainFee` from the order's reserve, and a
+  refund claim, left by cancelling a cross-chain order, which sends the whole reserve. The
   fork sets a cross-chain fee of 0.1 PAS, since the networks' fee of 0 makes every cross-chain fill
   revert (#143), and funds para 1000's sovereign account. A successful settlement should cost about
   the same: executing the same message from an account costs about 0.41 MB of proof.
