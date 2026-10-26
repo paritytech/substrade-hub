@@ -88,10 +88,23 @@ contract NativeValueTest is Test {
 
     // ================== FACTORY ==================
 
-    function testZeroRatioIsRefused() public {
+    function testInvalidRatioIsRefused() public {
         address impl = address(new DLOB());
-        vm.expectRevert(DLOBFactory.ZeroRatio.selector);
+        vm.expectRevert(DLOBFactory.InvalidRatio.selector);
         new DLOBFactory(address(mockXcm), address(mockSystem), impl, 0);
+        vm.expectRevert(DLOBFactory.InvalidRatio.selector);
+        new DLOBFactory(address(mockXcm), address(mockSystem), impl, 1e18 + 1);
+    }
+
+    /// The caps are 10 and 1,000 of the native token, whatever its decimals.
+    function testCapsFollowTheNativeDecimals() public {
+        assertEq(factory.MAX_MIN_CROSS_CHAIN_FEE(), 10 * 1e10); // 10 DOT, 10 decimals
+        assertEq(factory.MAX_MARKET_CREATION_DEPOSIT(), 1000 * 1e10);
+
+        address impl = address(new DLOB());
+        DLOBFactory twelve = new DLOBFactory(address(mockXcm), address(mockSystem), impl, 1e6);
+        assertEq(twelve.MAX_MIN_CROSS_CHAIN_FEE(), 10 * 1e12); // 10 KSM or WND, 12 decimals
+        assertEq(twelve.MAX_MARKET_CREATION_DEPOSIT(), 1000 * 1e12);
     }
 
     function testFeeOfOnePlanckIsRefused() public {

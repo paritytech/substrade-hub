@@ -226,8 +226,8 @@ The deployer is the initial factory admin. Admin capabilities:
 
 | Function                    | Description                                                      |
 | --------------------------- | ---------------------------------------------------------------- |
-| `setMinCrossChainFee()`     | Set the minimum DOT fee reserve for cross-chain orders (at most 10 DOT) |
-| `setMarketCreationDeposit()`| Set the DOT deposit required to create a market (at most 1,000 DOT) |
+| `setMinCrossChainFee()`     | Set the minimum DOT fee reserve for cross-chain orders (at most 10 of the native token) |
+| `setMarketCreationDeposit()`| Set the DOT deposit required to create a market (at most 1,000 of the native token) |
 | `transferAdmin()`           | Start handing the admin role to a new address; `address(0)` cancels |
 | `acceptAdmin()`             | Complete the hand-over, called by the new address                |
 | `setHalted()`               | Stop or resume new orders on every market; exits stay open       |

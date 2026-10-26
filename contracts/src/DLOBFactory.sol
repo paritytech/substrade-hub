@@ -38,10 +38,11 @@ contract DLOBFactory is IDLOBFactory {
     uint128 public minCrossChainFee;
     uint128 public marketCreationDeposit;
 
-    /// @notice Upper bound for `minCrossChainFee`: 10 DOT, well above an XCM delivery fee.
-    uint128 public constant MAX_MIN_CROSS_CHAIN_FEE = 10 * 1e10;
-    /// @notice Upper bound for `marketCreationDeposit`: 1,000 DOT.
-    uint128 public constant MAX_MARKET_CREATION_DEPOSIT = 1000 * 1e10;
+    /// @notice Upper bound for `minCrossChainFee`, in planck: 10 of the native token (10 DOT on
+    /// Polkadot), well above an XCM delivery fee.
+    uint128 public immutable MAX_MIN_CROSS_CHAIN_FEE;
+    /// @notice Upper bound for `marketCreationDeposit`, in planck: 1,000 of the native token.
+    uint128 public immutable MAX_MARKET_CREATION_DEPOSIT;
 
     // ──────────────────────── Events ─────────────────────────────
 
@@ -69,18 +70,21 @@ contract DLOBFactory is IDLOBFactory {
     error SameLocation();
     error FeeTooHigh();
     error FeeTooLow();
-    error ZeroRatio();
+    error InvalidRatio();
     error DepositTooHigh();
     error NotPendingAdmin();
 
     // ──────────────────────── Constructor ─────────────────────────
 
     constructor(address _xcm, address _system, address _implementation, uint96 _nativeToEthRatio) {
-        if (_nativeToEthRatio == 0) revert ZeroRatio();
+        if (_nativeToEthRatio == 0 || _nativeToEthRatio > 1e18) revert InvalidRatio();
         XCM_PRECOMPILE = IXcm(_xcm);
         SYSTEM_PRECOMPILE = ISystem(_system);
         IMPLEMENTATION = _implementation;
         NATIVE_TO_ETH_RATIO = _nativeToEthRatio;
+        uint128 unit = uint128(1e18 / _nativeToEthRatio); // one native token, in planck
+        MAX_MIN_CROSS_CHAIN_FEE = 10 * unit;
+        MAX_MARKET_CREATION_DEPOSIT = 1000 * unit;
         admin = msg.sender;
     }
 
