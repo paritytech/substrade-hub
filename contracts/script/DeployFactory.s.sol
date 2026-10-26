@@ -16,6 +16,9 @@ import {DLOB} from "../src/DLOB.sol";
 ///   - Console logs with all deployed addresses
 ///   - broadcast/DeployFactory.s.sol/<chainId>/run-latest.json with full transaction receipts
 ///
+/// Set NATIVE_TO_ETH_RATIO to 10^(18 - the native token's decimals): the default, 10^8, is for
+/// Polkadot and Paseo (10 decimals); Kusama and Westend (12 decimals) need 10^6.
+///
 /// Note: Forge auto-deploys the RedBlackTree and XcmBuilder libraries during broadcast
 /// because DLOB references them as external (deployed) libraries. The library addresses
 /// are resolved automatically, no --libraries flag is needed.
@@ -34,7 +37,9 @@ contract DeployFactory is Script {
         DLOB impl = new DLOB();
 
         // 2. Deploy DLOBFactory
-        DLOBFactory factory = new DLOBFactory(XCM_PRECOMPILE, SYSTEM_PRECOMPILE, address(impl));
+        uint96 ratio = uint96(vm.envOr("NATIVE_TO_ETH_RATIO", uint256(1e8)));
+        DLOBFactory factory =
+            new DLOBFactory(XCM_PRECOMPILE, SYSTEM_PRECOMPILE, address(impl), ratio);
 
         vm.stopBroadcast();
 

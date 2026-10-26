@@ -127,7 +127,7 @@ For trust-backed assets, no manual encoding is needed; the contract derives the 
 The DLOB distinguishes between local and cross-chain orders based on `destParaId`:
 
 - **Local order** (`destParaId == 0`): Both escrow and settlement happen via direct ERC20 transfers on Asset Hub. No XCM involved, no fee reserve required. Sending `msg.value` with a local order reverts with `LocalOrderWithValue`.
-- **Cross-chain order** (`destParaId != 0`): Tokens arrive via XCM, and settlement is delivered via XCM reserve transfer. Requires a DOT fee reserve (`msg.value >= factory.minCrossChainFee()`).
+- **Cross-chain order** (`destParaId != 0`): Tokens arrive via XCM, and settlement is delivered via XCM reserve transfer. Requires a DOT fee reserve of at least `factory.minCrossChainFee()` (see [Fee Reserve](#fee-reserve)). While that fee is 0, cross-chain orders revert with `CrossChainDisabled`.
 
 Both order types require the caller to have an **ERC-20 allowance** set before placing an order. The DLOB contract escrows tokens via `transferFrom`, so traders must first call `approve(marketAddress, amount)` on the relevant token precompile. For buy orders, approve the quote token; for sell orders, approve the base token. For cross-chain orders, the parachain's sovereign account on Asset Hub is the one that needs the allowance.
 
@@ -176,11 +176,13 @@ When a cross-chain order is filled, the DLOB automatically sends matched tokens 
 
 Settlement uses `XcmBuilder.buildDualAssetReserveTransfer()` to construct an XCM V5 message that carries both the traded token and DOT (for execution fees on the destination chain) in a single reserve transfer. The message is executed via the XCM precompile at `0x00000000000000000000000000000000000A0000`.
 
-The fee reserve is split across fills: if an order receives multiple partial fills, each fill consumes a proportional share of the total fee reserve to fund its own settlement delivery.
+Each settlement delivery takes `factory.minCrossChainFee()` from the order's fee reserve. When the reserve cannot cover it, the fill waits as a `PendingClaim`, and `claimSettlement` takes the fee from the reserve first, then from its own `msg.value`. A settlement the XCM precompile refuses to weigh or execute becomes a `PendingClaim` the same way, with the fee returned to the reserve. Setting the fee back to 0 only stops new cross-chain orders: a resting one that fills afterwards builds its message with the current fee, 0, which the precompile refuses, so the fill waits as a `PendingClaim` until a fee is set again. A refund claim still sends the reserve it holds.
 
 ## Fee Reserve
 
-Each cross-chain order must include a DOT fee reserve (`msg.value >= factory.minCrossChainFee()`). This reserve pays for XCM settlement delivery when the order is filled. If an order is cancelled before being filled, the fee reserve is returned via XCM to the user's home chain as a `PendingClaim` of type `Refund`.
+Each cross-chain order must include a DOT fee reserve of at least `factory.minCrossChainFee()`. This reserve pays for XCM settlement delivery when the order is filled. If an order is cancelled before being filled, the fee reserve is returned via XCM to the user's home chain as a `PendingClaim` of type `Refund`.
+
+The fee and the reserve count in planck, the unit XCM moves DOT in. `msg.value`, and every native transfer from a market, count in 18-decimal units instead: one planck is `factory.NATIVE_TO_ETH_RATIO()` of them, 10^(18 - the native token's decimals), so 10^8 on Polkadot and Paseo. A market converts `msg.value` to planck as it arrives, rounding down; the remainder below one planck stays with the market, which the admin can sweep.
 
 ### Excess Fee Reserve
 

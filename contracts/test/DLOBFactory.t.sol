@@ -27,7 +27,7 @@ contract DLOBFactoryTest is Test {
         mockXcm = new MockXcm();
         mockSystem = new MockSystem();
         DLOB impl = new DLOB();
-        factory = new DLOBFactory(address(mockXcm), address(mockSystem), address(impl));
+        factory = new DLOBFactory(address(mockXcm), address(mockSystem), address(impl), 1);
         baseToken = new MockERC20("Base Token", "BASE");
         quoteToken = new MockERC20("Quote Token", "QUOTE");
     }

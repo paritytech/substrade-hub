@@ -21,6 +21,7 @@ contract MockXcm is IXcm {
     ExecuteCall[] public executeCalls;
     SendCall[] public sendCalls;
     bool public shouldRevert;
+    bool public weighShouldRevert;
 
     event XcmExecuted(bytes message);
     event XcmSent(bytes destination, bytes message);
@@ -36,7 +37,8 @@ contract MockXcm is IXcm {
         emit XcmSent(destination, message);
     }
 
-    function weighMessage(bytes calldata) external pure override returns (Weight memory weight) {
+    function weighMessage(bytes calldata) external view override returns (Weight memory weight) {
+        require(!weighShouldRevert, "MockXcm: weighMessage reverted");
         weight = Weight({refTime: 1_000_000_000, proofSize: 100_000});
     }
 
@@ -44,6 +46,11 @@ contract MockXcm is IXcm {
 
     function setShouldRevert(bool _shouldRevert) external {
         shouldRevert = _shouldRevert;
+    }
+
+    /// @notice Make `weighMessage` revert, as the precompile does for a message it cannot decode.
+    function setWeighShouldRevert(bool _weighShouldRevert) external {
+        weighShouldRevert = _weighShouldRevert;
     }
 
     function getExecuteCallCount() external view returns (uint256) {
@@ -62,5 +69,6 @@ contract MockXcm is IXcm {
         delete executeCalls;
         delete sendCalls;
         shouldRevert = false;
+        weighShouldRevert = false;
     }
 }

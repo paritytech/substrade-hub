@@ -386,7 +386,11 @@ if (args.contracts === "build") {
   const libraries = {};
   for (const lib of ["RedBlackTree", "XcmBuilder"]) libraries[lib] = await deploy(deployer, lib);
   const implementation = await deploy(deployer, "DLOB", { libraries });
-  factory = await deploy(deployer, "DLOBFactory", { args: [XCM_PRECOMPILE, SYSTEM_PRECOMPILE, implementation] });
+  // msg.value counts in 18-decimal units: one planck is 10^(18 - the native token's decimals).
+  const decimals = [(await client.getChainSpecData()).properties?.tokenDecimals].flat()[0];
+  if (!Number.isInteger(decimals)) throw new Error("The chain spec has no tokenDecimals");
+  const ratio = 10n ** BigInt(18 - decimals);
+  factory = await deploy(deployer, "DLOBFactory", { args: [XCM_PRECOMPILE, SYSTEM_PRECOMPILE, implementation, ratio] });
   admin = deployer;
   console.log(`  factory ${factory}, implementation ${implementation}`);
 } else if (args.contracts === "live") {
@@ -403,10 +407,9 @@ console.log("== factory ==");
 await measure("Factory", "createMarket", admin, factory, FACTORY, "createMarket", marketArgs, { value: creationDeposit });
 await send(admin, factory, FACTORY, "createMarket", marketArgs, creationDeposit);
 const market = await read(factory, FACTORY, "getMarket", [BASE, QUOTE]);
-// Both networks set no cross-chain fee, and XCM refuses a message with a zero amount (the fee, or half
-// of it for BuyExecution): set one, as a network running cross-chain trading would. Local orders do not
-// read it.
-if ((await read(factory, FACTORY, "minCrossChainFee")) < 2n) await send(admin, factory, FACTORY, "setMinCrossChainFee", [PAS / 10n]);
+// A factory starts with no cross-chain fee, which disables cross-chain orders: set the bootstrap's.
+// Local orders do not read it.
+if ((await read(factory, FACTORY, "minCrossChainFee")) === 0n) await send(admin, factory, FACTORY, "setMinCrossChainFee", [PAS / 10n]);
 console.log(`  market ${market} (base ${baseId}, quote ${quoteId})`);
 
 for (const a of everyone) {
@@ -503,8 +506,6 @@ if (sections.has("cross-chain")) {
     await measure("Cross-chain", `limit buy filling ${k} level${k > 1 ? "s" : ""}, taker cross-chain${k === 5 ? " (budget stops at 4)" : ""}`, taker, market, DLOB, ...xLimit(BUY, px(10_100 + k - 1), BigInt(k) * UNIT, taker), { value: reserve });
   }
 
-  const XCM_FAILS = "Error(XCM execute failed: message may be invalid or execution constraints not satisfied)";
-
   await rewind(ready);
   for (let i = 0; i < 4; i++) await send(makers[i], market, DLOB, ...xLimit(SELL, px(10_100 + i), UNIT, makers[i]), reserve);
   const xAsk = (await nextOrderId()) - 4;
@@ -514,10 +515,9 @@ if (sections.has("cross-chain")) {
   await measure("Cross-chain", "limit buy filling 1 level, maker cross-chain", taker, market, DLOB, ...limit(BUY, px(10_100), UNIT, { owner: taker }));
   await measure("Cross-chain", "cancel a cross-chain order", makers[0], market, DLOB, "cancelOrder", [xAsk, makers[0].origin]);
   await send(makers[0], market, DLOB, "cancelOrder", [xAsk, makers[0].origin]);
-  // Cancelling a cross-chain order leaves a refund claim, which sends the whole reserve. Settling it
-  // reverts: the reserve is recorded in 18-decimal units and sent as planck.
+  // Cancelling a cross-chain order leaves a refund claim, which sends the escrow and the whole reserve.
   const refundClaim = (await read(market, DLOB, "nextClaimId")) - 1;
-  await measure("Cross-chain", "claimSettlement, refund claim", taker, market, DLOB, "claimSettlement", [refundClaim], { value: minFee, expect: XCM_FAILS });
+  await measure("Cross-chain", "claimSettlement, refund claim", taker, market, DLOB, "claimSettlement", [refundClaim], { value: minFee });
   await measure("Cross-chain", "redirectClaim, refund claim", makers[0], market, DLOB, "redirectClaim", [refundClaim, makers[0].origin, 1502]);
 
   // The taker's own cross-chain orders at the front: each is cancelled and refunded through a claim.

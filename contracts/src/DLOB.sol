@@ -82,6 +82,8 @@ contract DLOB {
     uint96 internal minOrderSize;
     uint128 internal maxOrderSize;
     IDLOBFactory internal factory;
+    /// @dev `msg.value` and native transfers count in 18-decimal units: one planck is this many.
+    uint96 internal nativeToEthRatio;
 
     // ──────────────────────── Constants ────────────────────────────────
 
@@ -124,6 +126,7 @@ contract DLOB {
     mapping(uint96 => uint32) internal askPriceToNode;
     mapping(uint32 => PendingClaim) internal pendingClaims;
 
+    /// @notice DOT held as fee reserves, in planck.
     uint128 public totalFeeReserveBalance;
 
     // ──────────────────────── Events ─────────────────────────────
@@ -175,6 +178,7 @@ contract DLOB {
     error ZeroQuoteAmount();
     error InvalidSettlementAccount();
     error InsufficientFeeReserve();
+    error CrossChainDisabled();
     error LocalOrderWithValue();
     error OrderNotActive(uint32 orderId);
     error NotOrderOwner();
@@ -223,7 +227,8 @@ contract DLOB {
         uint128 _maxOrderSize,
         address _xcm,
         address _system,
-        address _factory
+        address _factory,
+        uint96 _nativeToEthRatio
     ) external payable {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
@@ -247,6 +252,7 @@ contract DLOB {
         xcmPrecompile = IXcm(_xcm);
         systemPrecompile = ISystem(_system);
         factory = IDLOBFactory(_factory);
+        nativeToEthRatio = _nativeToEthRatio;
 
         // Clone storage starts at zero — set counters to 1
         nextOrderId = 1;
@@ -318,8 +324,9 @@ contract DLOB {
         orderLinks[orderId].destParaId = destParaId;
         if (destParaId > 0) {
             settlementAccounts[orderId] = settlementAccount;
-            orderFeeReserve[orderId] = uint128(msg.value);
-            totalFeeReserveBalance += uint128(msg.value);
+            uint128 reserve = _planck(msg.value);
+            orderFeeReserve[orderId] = reserve;
+            totalFeeReserveBalance += reserve;
         }
 
         // --- MATCHING PHASE ---
@@ -410,8 +417,9 @@ contract DLOB {
 
         // Store DOT fee reserve
         if (destParaId > 0) {
-            orderFeeReserve[orderId] = uint128(msg.value);
-            totalFeeReserveBalance += uint128(msg.value);
+            uint128 reserve = _planck(msg.value);
+            orderFeeReserve[orderId] = reserve;
+            totalFeeReserveBalance += reserve;
         }
 
         // Store temporary order
@@ -458,8 +466,7 @@ contract DLOB {
         if (tempFeeReserve > 0) {
             orderFeeReserve[orderId] = 0;
             totalFeeReserveBalance -= tempFeeReserve;
-            (bool sent,) = payable(msg.sender).call{value: tempFeeReserve}("");
-            if (!sent) revert TransferFailed();
+            _sendValue(msg.sender, uint256(tempFeeReserve) * nativeToEthRatio);
         }
     }
 
@@ -567,7 +574,7 @@ contract DLOB {
             // The fee comes from the order's reserve first, then from msg.value.
             uint128 fromReserve = reserve >= feePerSettle ? feePerSettle : reserve;
             uint128 fromValue = feePerSettle - fromReserve;
-            if (uint128(msg.value) < fromValue) revert InsufficientClaimFee();
+            if (_planck(msg.value) < fromValue) revert InsufficientClaimFee();
 
             orderFeeReserve[claim.orderId] = reserve - fromReserve;
             totalFeeReserveBalance -= fromReserve;
@@ -575,14 +582,11 @@ contract DLOB {
 
             // Refund only the unused part of msg.value. What is left of the reserve stays recorded
             // for the order's owner (withdrawExcessFeeReserve).
-            uint128 excess = uint128(msg.value) - fromValue;
-            if (excess > 0) {
-                (bool sent,) = payable(msg.sender).call{value: excess}("");
-                if (!sent) revert TransferFailed();
-            }
+            uint256 excess = msg.value - uint256(fromValue) * nativeToEthRatio;
+            if (excess > 0) _sendValue(msg.sender, excess);
         } else {
             // Refund: drain all remaining DOT
-            dotForXcm = orderFeeReserve[claim.orderId] + uint128(msg.value);
+            dotForXcm = orderFeeReserve[claim.orderId] + _planck(msg.value);
             if (dotForXcm == 0) revert InsufficientClaimFee();
             totalFeeReserveBalance -= orderFeeReserve[claim.orderId];
             orderFeeReserve[claim.orderId] = 0;
@@ -618,8 +622,7 @@ contract DLOB {
         orderFeeReserve[orderId] = 0;
         totalFeeReserveBalance -= excess;
 
-        (bool sent,) = payable(o.owner).call{value: excess}("");
-        if (!sent) revert TransferFailed();
+        _sendValue(o.owner, uint256(excess) * nativeToEthRatio);
     }
 
     /// @notice Redirect a PendingClaim to a different destination parachain, for the same beneficiary.
@@ -656,14 +659,13 @@ contract DLOB {
         emit AdminClaimRedirected(claimId, newDestParaId, newBeneficiary, msg.sender);
     }
 
-    /// @notice Admin: sweep orphaned DOT from operational reserve.
+    /// @notice Admin: sweep orphaned DOT from operational reserve. `amount` is in planck.
     function sweepOrphanedDot(address recipient, uint128 amount) external nonReentrant {
         if (msg.sender != factory.admin()) revert NotAdmin();
-        uint128 available = uint128(address(this).balance) - totalFeeReserveBalance;
+        uint128 available = _planck(address(this).balance) - totalFeeReserveBalance;
         if (amount > available) revert ExceedsAvailable();
 
-        (bool sent,) = payable(recipient).call{value: amount}("");
-        if (!sent) revert TransferFailed();
+        _sendValue(recipient, uint256(amount) * nativeToEthRatio);
 
         emit OrphanedDotSwept(recipient, amount);
     }
@@ -975,12 +977,14 @@ contract DLOB {
             bytes memory message = XcmBuilder.buildDualAssetReserveTransfer(
                 feePerSettle, _resolveLocation(token), amount, destParaId, beneficiary
             );
-            IXcm.Weight memory weight = xcmPrecompile.weighMessage(message);
-
-            try xcmPrecompile.execute(message, weight) {
-            // Success
-            }
-            catch {
+            // A message the precompile refuses to weigh or execute falls back to a claim alike.
+            bool settled;
+            try xcmPrecompile.weighMessage(message) returns (IXcm.Weight memory weight) {
+                try xcmPrecompile.execute(message, weight) {
+                    settled = true;
+                } catch {}
+            } catch {}
+            if (!settled) {
                 // Restore fee reserve, create fallback claim
                 orderFeeReserve[orderId] += feePerSettle;
                 totalFeeReserveBalance += feePerSettle;
@@ -1111,6 +1115,17 @@ contract DLOB {
         revert("unknown token");
     }
 
+    /// @dev `value`, in 18-decimal units, in planck, rounded down.
+    function _planck(uint256 value) internal view returns (uint128) {
+        return uint128(value / nativeToEthRatio);
+    }
+
+    /// @dev Send `value` of the native token, in 18-decimal units.
+    function _sendValue(address to, uint256 value) internal {
+        (bool sent,) = payable(to).call{value: value}("");
+        if (!sent) revert TransferFailed();
+    }
+
     // ──────────────────────── Internal: Validation ─────────────
 
     function _validateOrderParams(uint128 amount, bytes32 settlementAccount, uint32 destParaId)
@@ -1128,8 +1143,10 @@ contract DLOB {
         if (destParaId == 0 && settlementAccount != bytes32(0)) {
             revert InvalidSettlementAccount();
         }
-        if (destParaId > 0 && msg.value < factory.minCrossChainFee()) {
-            revert InsufficientFeeReserve();
+        if (destParaId > 0) {
+            uint128 fee = factory.minCrossChainFee();
+            if (fee == 0) revert CrossChainDisabled();
+            if (_planck(msg.value) < fee) revert InsufficientFeeReserve();
         }
         if (destParaId == 0 && msg.value > 0) revert LocalOrderWithValue();
     }

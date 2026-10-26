@@ -35,7 +35,7 @@ The `DeployFactory` script deploys the full stack in a single broadcast:
 
 1. Deploys the **RedBlackTree** (~6KB) and **XcmBuilder** (~3KB) external libraries. Forge detects the library linkages in the bytecode and deploys them automatically.
 2. Deploys the **DLOB implementation** contract with both libraries linked.
-3. Deploys the **DLOBFactory** with the XCM precompile, System precompile, and DLOB implementation addresses.
+3. Deploys the **DLOBFactory** with the XCM precompile, System precompile, and DLOB implementation addresses, and the chain's `NATIVE_TO_ETH_RATIO`: 10^(18 - the native token's decimals). The script reads it from the `NATIVE_TO_ETH_RATIO` environment variable, and defaults to 10^8 for Polkadot and Paseo (10 decimals); set `1000000` for Kusama or Westend (12 decimals).
 
 ```bash
 # Testnet (Paseo Asset Hub)
@@ -65,7 +65,8 @@ Full transaction receipts are saved to `broadcast/DeployFactory.s.sol/<chainId>/
 After deploying, configure the factory's global parameters:
 
 ```bash
-# Set minimum cross-chain fee (DOT in Planck units, 1 DOT = 10^10 Planck)
+# Set minimum cross-chain fee (DOT in Planck units, 1 DOT = 10^10 Planck). Until it is set,
+# cross-chain orders revert with CrossChainDisabled.
 cast send $DLOB_FACTORY_ADDRESS \
     "setMinCrossChainFee(uint128)" \
     <FEE_IN_PLANCK> \
@@ -161,7 +162,7 @@ The factory normalizes market keys by sorting token addresses: `createMarket(A, 
 - `minOrderSize == 0` → `ZeroMinOrderSize`
 - `maxOrderSize < minOrderSize` → `MaxBelowMin`
 - Market already exists → `MarketExists`
-- `msg.value < marketCreationDeposit` → `InsufficientDeposit`
+- `msg.value` below `marketCreationDeposit` (planck, so `marketCreationDeposit * NATIVE_TO_ETH_RATIO` in `msg.value` units) → `InsufficientDeposit`
 - A trust-backed asset (precompile prefix `0x0120`) comes with an `xcmLocation` → `TrustBackedLocation`
 - A foreign asset (precompile prefix `0x0220`) comes without one → `MissingForeignLocation`
 - Both tokens resolve to the same XCM location → `SameLocation`

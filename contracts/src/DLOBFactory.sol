@@ -23,6 +23,9 @@ contract DLOBFactory is IDLOBFactory {
     IXcm public immutable XCM_PRECOMPILE;
     ISystem public immutable SYSTEM_PRECOMPILE;
     address public immutable IMPLEMENTATION;
+    /// @notice `msg.value` and native transfers count in 18-decimal units: one planck is this many,
+    /// 10^(18 - the native token's decimals).
+    uint96 public immutable NATIVE_TO_ETH_RATIO;
     address public admin;
     /// @notice The account `transferAdmin` named, until it calls `acceptAdmin`.
     address public pendingAdmin;
@@ -30,6 +33,8 @@ contract DLOBFactory is IDLOBFactory {
     /// withdrawing stay open.
     bool public halted;
 
+    /// @notice DOT each cross-chain settlement takes from an order's reserve, in planck. 0 disables
+    /// cross-chain orders.
     uint128 public minCrossChainFee;
     uint128 public marketCreationDeposit;
 
@@ -63,15 +68,19 @@ contract DLOBFactory is IDLOBFactory {
     error MissingForeignLocation();
     error SameLocation();
     error FeeTooHigh();
+    error FeeTooLow();
+    error ZeroRatio();
     error DepositTooHigh();
     error NotPendingAdmin();
 
     // ──────────────────────── Constructor ─────────────────────────
 
-    constructor(address _xcm, address _system, address _implementation) {
+    constructor(address _xcm, address _system, address _implementation, uint96 _nativeToEthRatio) {
+        if (_nativeToEthRatio == 0) revert ZeroRatio();
         XCM_PRECOMPILE = IXcm(_xcm);
         SYSTEM_PRECOMPILE = ISystem(_system);
         IMPLEMENTATION = _implementation;
+        NATIVE_TO_ETH_RATIO = _nativeToEthRatio;
         admin = msg.sender;
     }
 
@@ -94,7 +103,9 @@ contract DLOBFactory is IDLOBFactory {
         if (tickSize == 0) revert ZeroTickSize();
         if (minOrderSize == 0) revert ZeroMinOrderSize();
         if (maxOrderSize < minOrderSize) revert MaxBelowMin();
-        if (msg.value < marketCreationDeposit) revert InsufficientDeposit();
+        if (msg.value < uint256(marketCreationDeposit) * NATIVE_TO_ETH_RATIO) {
+            revert InsufficientDeposit();
+        }
         bytes memory baseLocation = _location(base);
         bytes memory quoteLocation = _location(quote); // validated whatever the base is
         if (baseLocation.length != 0 && keccak256(baseLocation) == keccak256(quoteLocation)) {
@@ -115,20 +126,25 @@ contract DLOBFactory is IDLOBFactory {
             maxOrderSize,
             address(XCM_PRECOMPILE),
             address(SYSTEM_PRECOMPILE),
-            address(this)
+            address(this),
+            NATIVE_TO_ETH_RATIO
         );
 
         markets[key] = dlob;
         allMarkets.push(dlob);
 
-        emit MarketCreated(base.token, quote.token, dlob, msg.value);
+        emit MarketCreated(base.token, quote.token, dlob, msg.value / NATIVE_TO_ETH_RATIO);
     }
 
     // ──────────────────────── Admin Functions ────────────────────
 
+    /// @notice Set the fee each cross-chain settlement takes, in planck; 0 disables cross-chain
+    /// orders. A settlement message spends the fee and half of it, and XCM refuses a zero amount, so
+    /// 1 is refused.
     function setMinCrossChainFee(uint128 feeInPlanck) external {
         if (msg.sender != admin) revert NotAdmin();
         if (feeInPlanck > MAX_MIN_CROSS_CHAIN_FEE) revert FeeTooHigh();
+        if (feeInPlanck == 1) revert FeeTooLow();
         minCrossChainFee = feeInPlanck;
         emit MinCrossChainFeeUpdated(feeInPlanck);
     }

@@ -58,6 +58,9 @@ const FAUCET = { drip: 10_000n * UNIT, cooldownSeconds: 86_400, funding: 10_000_
 const TICK_SIZE = PRECISION / 100n; // 0.01
 const MIN_ORDER_SIZE = 1n * UNIT;
 const MAX_ORDER_SIZE = 1_000_000n * UNIT;
+// The factory's minCrossChainFee, in planck: each cross-chain settlement takes it from the order's
+// reserve to pay for the XCM. 0.1 PAS covers a settlement to a sibling Asset Hub.
+const CROSS_CHAIN_FEE = PAS / 10n;
 const LEVEL_STEP = 0.5;
 const BRIDGE_UNITS = 3;
 const TAPER = [1, 2, 2, 3, 4, 5, 6, 7, 9, 12]; // depth per level, thin at the edges, deep at the spread
@@ -443,7 +446,8 @@ async function main() {
   // client mid-follow can throw from a pending reconnect timer.
   const client = createClient(getWsProvider(net.wsEndpoint));
   const api = client.getUnsafeApi();
-  const live = (await client.getChainSpecData()).genesisHash;
+  const chainSpec = await client.getChainSpecData();
+  const live = chainSpec.genesisHash;
   if (live !== net.genesis) {
     throw new Error(`${net.name} has genesis ${live}, networks.json says ${net.genesis}: update networks.json first`);
   }
@@ -613,10 +617,18 @@ async function main() {
       }
       state.implementation = await ensureContract("DLOB", state.implementation, { libraries: state.libraries });
       save();
+      // msg.value counts in 18-decimal units: one planck is 10^(18 - the native token's decimals).
+      const decimals = [chainSpec.properties?.tokenDecimals].flat()[0];
+      if (!Number.isInteger(decimals)) throw new Error(`${net.name}'s chain spec has no tokenDecimals`);
       state.factory = await ensureContract("DLOBFactory", undefined, {
-        args: [XCM_PRECOMPILE, SYSTEM_PRECOMPILE, state.implementation],
+        args: [XCM_PRECOMPILE, SYSTEM_PRECOMPILE, state.implementation, 10n ** BigInt(18 - decimals)],
       });
       save();
+    }
+    // A fee of 0 disables cross-chain orders.
+    if ((await read(state.factory, factoryAbi(), "minCrossChainFee")) !== CROSS_CHAIN_FEE) {
+      await write("deployer", state.factory, factoryAbi(), "setMinCrossChainFee", [CROSS_CHAIN_FEE]);
+      console.log(`  minCrossChainFee set to ${CROSS_CHAIN_FEE} planck`);
     }
   }
 

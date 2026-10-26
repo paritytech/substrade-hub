@@ -93,8 +93,8 @@ Source: `src/DLOB.sol`, `src/DLOBFactory.sol`, `src/libraries/` (`RedBlackTree`,
 |------|--------|
 | Price units | Quote raw units per base raw unit, scaled by 1e18: `rawPrice = humanPrice × 10^(18 + quoteDecimals − baseDecimals)`, so `humanPrice × 1e18` only when both tokens share decimals. The app lists only such markets. Must be an exact multiple of the market's `tickSize` or it reverts `NotTickAligned`. |
 | Amount units | The **base token's native decimals**. |
-| DOT units | 10 decimals (1 DOT = 1e10 Planck) — used for fee reserves and factory params. |
-| Local vs cross-chain | Decided by `destParaId`. `0` = local (direct ERC20 transfers, no `msg.value`). Non-zero = cross-chain (XCM settlement, requires a DOT fee reserve `msg.value >= factory.minCrossChainFee()`). |
+| DOT units | 10 decimals (1 DOT = 1e10 Planck): fee reserves and factory params are in planck. `msg.value` and native transfers are in 18-decimal units, `NATIVE_TO_ETH_RATIO` (a factory constructor argument, 10^8 on Polkadot and Paseo, 10^6 on Westend) per planck; markets convert on the way in and out. |
+| Local vs cross-chain | Decided by `destParaId`. `0` = local (direct ERC20 transfers, no `msg.value`). Non-zero = cross-chain (XCM settlement, requires a DOT fee reserve of at least `factory.minCrossChainFee()` planck; a fee of 0 disables cross-chain orders). |
 | Allowance | Every order needs a prior `approve(market, amount)` — the DLOB escrows via `transferFrom`. Buys approve quote, sells approve base. |
 | Tradeable tokens | **Only pallet-assets-backed precompile tokens**, never user-deployed ERC20s (XCM can only move assets the runtime knows). DOT itself isn't in pallet-assets, so trading DOT needs a WDOT wrapper. |
 | Settlement failure | Failed inline XCM creates a **`PendingClaim`** (retry via `claimSettlement`, reroute via `redirectClaim`) instead of reverting — funds are never lost. An order with pending claims can't be cancelled (`HasPendingClaims`). |
