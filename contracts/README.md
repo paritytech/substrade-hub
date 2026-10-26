@@ -18,6 +18,16 @@ forge test
 
 See the [testing guide](docs/testing.md) for gas reporting, invariant tests, and the full test suite breakdown.
 
+## Benchmark
+
+```bash
+pnpm bench:fork   # a Chopsticks fork of paseo-v2, in one terminal
+pnpm bench        # in another
+```
+
+Measures what each operation costs on the real runtime, against what one transaction may use. See
+[benchmarks](docs/benchmarks.md) for the results.
+
 ## Deploy
 
 Deploy the factory and create markets on Paseo Asset Hub (testnet) or Polkadot Asset Hub (mainnet) using `forge script` and `cast send`.
@@ -64,4 +74,5 @@ Each market is a **DLOB** contract that maintains two red-black trees (one for b
 - [Deployment guide](docs/deployment.md): Deploy factory, create markets, verify on Blockscout
 - [Configuration](docs/configuration.md): Market parameters, factory parameters, trading with DOT
 - [Testing](docs/testing.md): Test suite, invariant tests, gas reporting
+- [Benchmarks](docs/benchmarks.md): Weight and proof of each operation on Asset Hub, against one transaction's limits
 - [Admin powers](docs/admin.md): What the factory admin can do, and custody before mainnet

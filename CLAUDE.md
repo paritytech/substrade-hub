@@ -14,7 +14,7 @@ SubsTrade Hub is a fully on-chain **Decentralized Limit Order Book (DLOB)** for 
 
 The JS side is a pnpm + Turborepo workspace pinned to `pnpm@11.20.0` (`packageManager` field). Node 26 dropped bundled corepack, so if `pnpm` is missing, install it with `npm install -g pnpm@11.20.0` rather than relying on corepack.
 
-The docs are thorough and worth reading before deep work: `contracts/docs/{how-it-works,deployment,configuration,testing}.md` and `e2e/README.md`.
+The docs are thorough and worth reading before deep work: `contracts/docs/{how-it-works,deployment,configuration,testing,benchmarks}.md` and `e2e/README.md`.
 
 ## Commands
 
@@ -28,6 +28,8 @@ forge test --polkadot --match-path test/Matching.t.sol -vv   # single file
 forge test --polkadot --match-test testPartialFill           # single test
 forge test --gas-report                           # gas benchmarks (test/GasReport.t.sol)
 forge fmt                                          # format
+pnpm bench:fork                                   # Chopsticks fork of paseo-v2 (NETWORK=previewnet for previewnet)
+pnpm bench                                        # in another terminal: weight and proof of each operation on the fork
 ```
 
 `forge test` works without `--polkadot` because contract tests use mock precompiles (`MockXcm`/`MockSystem`/`MockERC20`) and don't need the real runtime. Use plain `forge test` for fast iteration, and `--polkadot` for anything that must trust pallet-revive behavior.
@@ -122,8 +124,8 @@ Precompiles live at fixed addresses:
 
 ## Conventions & CI notes
 
-- **CI scope.** Workflows run Foundry build/test/fmt, e2e `cargo fmt`, and a Lychee link check over `*.md` and `contracts/src/**/*.sol` (`.github/workflows/{lint,test,e2e,check-links}.yml`). The full e2e `cargo test` job is commented out — too slow on standard runners.
-- **forge version.** CI installs foundry-polkadot **v1.5.1**: `lint.yml` and `test.yml` with a `foundryup` pinned to a commit, and `bootstrap.yml` (which hands forge the deployer key) from the release archive pinned by SHA-256. `forge fmt` output differs between forge versions, so format with v1.5.1 locally; if `forge fmt --check` fails on files you didn't touch, check your local forge version first. Bump the version in all three workflows together, with the archive's SHA-256 in `bootstrap.yml`.
+- **CI scope.** Workflows run Foundry build/test/fmt, e2e `cargo fmt`, and a Lychee link check over `*.md` and `contracts/src/**/*.sol` (`.github/workflows/{lint,test,e2e,check-links}.yml`). `bench.yml` benchmarks the contracts on a Chopsticks fork of paseo-v2 when `contracts/src/` changes, and weekly; it is not a required check. When it warns that `contracts/docs/benchmarks.md` is out of date, refresh the tables in the same PR with `pnpm bench --write-docs` (see that page); never edit them by hand. The full e2e `cargo test` job is commented out — too slow on standard runners.
+- **forge version.** CI installs foundry-polkadot **v1.5.1**: `lint.yml`, `test.yml` and `bench.yml` with a `foundryup` pinned to a commit, and `bootstrap.yml` (which hands forge the deployer key) from the release archive pinned by SHA-256. `forge fmt` output differs between forge versions, so format with v1.5.1 locally; if `forge fmt --check` fails on files you didn't touch, check your local forge version first. Bump the version in all four workflows together, with the archive's SHA-256 in `bootstrap.yml`.
 - **Signed commits.** `commit.gpgsign = true` — commits require the configured signing key.
 - **Dependabot** is enabled; broad dependency bumps may supersede its open PRs.
 
