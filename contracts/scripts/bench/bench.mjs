@@ -8,22 +8,29 @@
 // Nothing reaches the live chain: start the fork first (`pnpm bench:fork`), then run
 // `node scripts/bench/bench.mjs` from `contracts/`. See docs/benchmarks.md.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { AccountId, Binary, createClient } from "polkadot-api";
 import { getPolkadotSigner } from "polkadot-api/signer";
 import { getWsProvider } from "polkadot-api/ws";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
-import { decodeErrorResult, decodeFunctionResult, encodeFunctionData, keccak256, toHex } from "viem";
+import { decodeErrorResult, decodeFunctionResult, encodeAbiParameters, encodeFunctionData, keccak256, toHex } from "viem";
+import { linkedBytecode } from "../bootstrap.mjs";
 
 const { values: args } = parseArgs({
   options: {
     network: { type: "string", default: "paseo-v2" },
+    // "build": deploy contracts/out/ on the fork and measure it; "live": use the network's factory.
+    contracts: { type: "string", default: "build" },
     endpoint: { type: "string", default: "ws://127.0.0.1:8011" },
     levels: { type: "string", default: "64,256" },
     sections: { type: "string", default: "empty,ladder,level,self,tree,cross-chain,expired" },
     out: { type: "string" },
+    // Fail when a measured call uses more than this share (%) of the proof or ref_time limit.
+    check: { type: "string" },
+    // Append the results to this file as a Markdown table (CI passes $GITHUB_STEP_SUMMARY).
+    summary: { type: "string" },
   },
 });
 
@@ -40,6 +47,8 @@ const TICK = PRICE / 100n;
 const BUY = 0;
 const SELL = 1;
 const ZERO32 = `0x${"00".repeat(32)}`;
+const XCM_PRECOMPILE = "0x00000000000000000000000000000000000a0000";
+const SYSTEM_PRECOMPILE = "0x0000000000000000000000000000000000000900";
 const MOCK_SIGNATURE = Uint8Array.from([0xde, 0xad, 0xbe, 0xef, ...new Array(60).fill(0xcd)]);
 
 const artifact = (name) => JSON.parse(readFileSync(new URL(`../../out/${name}.sol/${name}.json`, import.meta.url))).abi;
@@ -156,8 +165,11 @@ async function sendMany(from, dest, abi, calls) {
 
 const results = [];
 
-/** Dry-run the measured call and record its cost. `expect` is the error it should revert with, if any. */
-async function measure(group, label, from, dest, abi, functionName, fnArgs, { value = 0n, expect } = {}) {
+/**
+ * Dry-run the measured call and record its cost. `expect` is the error it should revert with, if any.
+ * A `probe` is sized past what the docs say fits, to show where the ceiling is: `--check` skips it.
+ */
+async function measure(group, label, from, dest, abi, functionName, fnArgs, { value = 0n, expect, probe = false } = {}) {
   const d = await dry(from, dest, abi, functionName, fnArgs, value);
   // A dry run may use up to the block's weight, so a call too large for one transaction can still
   // succeed in it; one larger than the block runs out of gas and reverts with no data.
@@ -174,6 +186,7 @@ async function measure(group, label, from, dest, abi, functionName, fnArgs, { va
     deposit: d.deposit,
     weightFee: fee,
     outcome: tooLarge ? "does not fit" : (d.error ?? "ok"),
+    probe,
   };
   results.push(row);
   console.log(`  ${label.padEnd(58)} proof ${String(row.proofPct).padStart(6)}%  ref_time ${String(row.refTimePct).padStart(6)}%  ${row.outcome}`);
@@ -191,6 +204,32 @@ const now = async () => (await api.query.Timestamp.Now.getValue({ at: "best" }))
 console.log(`Benchmarking on ${runtime.spec_name} ${runtime.spec_version}`);
 console.log(`Per-transaction limits: ref_time ${limits.ref_time}, proof ${limits.proof_size} bytes\n`);
 
+/** Deploy forge artifact `name` from `from`, linking `libraries`, and return its address. */
+async function deploy(from, name, { libraries, args = [] } = {}) {
+  const abi = artifact(name);
+  const inputs = abi.find((x) => x.type === "constructor")?.inputs ?? [];
+  // EVM init code takes its constructor arguments appended to it; pallet-revive's `data` stays empty.
+  const encoded = inputs.length ? encodeAbiParameters(inputs, args).slice(2) : "";
+  const code = Binary.fromHex(`${linkedBytecode(name, libraries)}${encoded}`);
+  const data = Binary.fromHex("0x");
+  const r = await api.apis.ReviveApi.instantiate(from.ss58, 0n, undefined, undefined, { type: "Upload", value: code }, data, undefined, { at: "best" });
+  if (!r.result.success || r.result.value.result.flags & 1) throw new Error(`deploy ${name}: ${json(r.result.value)}`);
+  const d = { weight: r.weight_required, deposit: r.storage_deposit.type === "Charge" ? r.storage_deposit.value : 0n };
+  await submit(
+    api.tx.Revive.instantiate_with_code({
+      value: 0n,
+      weight_limit: { ref_time: (d.weight.ref_time * 13n) / 10n, proof_size: (d.weight.proof_size * 13n) / 10n },
+      storage_deposit_limit: d.deposit * 2n + PAS,
+      code,
+      data,
+      salt: undefined,
+    }),
+    from,
+    `deploy ${name}`,
+  );
+  return r.result.value.addr;
+}
+
 // == setup: funder, test assets, market, makers ==
 const funder = account("funder");
 await rpc("dev_setStorage", [plain({ System: { Account: [[[funder.ss58], { providers: 1, data: { free: 10_000_000n * PAS } }]] } })]);
@@ -205,6 +244,9 @@ const MAKERS = 14;
 const makers = Array.from({ length: MAKERS }, (_, i) => account(`maker${i}`));
 const taker = account("taker");
 const everyone = [...makers, taker];
+// Deploys the build and administers its factory. Funded by transfer like the others: an account made
+// by writing its storage, as the funder is, is never mapped to an H160 and cannot call contracts.
+const deployer = account("deployer");
 const MINT = 10n ** 12n * UNIT;
 
 await submit(
@@ -214,7 +256,7 @@ await submit(
         api.tx.Assets.create({ id, admin: { type: "Id", value: funder.ss58 }, min_balance: 1n }).decodedCall,
         api.tx.Assets.set_metadata({ id, name: Binary.fromText(`Bench ${id}`), symbol: Binary.fromText(`B${id % 1000}`), decimals: 6 }).decodedCall,
       ]),
-      ...everyone.map((a) => api.tx.Balances.transfer_keep_alive({ dest: { type: "Id", value: a.ss58 }, value: 100_000n * PAS }).decodedCall),
+      ...[...everyone, deployer].map((a) => api.tx.Balances.transfer_keep_alive({ dest: { type: "Id", value: a.ss58 }, value: 100_000n * PAS }).decodedCall),
     ],
   }),
   funder,
@@ -228,13 +270,27 @@ await submit(
   "mint",
 );
 
-const factory = net.factoryAddress;
 const read = async (dest, abi, fn, fnArgs = []) => {
   const d = await dry(funder, dest, abi, fn, fnArgs);
   return decodeFunctionResult({ abi, functionName: fn, data: toHex(d.raw.result.value.data) });
 };
-const admin = impersonate(await read(factory, FACTORY, "admin"));
-await rpc("dev_setStorage", [plain({ System: { Account: [[[admin.ss58], { providers: 1, data: { free: 1_000_000n * PAS } }]] } })]);
+let factory;
+let admin;
+if (args.contracts === "build") {
+  console.log("== deploy contracts/out/ ==");
+  const libraries = {};
+  for (const lib of ["RedBlackTree", "XcmBuilder"]) libraries[lib] = await deploy(deployer, lib);
+  const implementation = await deploy(deployer, "DLOB", { libraries });
+  factory = await deploy(deployer, "DLOBFactory", { args: [XCM_PRECOMPILE, SYSTEM_PRECOMPILE, implementation] });
+  admin = deployer;
+  console.log(`  factory ${factory}, implementation ${implementation}`);
+} else if (args.contracts === "live") {
+  factory = net.factoryAddress;
+  admin = impersonate(await read(factory, FACTORY, "admin"));
+  await rpc("dev_setStorage", [plain({ System: { Account: [[[admin.ss58], { providers: 1, data: { free: 1_000_000n * PAS } }]] } })]);
+} else {
+  throw new Error(`--contracts is "build" or "live", not "${args.contracts}"`);
+}
 const creationDeposit = await read(factory, FACTORY, "marketCreationDeposit");
 const marketArgs = [{ token: BASE, xcmLocation: "0x" }, { token: QUOTE, xcmLocation: "0x" }, TICK, UNIT / 1000n, 10n ** 9n * UNIT];
 
@@ -376,15 +432,29 @@ if (sections.has("expired")) {
   await rpc("dev_newBlock", [{ count: 1 }]);
   await measure("Limit order, taking", "limit buy clearing 6 expired orders (budget stops)", taker, market, DLOB, ...limit(BUY, px(10_100), UNIT, { owner: taker }));
   await measure("Cancel and reduce", "cancel an expired order", makers[0], market, DLOB, "cancelOrder", [expiredFirst, makers[0].origin]);
+  // The docs say up to 25 and 20 orders fit.
   for (const n of [5, 10, 20, 25, 30]) {
-    await measure("Purge expired", `purgeExpired, ${n} orders`, taker, market, DLOB, "purgeExpired", [SELL, px(10_099), n]);
+    await measure("Purge expired", `purgeExpired, ${n} orders`, taker, market, DLOB, "purgeExpired", [SELL, px(10_099), n], { probe: n > 25 });
   }
   for (const n of [10, 20, 30, 40]) {
-    await measure("Cancel and reduce", `batchCancelOrders, ${n} orders at one level`, makers[13], market, DLOB, "batchCancelOrders", [Array.from({ length: n }, (_, i) => purgeFirst + i), makers[13].origin]);
+    await measure("Cancel and reduce", `batchCancelOrders, ${n} orders at one level`, makers[13], market, DLOB, "batchCancelOrders", [Array.from({ length: n }, (_, i) => purgeFirst + i), makers[13].origin], { probe: n > 20 });
   }
 }
 
 console.log(`\n${results.length} measurements`);
 if (args.out) writeFileSync(args.out, `${JSON.stringify(plain({ runtime: `${runtime.spec_name} ${runtime.spec_version}`, limits, results }), null, 2)}\n`);
+
+const max = args.check === undefined ? undefined : Number(args.check);
+const over = max === undefined ? [] : results.filter((r) => !r.probe && (r.proofPct > max || r.refTimePct > max));
+if (args.summary) {
+  const rows = results.map((r) => `| ${r.group} | ${r.label}${r.probe ? " (ceiling probe)" : ""} | ${r.proofPct}% | ${r.refTimePct}% | ${r.outcome} |`);
+  const verdict = max === undefined ? "" : over.length ? `**${over.length} over ${max}% of a limit.**\n\n` : `Every call fits within ${max}% of the limits.\n\n`;
+  appendFileSync(
+    args.summary,
+    `## Contract benchmarks\n\n${runtime.spec_name} ${runtime.spec_version}, contracts: ${args.contracts}. ${verdict}| Group | Operation | Proof | ref_time | Outcome |\n| --- | --- | ---: | ---: | --- |\n${rows.join("\n")}\n`,
+  );
+}
+for (const r of over) console.error(`${r.label}: proof ${r.proofPct}%, ref_time ${r.refTimePct}%, over ${max}%`);
 client.destroy();
-process.exit(0);
+// 2, so CI can tell a call over the limit (a retry changes nothing) from a failed run (exit 1).
+process.exit(over.length ? 2 : 0);

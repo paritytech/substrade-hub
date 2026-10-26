@@ -21,8 +21,8 @@ local operation, and under 35% with cross-chain legs.
 `scripts/bench/bench.mjs` runs against a [Chopsticks](https://github.com/AcalaNetwork/chopsticks) fork
 of the network, which runs the live runtime on a copy of the live state. On the fork it:
 
-1. creates two test assets, a market for them through the live factory (acting as its admin with the
-   fork's mock signatures) and 15 funded accounts;
+1. deploys the contracts in `contracts/out/` (the two libraries, the `DLOB` implementation and the
+   factory), then creates two test assets, a market for them and 15 funded accounts;
 2. builds each book state with real transactions;
 3. dry-runs the measured call against that state with `ReviveApi.call`, and reads the weight it
    requires, its storage deposit and the fee for that weight.
@@ -35,19 +35,32 @@ pnpm bench:fork                                # terminal 1: fork paseo-v2 (NETW
 pnpm bench                                     # terminal 2: every scenario, about 25 minutes
 pnpm bench --sections ladder,cross-chain       # some of them
 pnpm bench --out results.json                  # also write the results as JSON
-pnpm bench --network previewnet                # previewnet's factory
+pnpm bench --contracts live                    # the network's deployed factory, as its admin
+pnpm bench --network previewnet --contracts live
+pnpm bench --check 90 --summary summary.md     # fail over 90% of a limit; write a Markdown table
 ```
+
+Run `forge build` first: by default (`--contracts build`), the benchmark measures the build in
+`contracts/out/`. `--contracts live` uses the network's factory, acting as its admin with the fork's
+mock signatures, to measure what is deployed. The sections are `empty`, `ladder`, `level`, `self`,
+`tree`, `cross-chain` and `expired`; `--levels` sets the book sizes of `tree` (default `64,256`).
 
 The fork reads live state from the network's public RPC node as it needs it, and caches it in
 `.chopsticks/`. When that node drops the connection, the fork stops building blocks and the run waits:
 restart both, and the next run reuses the cache.
 
-Run it again after a contract or runtime change. The sections are `empty`, `ladder`, `level`, `self`,
-`tree`, `cross-chain` and `expired`; `--levels` sets the book sizes of `tree` (default `64,256`).
-
 A dry run may use up to the block's 10 MiB of proof (125% of one transaction's), so a call too large
 for one transaction can still succeed in it; one larger than the block runs out of gas there. The
 tables mark both as **does not fit**.
+
+## In CI
+
+The Benchmark workflow (`.github/workflows/bench.yml`) runs on pull requests that touch
+`contracts/src/` or the benchmark, and weekly to catch a runtime upgrade. It measures the PR's build
+with every section, the `tree` one at 64 levels, and fails when a call uses more than 90% of the proof
+or ref_time limit. The rows sized past the documented ceilings (`purgeExpired` above 25 orders,
+`batchCancelOrders` above 20) are left out of that check. The table is in the run's summary. Run the
+benchmark by hand after a contract or runtime change, to update the tables below.
 
 ## Results
 
