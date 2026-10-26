@@ -63,7 +63,7 @@ function tables(results) {
     const v = Number(BigInt(planck)) / 1e10;
     return v === 0 ? "0" : v < 0.0001 ? "< 0.0001" : v.toFixed(4);
   };
-  const note = (r) => (r.outcome === "ok" ? "" : r.outcome === "does not fit" ? "**does not fit**" : r.outcome.startsWith("Error(") ? "reverts (#144)" : `reverts ${r.outcome}`);
+  const note = (r) => (r.outcome === "ok" ? "" : r.outcome === "does not fit" ? "**does not fit**" : r.outcome.startsWith("Error(") ? "reverts: XCM execute failed" : `reverts ${r.outcome}`);
   return [...new Set(results.map((r) => r.group))]
     .map((g) => {
       const rows = results.filter((r) => r.group === g).map((r) => `| ${docLabel(r.label)} | ${(Number(r.proof) / 1e6).toFixed(2)} | ${r.proofPct}% | ${r.refTimePct}% | ${pas(r.deposit)} | ${pas(r.weightFee)} | ${note(r)} |`);
@@ -421,13 +421,6 @@ for (const a of everyone) {
   );
 }
 
-// Settlement deposits the tokens into the destination's sovereign account here, and these test assets,
-// like the demo assets, are not sufficient: that account must already hold PAS. On paseo-v2, para
-// 1000's does not, so give it some, as a network running cross-chain trading would.
-const sovereign = new Uint8Array(32);
-sovereign.set([0x73, 0x69, 0x62, 0x6c]);
-new DataView(sovereign.buffer).setUint32(4, 1000, true);
-await rpc("dev_setStorage", [plain({ System: { Account: [[[AccountId().dec(sovereign)], { providers: 1, data: { free: 10n * PAS } }]] } })]);
 const ready = await head();
 const px = (n) => BigInt(n) * TICK; // n hundredths of a quote unit
 const limit = (side, price, amount, { owner, expire = 0n, postOnly = false } = {}) => ["placeLimitOrder", [side, price, amount, owner.origin, ZERO32, 0, expire, postOnly]];
@@ -510,12 +503,7 @@ if (sections.has("cross-chain")) {
     await measure("Cross-chain", `limit buy filling ${k} level${k > 1 ? "s" : ""}, taker cross-chain${k === 5 ? " (budget stops at 4)" : ""}`, taker, market, DLOB, ...xLimit(BUY, px(10_100 + k - 1), BigInt(k) * UNIT, taker), { value: reserve });
   }
 
-  // A fill whose settlement fails leaves a fill claim, which takes one minCrossChainFee from the
-  // order's reserve.
   const XCM_FAILS = "Error(XCM execute failed: message may be invalid or execution constraints not satisfied)";
-  await send(taker, market, DLOB, ...xLimit(BUY, px(10_100), UNIT, taker), reserve);
-  const fillClaim = (await read(market, DLOB, "nextClaimId")) - 1;
-  await measure("Cross-chain", "claimSettlement, fill claim", taker, market, DLOB, "claimSettlement", [fillClaim], { expect: XCM_FAILS });
 
   await rewind(ready);
   for (let i = 0; i < 4; i++) await send(makers[i], market, DLOB, ...xLimit(SELL, px(10_100 + i), UNIT, makers[i]), reserve);
@@ -526,7 +514,8 @@ if (sections.has("cross-chain")) {
   await measure("Cross-chain", "limit buy filling 1 level, maker cross-chain", taker, market, DLOB, ...limit(BUY, px(10_100), UNIT, { owner: taker }));
   await measure("Cross-chain", "cancel a cross-chain order", makers[0], market, DLOB, "cancelOrder", [xAsk, makers[0].origin]);
   await send(makers[0], market, DLOB, "cancelOrder", [xAsk, makers[0].origin]);
-  // Cancelling a cross-chain order leaves a refund claim, which sends the whole reserve.
+  // Cancelling a cross-chain order leaves a refund claim, which sends the whole reserve. Settling it
+  // reverts: the reserve is recorded in 18-decimal units and sent as planck.
   const refundClaim = (await read(market, DLOB, "nextClaimId")) - 1;
   await measure("Cross-chain", "claimSettlement, refund claim", taker, market, DLOB, "claimSettlement", [refundClaim], { value: minFee, expect: XCM_FAILS });
   await measure("Cross-chain", "redirectClaim, refund claim", makers[0], market, DLOB, "redirectClaim", [refundClaim, makers[0].origin, 1502]);
