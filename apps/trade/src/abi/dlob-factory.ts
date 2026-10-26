@@ -19,6 +19,11 @@ export const dlobFactoryAbi = [
         "name": "_implementation",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_nativeToEthRatio",
+        "type": "uint96",
+        "internalType": "uint96"
       }
     ],
     "stateMutability": "nonpayable"
@@ -58,6 +63,19 @@ export const dlobFactoryAbi = [
         "name": "",
         "type": "uint128",
         "internalType": "uint128"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "NATIVE_TO_ETH_RATIO",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
       }
     ],
     "stateMutability": "view"
@@ -494,6 +512,11 @@ export const dlobFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "FeeTooLow",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InsufficientBalance",
     "inputs": [
       {
@@ -561,6 +584,11 @@ export const dlobFactoryAbi = [
   {
     "type": "error",
     "name": "ZeroMinOrderSize",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroRatio",
     "inputs": []
   },
   {

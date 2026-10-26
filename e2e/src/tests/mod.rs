@@ -39,6 +39,8 @@ use alloy_sol_types::{sol, SolCall, SolValue};
 
 /// 1 DOT = 10^12 Planck
 const DOT: u128 = 1_000_000_000_000;
+/// `msg.value` counts in 18-decimal units: on a 12-decimal chain, one planck is 10^6 of them.
+const NATIVE_TO_ETH_RATIO: u128 = 1_000_000;
 
 /// DLOB tick size: 0.001 in 18-decimal fixed-point
 const TICK_SIZE: u128 = 1_000_000_000_000_000;
@@ -655,12 +657,13 @@ fn setup_pallet_asset_market() -> (
         link_bytecode(&mut dlob_code, "XcmBuilder", xcm_builder_addr, &link_refs);
         let dlob_impl = deploy_contract(alice.clone(), dlob_code, vec![]);
 
-        // 3. Deploy DLOBFactory(xcm_precompile, system_precompile, dlob_impl)
+        // 3. Deploy DLOBFactory(xcm_precompile, system_precompile, dlob_impl, native_to_eth_ratio)
         let factory_code = read_bytecode("../contracts/out/DLOBFactory.sol/DLOBFactory.json");
         let constructor_args = (
             to_alloy_addr(H160::from(XCM_PRECOMPILE)),
             to_alloy_addr(H160::from(SYSTEM_PRECOMPILE)),
             to_alloy_addr(dlob_impl),
+            NATIVE_TO_ETH_RATIO,
         )
             .abi_encode();
         let factory = deploy_contract(alice.clone(), factory_code, constructor_args);

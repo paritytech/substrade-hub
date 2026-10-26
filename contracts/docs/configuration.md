@@ -74,11 +74,11 @@ Global parameters configurable by the factory admin after deployment:
 
 | Parameter               | Default | Unit               | Description                                                                                 |
 | ----------------------- | ------- | ------------------ | ------------------------------------------------------------------------------------------- |
-| `minCrossChainFee`      | --      | DOT (native units) | Minimum DOT attached per XCM settlement leg. Covers execution fees on the remote parachain. |
-| `marketCreationDeposit` | 0       | DOT (native units) | Optional deposit required to create a new market. Set to 0 to allow free market creation.   |
+| `minCrossChainFee`      | 0       | Planck             | DOT each XCM settlement leg takes from the order's fee reserve. 0 disables cross-chain orders; 1 is refused (`FeeTooLow`). |
+| `marketCreationDeposit` | 0       | Planck             | Optional deposit required to create a new market. Set to 0 to allow free market creation.   |
 
 
-DOT on Asset Hub uses **10 decimals** (1 DOT = 10,000,000,000 Planck). When setting these parameters, convert accordingly:
+DOT on Asset Hub uses **10 decimals** (1 DOT = 10,000,000,000 Planck). Both parameters are in planck, while the `msg.value` that pays them is in 18-decimal units, `NATIVE_TO_ETH_RATIO` (10^8 here) per planck: a 1 DOT deposit is sent as `10000000000 * 10^8`. When setting these parameters, convert accordingly:
 
 | Human value | Planck value       |
 | ----------- | ------------------ |

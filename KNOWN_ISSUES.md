@@ -78,7 +78,7 @@ Substrate wallet are bound to the network's genesis and are not affected.
 Each fill needs about 1 MB of proof, and one transaction may use 8 MiB, so an order that would fill
 against more than about 7 resting orders cannot be included. The contracts now limit matching to a
 per-transaction budget (`MATCH_BUDGET`, #104): 6 local fills, 4 when one leg of each fill settles
-cross-chain, or 3 when both do. A full budget uses at most 75% of the proof limit
+cross-chain, or 3 when both do. A full budget uses at most 75.2% of the proof limit
 ([benchmarks](contracts/docs/benchmarks.md)). A larger order fills what fits and returns the remainder: a limit order
 cannot rest it at its price without crossing the book. `placeLimitOrder` reports that amount, and the
 app checks it before signing: for an order that needs more than one transaction, limit or market, it

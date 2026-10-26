@@ -100,47 +100,47 @@ otherwise. "Levels" are price levels on the side the order takes from.
 
 | Operation      | Proof (MB) | Proof limit | ref_time limit | Deposit (PAS) | Weight fee (PAS) | Note |
 | -------------- | ---------: | ----------: | -------------: | ------------: | ---------------: | ---- |
-| `createMarket` |       0.37 |        4.4% |          0.32% |        0.9910 |           0.0326 |      |
+| `createMarket` |       0.38 |       4.52% |          0.33% |        1.0116 |           0.0335 |      |
 
 ### Limit order, resting
 
 | Operation                                   | Proof (MB) | Proof limit | ref_time limit | Deposit (PAS) | Weight fee (PAS) | Note                       |
 | ------------------------------------------- | ---------: | ----------: | -------------: | ------------: | ---------------: | -------------------------- |
-| Rest a buy, empty book                      |       0.80 |       9.48% |          0.62% |        0.1858 |           0.0701 |                            |
-| Post-only buy that would cross (rejected)   |       0.11 |       1.29% |          0.06% |             0 |           0.0096 | reverts PostOnlyWouldCross |
-| Rest a buy, new level, 16 bid levels        |       1.03 |       12.3% |          0.74% |        0.1651 |           0.0910 |                            |
-| Rest a buy, existing level, 16 bid levels   |       0.60 |       7.15% |          0.48% |        0.1032 |           0.0530 |                            |
+| Rest a buy, empty book                      |       0.80 |       9.48% |          0.62% |        0.1858 |           0.0702 |                            |
+| Post-only buy that would cross (rejected)   |       0.13 |       1.54% |          0.07% |             0 |           0.0114 | reverts PostOnlyWouldCross |
+| Rest a buy, new level, 16 bid levels        |       1.03 |       12.3% |          0.74% |        0.1651 |           0.0911 |                            |
+| Rest a buy, existing level, 16 bid levels   |       0.61 |       7.28% |          0.48% |        0.1032 |           0.0539 |                            |
 | Rest a buy, new level, 64 bid levels        |       1.14 |      13.53% |          0.79% |        0.1651 |           0.1001 |                            |
 | Rest a buy, new worst level, 64 bid levels  |       1.56 |      18.56% |          1.03% |        0.1651 |           0.1373 |                            |
-| Rest a buy, new level, 256 bid levels       |       1.24 |      14.75% |          0.84% |        0.1651 |           0.1092 |                            |
+| Rest a buy, new level, 256 bid levels       |       1.24 |      14.76% |          0.84% |        0.1651 |           0.1092 |                            |
 | Rest a buy, new worst level, 256 bid levels |       1.72 |      20.52% |          1.12% |        0.1651 |           0.1518 |                            |
 
 ### Market order
 
 | Operation                                       | Proof (MB) | Proof limit | ref_time limit | Deposit (PAS) | Weight fee (PAS) | Note                     |
 | ----------------------------------------------- | ---------: | ----------: | -------------: | ------------: | ---------------: | ------------------------ |
-| Market buy, empty book (fills nothing)          |       0.36 |       4.24% |          0.24% |        0.0619 |           0.0314 |                          |
-| Market buy filling 1 level                      |       1.38 |      16.44% |          1.02% |      < 0.0001 |           0.1217 |                          |
-| Market buy filling 6 levels                     |       5.46 |      65.09% |          4.26% |             0 |           0.4815 |                          |
-| Market buy filling 7 levels (budget stops at 6) |       5.54 |      66.07% |           4.3% |             0 |           0.4888 |                          |
-| All or nothing, 7 levels (rejected)             |       5.51 |       65.7% |          4.28% |             0 |           0.4860 | reverts SlippageExceeded |
+| Market buy, empty book (fills nothing)          |       0.37 |       4.36% |          0.24% |        0.0619 |           0.0323 |                          |
+| Market buy filling 1 level                      |       1.39 |      16.57% |          1.02% |      < 0.0001 |           0.1226 |                          |
+| Market buy filling 6 levels                     |       5.47 |      65.22% |          4.26% |             0 |           0.4824 |                          |
+| Market buy filling 7 levels (budget stops at 6) |       5.55 |       66.2% |           4.3% |             0 |           0.4897 |                          |
+| All or nothing, 7 levels (rejected)             |       5.52 |      65.83% |          4.28% |             0 |           0.4870 | reverts SlippageExceeded |
 
 ### Limit order, taking
 
 | Operation                                                       | Proof (MB) | Proof limit | ref_time limit | Deposit (PAS) | Weight fee (PAS) | Note |
 | --------------------------------------------------------------- | ---------: | ----------: | -------------: | ------------: | ---------------: | ---- |
-| Limit buy filling 1 level                                       |       1.39 |      16.54% |          1.11% |        0.0206 |           0.1224 |      |
-| Limit buy filling 2 levels                                      |       2.16 |      25.78% |          1.84% |             0 |           0.1907 |      |
-| Limit buy filling 3 levels                                      |       3.23 |      38.47% |          2.65% |             0 |           0.2846 |      |
-| Limit buy filling 4 levels                                      |       3.98 |      47.49% |          3.27% |             0 |           0.3513 |      |
-| Limit buy filling 5 levels                                      |       4.76 |      56.76% |           3.9% |             0 |           0.4198 |      |
-| Limit buy filling 6 levels                                      |       5.44 |      64.79% |          4.47% |             0 |           0.4793 |      |
-| Limit buy filling 7 levels (budget stops at 6)                  |       5.52 |      65.77% |          4.51% |             0 |           0.4865 |      |
-| Limit buy filling 1 order at one level                          |       0.80 |       9.55% |          0.74% |        0.0826 |           0.0707 |      |
-| Limit buy filling 6 orders at one level                         |       2.79 |       33.2% |          2.71% |        0.0826 |           0.2456 |      |
-| Limit buy cancelling 6 own orders (budget stops)                |       5.73 |      68.27% |          4.18% |             0 |           0.5050 |      |
-| Limit buy clearing 6 expired orders (budget stops)              |       2.22 |      26.47% |          2.05% |        0.0826 |           0.1958 |      |
-| Limit sell clearing 6 expired cross-chain orders (budget stops) |       3.10 |      36.92% |          2.15% |        0.5779 |           0.2731 |      |
+| Limit buy filling 1 level                                       |       1.40 |      16.67% |          1.12% |        0.0206 |           0.1233 |      |
+| Limit buy filling 2 levels                                      |       2.17 |       25.9% |          1.84% |             0 |           0.1916 |      |
+| Limit buy filling 3 levels                                      |       3.24 |       38.6% |          2.65% |             0 |           0.2856 |      |
+| Limit buy filling 4 levels                                      |       4.00 |      47.62% |          3.27% |             0 |           0.3523 |      |
+| Limit buy filling 5 levels                                      |       4.77 |      56.88% |           3.9% |             0 |           0.4208 |      |
+| Limit buy filling 6 levels                                      |       5.45 |      64.92% |          4.48% |             0 |           0.4802 |      |
+| Limit buy filling 7 levels (budget stops at 6)                  |       5.53 |       65.9% |          4.51% |             0 |           0.4875 |      |
+| Limit buy filling 1 order at one level                          |       0.81 |       9.68% |          0.74% |        0.0826 |           0.0716 |      |
+| Limit buy filling 6 orders at one level                         |       2.80 |      33.33% |          2.72% |        0.0826 |           0.2466 |      |
+| Limit buy cancelling 6 own orders (budget stops)                |       5.74 |      68.39% |          4.19% |             0 |           0.5059 |      |
+| Limit buy clearing 6 expired orders (budget stops)              |       2.23 |      26.59% |          2.06% |        0.0826 |           0.1968 |      |
+| Limit sell clearing 6 expired cross-chain orders (budget stops) |       3.11 |      37.05% |          2.15% |        0.5779 |           0.2741 |      |
 
 ### Cancel and reduce
 
@@ -151,8 +151,8 @@ otherwise. "Levels" are price levels on the side the order takes from.
 | Cancel the first of 14 orders at a level           |       0.44 |       5.21% |          0.34% |             0 |           0.0386 |                  |
 | Cancel the 7th of 14 orders at a level             |       0.45 |       5.33% |          0.34% |             0 |           0.0395 |                  |
 | Cancel the last of 14 orders at a level            |       0.44 |       5.21% |          0.34% |             0 |           0.0386 |                  |
-| Cancel the only order at its level, 64 bid levels  |       1.39 |      16.61% |          0.91% |             0 |           0.1229 |                  |
-| Cancel the only order at its level, 256 bid levels |       1.70 |      20.29% |          1.08% |             0 |           0.1501 |                  |
+| Cancel the only order at its level, 64 bid levels  |       1.38 |      16.49% |          0.91% |             0 |           0.1220 |                  |
+| Cancel the only order at its level, 256 bid levels |       1.69 |      20.17% |          1.07% |             0 |           0.1492 |                  |
 | Cancel an expired order                            |       0.44 |       5.21% |          0.34% |             0 |           0.0386 |                  |
 | `batchCancelOrders`, 10 orders at one level        |       3.75 |      44.71% |          3.07% |             0 |           0.3307 |                  |
 | `batchCancelOrders`, 20 orders at one level        |       7.43 |      88.59% |          6.11% |             0 |           0.6553 |                  |
@@ -161,19 +161,19 @@ otherwise. "Levels" are price levels on the side the order takes from.
 
 ### Cross-chain
 
-| Operation                                                             | Proof (MB) | Proof limit | ref_time limit | Deposit (PAS) | Weight fee (PAS) | Note                        |
-| --------------------------------------------------------------------- | ---------: | ----------: | -------------: | ------------: | ---------------: | --------------------------- |
-| Limit buy filling 1 level, taker cross-chain                          |       2.00 |      23.78% |           6.3% |        0.1032 |           0.1759 |                             |
-| Limit buy filling 4 levels, taker cross-chain                         |       6.20 |      73.91% |         23.79% |             0 |           0.5467 |                             |
-| Limit buy filling 5 levels, taker cross-chain (budget stops at 4)     |       6.28 |      74.89% |         23.83% |             0 |           0.5540 |                             |
-| Limit buy filling 1 level, both legs cross-chain                      |       2.53 |      30.17% |         11.41% |        0.0826 |           0.2232 |                             |
-| Limit buy filling 3 levels, both legs cross-chain                     |       6.17 |      73.51% |         33.18% |             0 |           0.5437 |                             |
-| Limit buy filling 4 levels, both legs cross-chain (budget stops at 3) |       6.25 |      74.49% |         33.22% |             0 |           0.5510 |                             |
-| Limit buy filling 1 level, maker cross-chain                          |       1.92 |      22.93% |          6.22% |        0.0206 |           0.1697 |                             |
-| Cancel a cross-chain order                                            |       1.15 |      13.69% |          0.72% |        0.0206 |           0.1013 |                             |
-| `claimSettlement`, refund claim                                       |       0.62 |       7.44% |          5.23% |             0 |           0.0551 | reverts: XCM execute failed |
-| `redirectClaim`, refund claim                                         |       0.14 |       1.68% |          0.07% |             0 |           0.0124 |                             |
-| Limit buy cancelling 6 own cross-chain orders (budget stops)          |       5.91 |       70.5% |          3.89% |        0.2064 |           0.5215 |                             |
+| Operation                                                             | Proof (MB) | Proof limit | ref_time limit | Deposit (PAS) | Weight fee (PAS) | Note |
+| --------------------------------------------------------------------- | ---------: | ----------: | -------------: | ------------: | ---------------: | ---- |
+| Limit buy filling 1 level, taker cross-chain                          |       2.02 |      24.03% |           6.3% |        0.1032 |           0.1778 |      |
+| Limit buy filling 4 levels, taker cross-chain                         |       6.22 |      74.17% |          23.8% |             0 |           0.5487 |      |
+| Limit buy filling 5 levels, taker cross-chain (budget stops at 4)     |       6.30 |      75.15% |         23.84% |             0 |           0.5559 |      |
+| Limit buy filling 1 level, both legs cross-chain                      |       2.55 |      30.43% |         11.41% |        0.0826 |           0.2251 |      |
+| Limit buy filling 3 levels, both legs cross-chain                     |       6.19 |      73.77% |         33.19% |             0 |           0.5457 |      |
+| Limit buy filling 4 levels, both legs cross-chain (budget stops at 3) |       6.27 |      74.76% |         33.23% |             0 |           0.5530 |      |
+| Limit buy filling 1 level, maker cross-chain                          |       1.94 |      23.06% |          6.23% |        0.0206 |           0.1706 |      |
+| Cancel a cross-chain order                                            |       1.15 |      13.69% |          0.72% |        0.0206 |           0.1013 |      |
+| `claimSettlement`, refund claim                                       |       0.73 |       8.67% |          5.31% |             0 |           0.0642 |      |
+| `redirectClaim`, refund claim                                         |       0.14 |       1.68% |          0.07% |             0 |           0.0125 |      |
+| Limit buy cancelling 6 own cross-chain orders (budget stops)          |       5.93 |      70.63% |          3.89% |        0.2064 |           0.5225 |      |
 
 ### Purge expired
 
@@ -191,19 +191,16 @@ otherwise. "Levels" are price levels on the side the order takes from.
 
 - **The matching budget fits.** A local fill costs 0.7 to 1.1 MB of proof, about 0.8 MB on average,
   and a cross-chain leg about 0.55 MB more, in line with the estimates behind `MATCH_BUDGET`. A full
-  budget uses at most 68% of the limit with local fills, and 75% with cross-chain legs. The taker's own
-  cross-chain orders, and expired cross-chain orders, are each refunded through a claim and charged
-  like a local fill: six of the taker's own use 70.5%, and six expired ones 36.9%, within the same
-  75%.
+  budget uses at most 68.4% of the limit with local fills, and 75.2% with cross-chain legs. The
+  taker's own cross-chain orders, and expired cross-chain orders, are each refunded through a claim and
+  charged like a local fill: six of the taker's own use 70.6%, and six expired ones 37.1%.
 - **Every call that returns escrow fits.** Cancelling the only order at its level costs the most, and
   grows slowly with the book: 12% with 7 levels, 20% with 256.
 - **Caller-sized batches have a ceiling.** `purgeExpired` costs about 3.5% of the limit per order it
   examines, and `batchCancelOrders` about 4.4% per order. Up to 25 and 20 orders fit; 30 do not. The
   app calls neither.
-- **Cross-chain fills settle.** The fork sets a cross-chain fee of 0.1 PAS, since the networks' fee
-  of 0 makes every cross-chain fill revert (#143). With it, each cross-chain leg sends its XCM to para
-  1000 (Paseo Asset Hub), and the rows measure that settlement.
-- **Settling a refund claim reverts.** Cancelling a cross-chain order leaves a refund claim, which
-  sends the whole reserve plus the call's `msg.value` (one `minCrossChainFee` in the row). The reserve
-  is recorded in 18-decimal units and sent as planck (#143), so the XCM asks for far more than the
-  market holds. The row measures that revert.
+- **Cross-chain settlement goes through.** A factory starts with a cross-chain fee of 0, which
+  disables cross-chain orders, so the benchmark sets 0.1 PAS, the fee the bootstrap sets. Each
+  cross-chain leg then sends its XCM to para 1000 (Paseo Asset Hub), and the rows measure that
+  settlement. Settling a refund claim, which cancelling a cross-chain order leaves, sends the escrow and
+  the whole reserve plus the call's `msg.value` (one `minCrossChainFee` in the row), and costs 8.7%.

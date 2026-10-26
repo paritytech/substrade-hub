@@ -12,7 +12,7 @@ before a production deployment.
 | Power | Where | What it does | What a compromised key could do |
 |---|---|---|---|
 | `createMarket` | `DLOBFactory.sol` | Lists a market for a token pair, with its tick, minimum and maximum order size. | List markets for look-alike or worthless tokens. The app only shows markets quoted in the known quote token whose tokens share decimals. |
-| `setMinCrossChainFee` | `DLOBFactory.sol` | Sets the DOT fee reserve a cross-chain order must carry, at most 10 DOT (`MAX_MIN_CROSS_CHAIN_FEE`). | Raise it to the cap, making cross-chain orders dearer. |
+| `setMinCrossChainFee` | `DLOBFactory.sol` | Sets the DOT fee reserve a cross-chain order must carry, and each settlement takes, at most 10 DOT (`MAX_MIN_CROSS_CHAIN_FEE`). 0 disables new cross-chain orders. | Raise it to the cap, making cross-chain orders dearer. Set it back to 0 while cross-chain orders rest: their later fills wait as pending claims, which cannot settle until a fee is set again. |
 | `setMarketCreationDeposit` | `DLOBFactory.sol` | Sets the deposit for a new market, at most 1,000 DOT. | Nothing beyond the admin's own market creation, which it controls anyway. |
 | `transferAdmin` / `acceptAdmin` | `DLOBFactory.sol` | Hands every power on this page to another account, in two steps: the new account must call `acceptAdmin`. `transferAdmin(address(0))` cancels. | Hand the role to an account it controls. A mistyped address cannot receive it. |
 | `setHalted` | `DLOBFactory.sol` | Stops (or resumes) new orders on every market. Cancelling, reducing, claiming and withdrawing stay open. | Stop all trading until it is resumed. Users can still take their orders and funds out. |

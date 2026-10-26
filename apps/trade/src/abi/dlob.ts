@@ -513,6 +513,11 @@ export const dlobAbi = [
         "name": "_factory",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_nativeToEthRatio",
+        "type": "uint96",
+        "internalType": "uint96"
       }
     ],
     "outputs": [],
@@ -1167,6 +1172,11 @@ export const dlobAbi = [
   {
     "type": "error",
     "name": "ClaimNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CrossChainDisabled",
     "inputs": []
   },
   {

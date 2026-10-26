@@ -31,7 +31,7 @@ contract DLOBTest is Test {
         mockXcm = new MockXcm();
         mockSystem = new MockSystem();
         DLOB impl = new DLOB();
-        factory = new DLOBFactory(address(mockXcm), address(mockSystem), address(impl));
+        factory = new DLOBFactory(address(mockXcm), address(mockSystem), address(impl), 1);
         factory.setMinCrossChainFee(1e9); // 0.000000001 DOT (1 planck unit for testing)
 
         baseToken = new MockERC20("Base", "BASE");
