@@ -6,7 +6,9 @@
     "build": "forge build",
     "test": "forge test --polkadot",
     "fmt": "forge fmt",
-    "fmt:check": "forge fmt --check"
+    "fmt:check": "forge fmt --check",
+    "bench:fork": "npx -y @acala-network/chopsticks@1.5.2 --config scripts/bench/${NETWORK:-paseo-v2}.yml",
+    "bench": "node scripts/bench/bench.mjs"
   },
   "dependencies": {
     "@polkadot-labs/hdkd": "^0.0.29",

@@ -14,7 +14,7 @@ SubsTrade Hub is a fully on-chain **Decentralized Limit Order Book (DLOB)** for 
 
 The JS side is a pnpm + Turborepo workspace pinned to `pnpm@11.20.0` (`packageManager` field). Node 26 dropped bundled corepack, so if `pnpm` is missing, install it with `npm install -g pnpm@11.20.0` rather than relying on corepack.
 
-The docs are thorough and worth reading before deep work: `contracts/docs/{how-it-works,deployment,configuration,testing}.md` and `e2e/README.md`.
+The docs are thorough and worth reading before deep work: `contracts/docs/{how-it-works,deployment,configuration,testing,benchmarks}.md` and `e2e/README.md`.
 
 ## Commands
 
@@ -28,6 +28,8 @@ forge test --polkadot --match-path test/Matching.t.sol -vv   # single file
 forge test --polkadot --match-test testPartialFill           # single test
 forge test --gas-report                           # gas benchmarks (test/GasReport.t.sol)
 forge fmt                                          # format
+pnpm bench:fork                                   # Chopsticks fork of paseo-v2 (NETWORK=previewnet for previewnet)
+pnpm bench                                        # in another terminal: weight and proof of each operation on the fork
 ```
 
 `forge test` works without `--polkadot` because contract tests use mock precompiles (`MockXcm`/`MockSystem`/`MockERC20`) and don't need the real runtime. Use plain `forge test` for fast iteration, and `--polkadot` for anything that must trust pallet-revive behavior.

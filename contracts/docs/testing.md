@@ -149,7 +149,9 @@ The handler tracks **ghost variables** (off-chain accounting) to compare against
 
 ## Gas Benchmarks
 
-`GasReport.t.sol` provides isolated gas measurements for core operations. Run with:
+`GasReport.t.sol` provides isolated gas measurements for core operations. They are REVM gas, which says
+nothing about proof size or pallet-revive's weights: what each operation costs on Asset Hub, against
+what one transaction may use, is in [Benchmarks](benchmarks.md). Run with:
 
 ```bash
 forge test --match-path test/GasReport.t.sol --gas-report

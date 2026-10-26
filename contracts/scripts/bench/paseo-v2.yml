@@ -1,0 +1,9 @@
+# Chopsticks fork of paseo-v2 for the contract benchmarks (scripts/bench/bench.mjs). The fork starts
+# from the live chain's latest block. State fetched from the live chain is cached in .chopsticks/
+# (gitignored), so a dropped connection or a later run does not fetch it again.
+endpoint: wss://paseo-asset-hub-next-rpc.polkadot.io
+port: 8011
+# Accept a signature made of 0xdeadbeef padded with 0xcd, so the benchmark can act as the factory admin.
+mock-signature-host: true
+build-block-mode: Instant
+db: .chopsticks/paseo-v2.sqlite
