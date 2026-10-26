@@ -37,7 +37,7 @@ pnpm bench --sections ladder,cross-chain       # some of them
 pnpm bench --out results.json                  # also write the results as JSON
 pnpm bench --contracts live                    # the network's deployed factory, as its admin
 pnpm bench --network previewnet --contracts live
-pnpm bench --check 90 --summary summary.md     # fail over 90% of a limit; write a Markdown table
+pnpm bench --check 95 --summary summary.md     # fail over 95% of a limit; write a Markdown table
 ```
 
 Run `forge build` first: by default (`--contracts build`), the benchmark measures the build in
@@ -57,7 +57,7 @@ tables mark both as **does not fit**.
 
 The Benchmark workflow (`.github/workflows/bench.yml`) runs on pull requests that touch
 `contracts/src/` or the benchmark, and weekly to catch a runtime upgrade. It measures the PR's build
-with every section, the `tree` one at 64 levels, and fails when a call uses more than 90% of the proof
+with every section, the `tree` one at 64 levels, and fails when a call uses more than 95% of the proof
 or ref_time limit. The rows sized past the documented ceilings (`purgeExpired` above 25 orders,
 `batchCancelOrders` above 20) are left out of that check. It also warns about each row that moved
 more than 5% from the tables below. The table and the warnings are in the run's summary.

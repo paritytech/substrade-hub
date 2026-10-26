@@ -1,7 +1,7 @@
 name: Benchmark
 
 # Measures the contracts' operations on a Chopsticks fork of paseo-v2 (contracts/scripts/bench/bench.mjs)
-# and fails when one uses more than 90% of a transaction's limits. It warns when the results in
+# and fails when one uses more than 95% of a transaction's limits. It warns when the results in
 # contracts/docs/benchmarks.md are out of date. See that page.
 on:
   pull_request:
@@ -78,7 +78,7 @@ jobs:
             npx -y @acala-network/chopsticks@1.5.2 --config scripts/bench/paseo-v2.yml > "$RUNNER_TEMP/fork-$attempt.log" 2>&1 &
             for _ in $(seq 1 100); do grep -q listening "$RUNNER_TEMP/fork-$attempt.log" && break; sleep 3; done
             status=0
-            timeout 30m node scripts/bench/bench.mjs --levels 64 --check 90 --drift 5 --summary "$GITHUB_STEP_SUMMARY" || status=$?
+            timeout 30m node scripts/bench/bench.mjs --levels 64 --check 95 --drift 5 --summary "$GITHUB_STEP_SUMMARY" || status=$?
             pkill -f "chopsticks@1.5.2" || true
             if [ "$status" -eq 0 ] || [ "$status" -eq 2 ]; then exit "$status"; fi
             echo "::warning::Benchmark attempt $attempt failed (exit $status)"

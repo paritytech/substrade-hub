@@ -52,7 +52,7 @@ pallet-revive limits a contract to 24 KiB, and CI fails a build that leaves a de
 incremental build can report a wrong size.
 
 The Benchmark workflow measures every contract operation on a fork of paseo-v2 and fails a pull request
-that makes one use more than 90% of a transaction's limits. When it warns that the results in
+that makes one use more than 95% of a transaction's limits. When it warns that the results in
 [benchmarks](contracts/docs/benchmarks.md) are out of date, refresh them in the same pull request, as
 that page describes.
 
