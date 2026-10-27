@@ -101,6 +101,7 @@ sol! {
         uint32 destParaId, uint64 expireTimestamp, bool postOnly
     ) external payable returns (uint32, uint128);
     function cancelOrder(uint32 orderId, bytes32 originAccount) external;
+    function claimSettlement(uint32 claimId) external payable;
     function bestBid() external view returns (uint96);
     function bestAsk() external view returns (uint96);
     function nextOrderId() external view returns (uint32);
@@ -487,6 +488,18 @@ fn query_get_market(factory: H160, base: H160, quote: H160) -> H160 {
 
 /// Derive the H160 address that pallet-revive assigns to a Substrate AccountId32.
 /// Formula: keccak_256(account_id)[12..]
+/// The location PenpalA knows an Asset Hub trust-backed asset by.
+fn asset_on_penpal(asset_id: u32) -> Location {
+    Location::new(
+        1,
+        [
+            ParachainJunction(1000),
+            PalletInstance(50),
+            GeneralIndex(asset_id as u128),
+        ],
+    )
+}
+
 fn account_to_h160(account: &AccountId) -> H160 {
     let hash = sp_crypto_hashing::keccak_256(account.as_ref());
     H160::from_slice(&hash[12..])
@@ -618,24 +631,19 @@ fn setup_pallet_asset_market() -> (
     // Fund Charlie on PenpalA (for sending XCM)
     PenpalA::fund_accounts(vec![(charlie.clone(), 100 * DOT)]);
 
-    // Register tGOLD as a foreign asset on PenpalA for cross-chain settlement
+    // Register tGOLD and tUSD as foreign assets on PenpalA: fills settle tGOLD there, and refunds of a
+    // cross-chain buy return tUSD.
     PenpalA::execute_with(|| {
         type Assets = <PenpalA as PenpalAPallet>::Assets;
-        let base_on_penpal = Location::new(
-            1,
-            [
-                ParachainJunction(1000),
-                PalletInstance(50),
-                GeneralIndex(BASE_ASSET_ID as u128),
-            ],
-        );
-        assert_ok!(Assets::force_create(
-            <PenpalA as Chain>::RuntimeOrigin::root(),
-            base_on_penpal,
-            charlie.clone().into(),
-            true,
-            1,
-        ));
+        for asset_id in [BASE_ASSET_ID, QUOTE_ASSET_ID] {
+            assert_ok!(Assets::force_create(
+                <PenpalA as Chain>::RuntimeOrigin::root(),
+                asset_on_penpal(asset_id),
+                charlie.clone().into(),
+                true,
+                1,
+            ));
+        }
     });
 
     // Deploy DLOB contracts on AH

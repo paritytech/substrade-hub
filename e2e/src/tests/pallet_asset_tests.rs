@@ -9,6 +9,7 @@
 //! | t2   | Cross-chain order: PenpalA → AH via XCM Transact → order rests on book |
 //! | t3   | Cross-chain settlement: match → base tokens delivered to PenpalA via XCM |
 //! | t4   | Cross-chain cancel: cancel resting order → refund PendingClaim created |
+//! | t5   | Refund settlement: claimSettlement returns the escrow to PenpalA via XCM |
 
 use super::*;
 
@@ -262,6 +263,47 @@ fn full_dlob_lifecycle() {
             "Cancel should create a refund PendingClaim (before={claim_id_before}, after={claim_id_after})"
         );
         eprintln!("[t4] Cancel + refund verified");
+    });
+
+    // =====================================================================
+    // T5: Refund settlement — claimSettlement → escrowed tUSD back on PenpalA
+    // =====================================================================
+
+    // The cancelled buy escrowed 5 tGOLD at $100 in tUSD; its claim also sends the order's DOT reserve.
+    let refund = AMOUNT_5 * far_price / 1_000_000_000_000_000_000;
+    type PenpalAssets = <PenpalA as PenpalAPallet>::Assets;
+    let charlie_quote_before = PenpalA::execute_with(|| {
+        <PenpalAssets as frame_support::traits::fungibles::Inspect<_>>::balance(
+            asset_on_penpal(QUOTE_ASSET_ID),
+            &charlie,
+        )
+    });
+
+    eprintln!("[t5] claimSettlement({claim_id_before})...");
+    AssetHubWestend::execute_with(|| {
+        call_contract(
+            alice.clone(),
+            state.market,
+            0,
+            claimSettlementCall {
+                claimId: claim_id_before,
+            }
+            .abi_encode(),
+        );
+    });
+
+    PenpalA::execute_with(|| {
+        let charlie_quote = <PenpalAssets as frame_support::traits::fungibles::Inspect<_>>::balance(
+            asset_on_penpal(QUOTE_ASSET_ID),
+            &charlie,
+        );
+        eprintln!("[t5] Charlie's tUSD on PenpalA: {charlie_quote_before} -> {charlie_quote}");
+        assert_eq!(
+            charlie_quote - charlie_quote_before,
+            refund,
+            "Charlie should receive the cancelled order's escrow on PenpalA"
+        );
+        eprintln!("[t5] Refund settlement verified");
     });
 
     eprintln!("═══════════════════════════════════════════════════════════════");

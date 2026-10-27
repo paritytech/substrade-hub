@@ -120,7 +120,7 @@ Precompiles live at fixed addresses:
 
 `e2e/Cargo.toml` pins polkadot-sdk dependencies to **`branch = "master"`** — a floating git pin, not a release tag. Running `cargo update` moves the pinned commit and can surface upstream breaking changes (pallet or runtime-API renames); expect to fix those when bumping.
 
-`xcm-emulator` runs the Westend relay + Asset Hub (para 1000) + PenpalA (para 2000) in a single process, with HRMP preconfigured, relaying XCM at the end of each `execute_with` block. Local contract calls go through `pallet_revive` (`bare_instantiate` / `bare_call`); cross-chain orders use a real XCM Transact from PenpalA. `pallet_asset_tests::full_dlob_lifecycle` runs scenarios t0→t4 sequentially with shared state, so order matters.
+`xcm-emulator` runs the Westend relay + Asset Hub (para 1000) + PenpalA (para 2000) in a single process, with HRMP preconfigured, relaying XCM at the end of each `execute_with` block. Local contract calls go through `pallet_revive` (`bare_instantiate` / `bare_call`); cross-chain orders use a real XCM Transact from PenpalA. `pallet_asset_tests::full_dlob_lifecycle` runs scenarios t0→t5 sequentially with shared state, so order matters.
 
 ## Conventions & CI notes
 
