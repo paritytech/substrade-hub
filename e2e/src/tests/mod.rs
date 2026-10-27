@@ -256,7 +256,9 @@ fn call_contract(origin: AccountId, dest: H160, value: u128, data: Vec<u8>) {
         asset_hub_westend_runtime::RuntimeOrigin::signed(origin.clone()),
         dest,
         value,
-        Weight::from_parts(50_000_000_000, 5_000_000),
+        // Room for a cross-chain fill: the XCM precompile charges weighing and decoding the
+        // settlement message up front, on top of executing it.
+        Weight::from_parts(500_000_000_000, 8_000_000),
         100 * DOT,
         data,
     );

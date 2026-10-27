@@ -11,11 +11,6 @@
 
 use super::*;
 
-/// Foreign asset index used for testing (WETH-like token).
-/// The pallet-assets-precompiles pallet assigns sequential indices starting from 0.
-/// This is the first foreign asset created on AH, so it gets index 0.
-const FOREIGN_ASSET_INDEX: u32 = 0;
-
 /// Derive the ERC20 precompile address for a foreign asset.
 /// Formula: `0x<assetIndex_be_4bytes>000000000000000000000000_0220_0000`
 fn foreign_asset_id_to_erc20(index: u32) -> H160 {
@@ -53,21 +48,14 @@ fn foreign_asset_local_settlement() {
     // Reuse the standard setup (funds, accounts, contract deployment)
     let (pallet_state, alice, bob, dave, _charlie, _sov_2000) = setup_pallet_asset_market();
 
-    let foreign_erc20 = foreign_asset_id_to_erc20(FOREIGN_ASSET_INDEX);
     let foreign_location = test_foreign_asset_location();
     let foreign_location_bytes = scale_encode_location(&foreign_location);
-
-    eprintln!(
-        "[foreign] Foreign asset ERC20: {:?}, location bytes: {} bytes",
-        foreign_erc20,
-        foreign_location_bytes.len()
-    );
 
     // =====================================================================
     // Register the foreign asset on Asset Hub via ForeignAssets pallet
     // =====================================================================
 
-    AssetHubWestend::execute_with(|| {
+    let foreign_erc20 = AssetHubWestend::execute_with(|| {
         type ForeignAssets = asset_hub_westend_runtime::ForeignAssets;
         type RuntimeOrigin = asset_hub_westend_runtime::RuntimeOrigin;
 
@@ -110,6 +98,18 @@ fn foreign_asset_local_settlement() {
         ));
 
         eprintln!("[foreign] Foreign asset registered and minted");
+
+        // The ERC20 precompile addresses a foreign asset by the index it got on creation, which
+        // depends on the foreign assets the runtime's genesis already holds.
+        let index = asset_hub_westend_runtime::AssetsPrecompiles::asset_index_of(&foreign_location)
+            .expect("a created foreign asset has an ERC20 index");
+        let foreign_erc20 = foreign_asset_id_to_erc20(index);
+        eprintln!(
+            "[foreign] Foreign asset ERC20: {:?} (index {index}), location bytes: {} bytes",
+            foreign_erc20,
+            foreign_location_bytes.len()
+        );
+        foreign_erc20
     });
 
     // =====================================================================
