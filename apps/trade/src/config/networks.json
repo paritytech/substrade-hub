@@ -31,7 +31,7 @@
     "dotnsContentResolver": "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
     "explorerUrl": null,
     "nativeFaucetUrl": "https://faucet.polkadot.io/?parachain=1500",
-    "factoryAddress": "0x2Ca63800909513Aa7885902Faf8501EB9db25762",
+    "factoryAddress": "0x8F9fb859F4EA7ae26BC97079DD3c2b7e9154dF51",
     "faucetAddress": "0xe1bc9e4b52ce0ee2950d14737ebd673a78d6860f",
     "knownQuote": {
       "addr": "0x02faf33a00000000000000000000000001200000",
