@@ -164,7 +164,7 @@ describe("getHostSigner", () => {
     expect(() => getHostSigner()).toThrow(/connect and select/i);
   });
 
-  it("returns the PolkadotSigner when available", () => {
+  it("returns the tx creator when available", () => {
     const signer = { sentinel: true };
     manager.getSigner.mockReturnValue(signer);
     expect(getHostSigner()).toBe(signer);

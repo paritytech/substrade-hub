@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import type { PolkadotSigner } from "polkadot-api";
+import type { TxCreator } from "polkadot-api";
 import type { Abi } from "viem";
 
 // Controllable fake typed API, injected in place of the real PAPI client.
@@ -16,7 +16,7 @@ vi.mock("./errors", async () => {
 import { UserFacingError } from "./user-errors";
 import { submitReviveCall, ensureMapped, weightLimit } from "./revive";
 
-const signer = {} as PolkadotSigner;
+const signer = {} as TxCreator;
 const ABI = [] as unknown as Abi;
 const CONTRACT = "0x00000000000000000000000000000000000000aa" as const;
 const CALLDATA = "0x12345678" as const;
@@ -45,10 +45,10 @@ const okDry = (over: Record<string, any> = {}) => ({
   ...over,
 });
 
-// A fake `signSubmitAndWatch` observable that synchronously emits the given PAPI-shaped events, then
+// A fake `createSubmitAndWatch` observable that synchronously emits the given PAPI-shaped events, then
 // optionally fails the subscription.
 const watch = (events: Record<string, any>[], fail?: unknown) => ({
-  signSubmitAndWatch: () => ({
+  createSubmitAndWatch: () => ({
     subscribe: (o: { next: (e: any) => void; error: (e: any) => void }) => {
       for (const e of events) o.next(e);
       if (fail !== undefined) o.error(fail);
@@ -72,11 +72,10 @@ describe("submitReviveCall", () => {
     };
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
-        { type: "signed", txHash: "0xhash" },
+        { type: "created", txHash: "0xhash" },
         {
-          type: "txBestBlocksState",
+          type: "inBestBlock",
           txHash: "0xhash",
-          found: true,
           ok: true,
           block: { hash: "0xblk" },
           events: [{ type: "System", value: { type: "ExtrinsicSuccess", value: {} } }, emitted],
@@ -91,8 +90,8 @@ describe("submitReviveCall", () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
-        { type: "signed", txHash: "0xhash" },
-        { type: "txBestBlocksState", txHash: "0xhash", found: true, ok: true, block: { hash: "0xblk" }, events: [] },
+        { type: "created", txHash: "0xhash" },
+        { type: "inBestBlock", txHash: "0xhash", ok: true, block: { hash: "0xblk" }, events: [] },
       ]),
     );
 
@@ -116,9 +115,9 @@ describe("submitReviveCall", () => {
     const included = { txHash: "0xh", ok: true, block: { hash: "0xb", number: 1, index: 0 }, events: [] };
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
-        { type: "signed", txHash: "0xh" },
+        { type: "created", txHash: "0xh" },
         { type: "broadcasted", txHash: "0xh" },
-        { type: "txBestBlocksState", found: true, ...included },
+        { type: "inBestBlock", ...included },
         { type: "finalized", ...included },
       ]),
     );
@@ -138,8 +137,8 @@ describe("submitReviveCall", () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
-        { type: "signed", txHash: "0xh" },
-        { type: "txBestBlocksState", txHash: "0xh", found: true, ok: true, block: { hash: "0xb" }, events: [] },
+        { type: "created", txHash: "0xh" },
+        { type: "inBestBlock", txHash: "0xh", ok: true, block: { hash: "0xb" }, events: [] },
       ]),
     );
     await submitReviveCall({
@@ -159,8 +158,8 @@ describe("submitReviveCall", () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
-        { type: "signed", txHash: "0xhash" },
-        { type: "txBestBlocksState", txHash: "0xhash", found: true, ok: true, block: { hash: "0xblk" }, events: [] },
+        { type: "created", txHash: "0xhash" },
+        { type: "inBestBlock", txHash: "0xhash", ok: true, block: { hash: "0xblk" }, events: [] },
       ]),
     );
     await submit();
@@ -170,8 +169,8 @@ describe("submitReviveCall", () => {
   it("rejects if the tx is submitted but never included (timeout, no hang)", async () => {
     vi.useFakeTimers();
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
-    // Observable that emits `signed` but never reaches `txBestBlocksState`.
-    mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "signed", txHash: "0xh" }]));
+    // Observable that emits `created` but never reaches `inBestBlock`.
+    mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "created", txHash: "0xh" }]));
     const result = submitReviveCall({
       abi: ABI,
       contractAddress: CONTRACT,
@@ -218,10 +217,9 @@ describe("submitReviveCall", () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
-        { type: "signed", txHash: "0xh" },
+        { type: "created", txHash: "0xh" },
         {
-          type: "txBestBlocksState",
-          found: true,
+          type: "inBestBlock",
           ok: false,
           dispatchError: { type: "Token", value: { type: "FundsUnavailable" } },
         },
@@ -238,7 +236,7 @@ describe("submitReviveCall", () => {
       name: "InvalidTxError",
       error: { type: "Invalid", value: { type: "BadProof" } },
     });
-    mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "signed", txHash: "0xh" }], invalid));
+    mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "created", txHash: "0xh" }], invalid));
     const err = await submit().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UserFacingError);
     expect((err as Error).message).toMatch(/rejected your wallet's signature/);
@@ -255,8 +253,8 @@ describe("submitReviveCall", () => {
 describe("ensureMapped", () => {
   const included = (ok: boolean, dispatchError?: unknown) =>
     watch([
-      { type: "signed", txHash: "0xh" },
-      { type: "txBestBlocksState", txHash: "0xh", found: true, ok, block: { hash: "0xblk" }, events: [], dispatchError },
+      { type: "created", txHash: "0xh" },
+      { type: "inBestBlock", txHash: "0xh", ok, block: { hash: "0xblk" }, events: [], dispatchError },
     ]);
 
   it("no-ops when the account is already mapped", async () => {
@@ -304,7 +302,7 @@ describe("submitReviveCall chain errors", () => {
       name: "InvalidTxError",
       error: { type: "Invalid", value: { type: "Stale" } },
     });
-    mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "signed", txHash: "0xh" }], stale));
+    mockApi.tx.Revive.call.mockReturnValue(watch([{ type: "created", txHash: "0xh" }], stale));
     await expect(submit()).rejects.toThrow(/previous transaction is still pending/);
   });
 
@@ -319,8 +317,8 @@ describe("submitReviveCall chain errors", () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
-        { type: "signed", txHash: "0xh" },
-        { type: "txBestBlocksState", found: true, ok: false, dispatchError: { type: "BadOrigin" } },
+        { type: "created", txHash: "0xh" },
+        { type: "inBestBlock", ok: false, dispatchError: { type: "BadOrigin" } },
       ]),
     );
     const err = await submit().catch((e: unknown) => e);
@@ -345,8 +343,8 @@ describe("submitReviveCall, orders too large for one transaction", () => {
     mockApi.apis.ReviveApi.call.mockResolvedValue(okDry());
     mockApi.tx.Revive.call.mockReturnValue(
       watch([
-        { type: "signed", txHash: "0xh" },
-        { type: "txBestBlocksState", found: true, ok: false, dispatchError: { type: "Module", value: { type: "Revive", value: { type: "OutOfGas" } } } },
+        { type: "created", txHash: "0xh" },
+        { type: "inBestBlock", ok: false, dispatchError: { type: "Module", value: { type: "Revive", value: { type: "OutOfGas" } } } },
       ]),
     );
     await expect(submit()).rejects.toThrow(/crosses too many price levels/);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: © 2026 Parity Technologies
-import { type PolkadotSigner, type SS58String, type SizedHex } from "polkadot-api";
+import { type SS58String, type SizedHex, type TxCreator } from "polkadot-api";
 import { fromHex, toHex } from "polkadot-api/utils";
 import type { Abi } from "viem";
 import { getTypedApi } from "./client";
@@ -215,10 +215,12 @@ export function contractLogs(events: readonly unknown[]): TxLog[] {
 
 async function submitAndAwaitInclusion(
   tx: Parameters<typeof submitAndWatch>[0],
-  signer: PolkadotSigner,
+  signer: TxCreator,
   onProgress?: (step: TxStep) => void,
 ): Promise<{ txHash: string; events: unknown[] }> {
-  const res = await submitAndWatch(tx, signer, {
+  // A wallet that builds the whole transaction itself (createTransaction) hands over a V5 tx creator,
+  // which the SDK's type leaves out; it signs through the same createSubmitAndWatch call.
+  const res = await submitAndWatch(tx, signer as Parameters<typeof submitAndWatch>[1], {
     waitFor: "best-block",
     timeoutMs: INCLUSION_TIMEOUT_MS,
     onStatus: (status) => {
@@ -239,7 +241,7 @@ async function submitAndAwaitInclusion(
  */
 export async function ensureMapped(
   h160: `0x${string}`,
-  signer: PolkadotSigner,
+  signer: TxCreator,
 ): Promise<void> {
   const api = getTypedApi();
   const existing = await api.query.Revive.OriginalAccount.getValue(h160 as SizedHex<20>);
@@ -300,7 +302,7 @@ export interface ReviveCallParams {
   callData: `0x${string}`;
   /** Dry-run origin (the signer's SS58 account). */
   originSs58: string;
-  signer: PolkadotSigner;
+  signer: TxCreator;
   /**
    * Native planck; 0 for local orders (#14). Cross-chain must convert from an 18-dp msg.value first
    * (nativeValue = ceil(evmValue / NativeToEthRatio)); the extrinsic value is native, not 18-dp.

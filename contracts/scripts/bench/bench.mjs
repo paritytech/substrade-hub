@@ -11,7 +11,7 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { AccountId, Binary, createClient } from "polkadot-api";
-import { getPolkadotSigner } from "polkadot-api/signer";
+import { getTxCreator } from "polkadot-api/tx-creator";
 import { getWsProvider } from "polkadot-api/ws";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
@@ -189,14 +189,14 @@ function account(name) {
     ss58: AccountId().dec(kp.publicKey),
     h160: `0x${keccak256(toHex(kp.publicKey)).slice(26)}`,
     origin: toHex(kp.publicKey),
-    signer: getPolkadotSigner(kp.publicKey, "Sr25519", kp.sign),
+    signer: getTxCreator(kp.publicKey, "Sr25519", kp.sign),
   };
 }
 
 /** An existing EVM account, signed for with the fork's mock signature. */
 function impersonate(h160) {
   const id = Uint8Array.from([...Buffer.from(h160.slice(2), "hex"), ...new Array(12).fill(0xee)]);
-  return { name: "admin", ss58: AccountId().dec(id), h160, origin: toHex(id), signer: getPolkadotSigner(id, "Sr25519", () => MOCK_SIGNATURE) };
+  return { name: "admin", ss58: AccountId().dec(id), h160, origin: toHex(id), signer: getTxCreator(id, "Sr25519", () => MOCK_SIGNATURE) };
 }
 
 const assetAddress = (id) => `0x${id.toString(16).padStart(8, "0")}${"0".repeat(24)}01200000`;
@@ -231,7 +231,7 @@ function reviveCall(dest, d, value = 0n, headroom = 13n) {
 }
 
 async function submit(tx, from, label) {
-  const r = await tx.signAndSubmit(from.signer);
+  const r = await tx.createAndSubmit(from.signer);
   if (!r.ok) throw new Error(`${label}: ${json(r.dispatchError)}`);
   return r;
 }

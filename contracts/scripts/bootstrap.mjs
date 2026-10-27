@@ -29,7 +29,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AccountId, Binary, createClient, getSs58AddressInfo } from "polkadot-api";
-import { getPolkadotSigner } from "polkadot-api/signer";
+import { getTxCreator } from "polkadot-api/tx-creator";
 import { getWsProvider } from "polkadot-api/ws";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
@@ -155,7 +155,7 @@ function funderSigner(uri) {
   const [phrase, path] = uri.startsWith("//") ? [DEV_PHRASE, uri] : splitSuri(uri);
   const derive = sr25519CreateDerive(entropyToMiniSecret(mnemonicToEntropy(phrase)));
   const pair = derive(path);
-  return getPolkadotSigner(pair.publicKey, "Sr25519", pair.sign);
+  return getTxCreator(pair.publicKey, "Sr25519", pair.sign);
 }
 
 function splitSuri(suri) {
@@ -182,7 +182,7 @@ function assetErc20(id) {
 /** Submit and wait for finalization; throws on a failed dispatch. */
 async function submit(tx, signer, label) {
   console.log(`  ${label}…`);
-  const res = await tx.signAndSubmit(signer);
+  const res = await tx.createAndSubmit(signer);
   if (!res.ok) throw new Error(`${label} failed: ${JSON.stringify(res.dispatchError, bigintJson)}`);
   console.log(`  ${label}: finalized in #${res.block.number}`);
 }

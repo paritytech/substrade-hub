@@ -42,7 +42,7 @@ export function useWalletReconnect(): void {
           ss58: hint.ss58,
           h160: hint.h160,
           originAccount: hint.originAccount,
-          signer: acc.polkadotSigner,
+          signer: acc.txCreator,
         });
         watchAccounts(ext, hint.ss58, () => useWalletStore.getState().disconnect());
       } catch {

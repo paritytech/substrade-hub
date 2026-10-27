@@ -12,7 +12,7 @@
  *     pnpm --filter @substrade-hub/trade exec tsx scripts/substrate-order.ts
  */
 import { AccountId } from "polkadot-api";
-import { getPolkadotSigner } from "polkadot-api/signer";
+import { getTxCreator } from "polkadot-api/tx-creator";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
 import { encodeFunctionData } from "viem";
@@ -42,7 +42,7 @@ async function main() {
   // 1. Native signer from the seed — builds the extrinsic from live metadata (handles any tx
   //    extension, incl. AuthorizeValueTransfer). No wallet, no pjs-signer legacy bridge.
   const keypair = sr25519CreateDerive(entropyToMiniSecret(mnemonicToEntropy(seed)))("");
-  const signer = getPolkadotSigner(keypair.publicKey, "Sr25519", keypair.sign);
+  const signer = getTxCreator(keypair.publicKey, "Sr25519", keypair.sign);
   const ss58 = AccountId().dec(keypair.publicKey);
 
   // 2. Same identities the UI derives.

@@ -10,7 +10,7 @@ SPDX-License-Identifier header, which is authoritative:
   interface, from the polkadot-sdk project (MIT).
 - contracts/src/interfaces/IXcm.sol: pallet-xcm precompile interface,
   from the polkadot-sdk project (MIT).
-- patches/@polkadot-api__pjs-signer@0.7.3.patch: a patch to
+- patches/@polkadot-api__pjs-signer@0.9.0.patch: a patch to
   @polkadot-api/pjs-signer (MIT), applied at install time.
 
 Build, test and runtime dependencies (OpenZeppelin Contracts, forge-std,

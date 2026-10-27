@@ -111,7 +111,7 @@ export function WalletModal({ onClose }: WalletModalProps) {
           ss58: acc.address,
           h160,
           originAccount,
-          signer: acc.polkadotSigner,
+          signer: acc.txCreator,
         });
         if (ext) watchAccounts(ext, acc.address, () => useWalletStore.getState().disconnect());
         onClose();

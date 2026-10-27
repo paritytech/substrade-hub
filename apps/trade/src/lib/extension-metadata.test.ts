@@ -18,8 +18,7 @@ const papiConfig = JSON.parse(readFileSync(new URL("../../.papi/polkadot-api.jso
 };
 const runtimes = Object.entries(papiConfig.entries).map(([entry, { metadata: file }]) => {
   const metadata = unifyMetadata(decAnyMetadata(readFileSync(new URL(`../../${file}`, import.meta.url))));
-  const byVersion = metadata.extrinsic.signedExtensions;
-  const signedExtensions = Array.isArray(byVersion) ? byVersion : (byVersion[0] ?? []);
+  const signedExtensions = metadata.extrinsic.extensionsByVersion[0] ?? [];
   return { entry, metadata, signedExtensions };
 });
 

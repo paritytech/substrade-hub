@@ -187,7 +187,9 @@ then the order book still counts it at its price (see
 
 The Substrate signer path depends on a small patch to `@polkadot-api/pjs-signer` (see `patches/` and
 `pnpm-workspace.yaml`) that lets it defer unknown signed extensions to the wallet instead of throwing.
-It is necessary but not sufficient — the wallet also needs the metadata definition above.
+It is necessary but not sufficient — the wallet also needs the metadata definition above. Only wallets
+that sign a payload (`signPayload`) go through it: for a wallet that builds the whole transaction
+(`createTransaction`), pjs-signer uses that and never reaches the patched code.
 
 ### If you see "PJS does not support this signed-extension" in dev
 
@@ -225,7 +227,7 @@ involved.
   Both modes check the live genesis, so a reset chain fails with a clear message.
 - **Account and signing** (`src/lib/host/signer.ts`): "Connect Wallet" offers **"Connect Polkadot
   account"**. A `SignerManager` (`@parity/product-sdk-signer`) resolves the app's product account,
-  derived from the network's dotNS name, and its `PolkadotSigner` drives the same
+  derived from the network's dotNS name, and its tx creator drives the same
   `writeContract` -> `submitReviveCall` path as the browser Substrate flow; the host builds and signs the
   extrinsic, so no `metadata.provide`/ExtDef is needed. The host derives the account from the
   signed-in user, so when the host has no session, Connect asks it to sign the user in (`requestLogin`).

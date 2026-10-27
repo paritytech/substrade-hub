@@ -2,12 +2,12 @@
 // SPDX-FileCopyrightText: © 2026 Parity Technologies
 /**
  * Host account + signer via `@parity/product-sdk-signer`. `SignerManager.getSigner()` returns a PAPI
- * `PolkadotSigner` — the same type the wallet store already holds and `submitReviveCall` consumes — so
+ * tx creator — the same type the wallet store already holds and `submitReviveCall` consumes — so
  * the host path reuses the existing order flow (see stores/wallet `connectHost` + lib/contract).
  */
 import { SignerManager, type SignerAccount, type SignerState } from "@parity/product-sdk-signer";
 import { formatHostError, getAccountsProvider } from "@parity/product-sdk-host";
-import type { PolkadotSigner } from "polkadot-api";
+import type { TxCreator } from "polkadot-api";
 import { activeChain } from "../../config/chains";
 import { withTimeout } from "../timeout";
 import { UserFacingError } from "../user-errors";
@@ -107,7 +107,7 @@ export function selectHostAccount(address: string): SignerAccount {
 }
 
 /** The host-provided PAPI signer for the selected account. */
-export function getHostSigner(): PolkadotSigner {
+export function getHostSigner(): TxCreator {
   const signer = getManager().getSigner();
   if (!signer) throw new Error("No host signer — connect and select an account first");
   return signer;
