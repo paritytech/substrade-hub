@@ -538,6 +538,11 @@ export const dlobFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "InvalidRatio",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "MarketExists",
     "inputs": []
   },
@@ -584,11 +589,6 @@ export const dlobFactoryAbi = [
   {
     "type": "error",
     "name": "ZeroMinOrderSize",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "ZeroRatio",
     "inputs": []
   },
   {
