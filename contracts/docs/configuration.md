@@ -124,7 +124,7 @@ cast call <FACTORY_ADDRESS> "getMarketCount()(uint256)" --chain polkadot-testnet
 
 The DLOB requires all traded tokens to be ERC20s backed by `pallet-assets`. DOT is the native token on Asset Hub and is not registered in `pallet-assets`, so it cannot be used directly as a base or quote token.
 
-To trade DOT, you would wrap it into an ERC20 via a **Wrapped DOT (WDOT)** contract — the same pattern Ethereum uses with WETH. A WDOT contract exposes `deposit()`, which accepts native DOT and mints an equal amount of WDOT tokens, and `withdraw()`, which burns WDOT and returns native DOT. The contract is stateless beyond the standard ERC20 balance mapping, making it easy to audit and trust. Deploying and registering a canonical WDOT token on Asset Hub may require a governance proposal.
+To trade DOT, it would need to exist as a `pallet-assets` asset, for example a wrapped DOT registered on Asset Hub with its own ERC20 precompile, which may require a governance proposal. A WDOT deployed as a plain contract, as Ethereum's WETH is, could back a market for local orders only, since XCM cannot move it.
 
 Once WDOT is available, it can be used as the base or quote token in any market. For example, a **WDOT/USDT** market would let traders place DOT-denominated orders with USDT settlement.
 

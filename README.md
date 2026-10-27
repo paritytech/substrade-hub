@@ -46,15 +46,17 @@ substrade-hub/
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) v20+ and [pnpm](https://pnpm.io/installation) (for scripts and trading UI)
+- [Node.js](https://nodejs.org/) v22+ and [pnpm](https://pnpm.io/installation) (for scripts and trading UI)
 - [Foundry for Polkadot](https://github.com/paritytech/foundry-polkadot) (for contracts)
 
 Install Foundry:
 
 ```bash
 curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash
-foundryup
+foundryup --install v1.5.1
 ```
+
+CI uses v1.5.1, and `forge fmt` output differs between versions.
 
 ## Quick Start
 

@@ -10,11 +10,11 @@ from PenpalA over HRMP.
 ## Quick start
 
 ```bash
-# 1. Build the Solidity contracts (from repo root)
-forge build
+# 1. Build the Solidity contracts
+cd contracts && forge build
 
 # 2. Run tests
-cd e2e
+cd ../e2e
 cargo test -- --nocapture
 ```
 

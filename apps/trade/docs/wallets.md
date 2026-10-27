@@ -57,10 +57,10 @@ that id that is a different chain. The app compares a recent block between MetaM
 on connect and before every send, and stops on a mismatch. Edit that network in MetaMask so its RPC URL
 is the one the message names, then retry.
 
-### "You've already claimed" or "The faucet is out of tUSD"
+### "You've already claimed" or "The faucet is out of test tokens right now"
 
 The tUSD faucet dispenses a fixed amount once per account per cooldown (24 hours by default); the button
-shows the time left. "Out of tUSD" means the faucet contract needs refilling by its operator.
+shows the time left. "Out of test tokens" means the faucet contract needs refilling by its operator.
 
 ### The wallet won't present a signing prompt (or signing seems stuck)
 
@@ -73,25 +73,21 @@ signer and re-registers the network metadata. This resolves most "it just won't 
 The wallet doesn't expose the metadata API, or ignores the provided definition (Talisman). Switch to
 **SubWallet or polkadot-js**.
 
-### "Transaction reverted with no reason (commonly an insufficient token balance or allowance)"
+### "The transaction was rejected — check your token balance and approval, then try again"
 
 The contract rejected the order before any transfer. The common causes:
 
 - **You don't hold enough of the token being escrowed.** A sell escrows the base token; a buy escrows
   the quote token. Check your balance for the exact amount (a limit buy escrows `price x amount`).
-- **Allowance not yet set.** Every order needs a prior `approve`. The app approves automatically, but if
-  the approve is still confirming when the order previews, the preview can fail; retry after a moment.
+- **Allowance too low.** Every order needs a prior `approve`. The app approves the amount the order
+  escrows, and waits for that approval before it previews and sends the order.
 
-### "Transaction failed: Module (Revive.ContractReverted)" on a market order
+### "Couldn't complete the transaction. Please try again."
 
-The order passed the pre-flight simulation but the contract reverted at execution. This is a
-**market-order race**: the order book moved (another trade filled the level you were going to match)
-between the preview and when your transaction actually ran. It is not
-a signing problem, and it affects the EVM path identically.
-
-- Retry — the book may have settled.
-- Prefer a **limit order that rests** (a sell priced above the best bid, a buy priced below the best
-  ask). A resting order does not match against the other side, so it has no race.
+The order passed its simulation but failed on chain, usually because the book changed in between. A
+market order hands back what does not fill within its price limit, so only a market order with
+**All or nothing** on reverts when less than its amount fills. The browser console shows the chain
+error. Check Open Orders and your balances, then retry.
 
 ### A market order filled only part of its amount
 

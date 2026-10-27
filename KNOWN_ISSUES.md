@@ -18,9 +18,10 @@ of the code, see [SECURITY.md](SECURITY.md).
 
 ## 1. One admin key holds every privileged power
 
-The factory's `admin` can list markets, set fees, redirect any pending claim and sweep excess DOT, and
-markets cannot be upgraded. The full list, and what a compromised key could do, is in
-[Admin powers](contracts/docs/admin.md). The role moves in two steps and both fees are bounded (#105).
+The factory's `admin` can list markets, set the cross-chain fee and the market creation deposit, halt
+new orders on every market, redirect any pending claim and sweep excess DOT, and markets cannot be
+upgraded. The full list, and what a compromised key could do, is in
+[Admin powers](contracts/docs/admin.md). The role moves in two steps, and the fee and the deposit are bounded (#105).
 Custody before mainnet is open (#100).
 
 ## 2. Cross-chain order ownership relies on a caller-supplied `originAccount`
@@ -35,8 +36,8 @@ sovereign account. Cross-chain trading is not live; the ownership model is to be
 
 When inline XCM delivery fails, the settlement is kept as a `PendingClaim` on Asset Hub instead of
 reverting the trade. Funds stay on Asset Hub; anyone can retry with `claimSettlement`, and the owner
-can move it with `redirectClaim`. An order with pending claims cannot be cancelled until they are
-settled.
+can move it with `redirectClaim`. An order with pending claims can still be cancelled; its excess fee
+reserve can be withdrawn only once they are settled.
 
 ## 4. Orders placed through a host or Substrate wallet are missing from eth-rpc's log index
 

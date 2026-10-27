@@ -21,18 +21,20 @@ before a production deployment.
 
 What the admin **cannot** do: cancel or change other users' orders, move the tokens escrowed for
 resting orders, change a market's code (markets are immutable EIP-1167 clones of one
-implementation), or stop users from cancelling, reducing, claiming or withdrawing, even while
-halted.
+implementation), or stop users from cancelling, reducing or withdrawing, even while halted. It can stall fill claims
+by setting `minCrossChainFee` to 0 (see above).
 
 ## Pending claims and `adminRedirectClaim`
 
-A pending claim exists only when an inline XCM settlement failed (see
-[how it works](how-it-works.md#pendingclaim-fallback)). Its owner can retry it with `claimSettlement`
-or move it to another parachain with `redirectClaim`, which keeps the beneficiary. Only
+A pending claim holds a cross-chain settlement that has not been delivered: a fill whose inline XCM
+failed, or the escrow a cancelled, reduced or expired cross-chain order returns (see
+[how it works](how-it-works.md#pendingclaim-fallback)). Anyone can retry it with `claimSettlement`, and
+the order's owner can move it to another parachain with `redirectClaim`, which keeps the beneficiary. Only
 `adminRedirectClaim` can change the beneficiary, for a claim that cannot be delivered anywhere else.
 
-Cross-chain trading is not live yet (#15), so no pending claims exist on the deployed networks. Once it
-is, `adminRedirectClaim` becomes the main custody risk.
+The app does not place cross-chain orders yet (#15), but the bootstrap sets a cross-chain fee, so a
+direct call to a market can still create pending claims. Once the app trades cross-chain,
+`adminRedirectClaim` becomes the main custody risk.
 
 ## Custody
 

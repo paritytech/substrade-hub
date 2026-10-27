@@ -70,12 +70,14 @@ VITE_NETWORK=previewnet pnpm --filter @substrade-hub/trade build
 After an ABI change, run `pnpm sync-abi` inside `apps/trade/` (after `forge build`) and commit the
 regenerated files under `apps/trade/src/abi/`.
 
-**E2E** (inside `e2e/`): CI checks formatting only, with `cargo fmt --all --check`. The full suite,
-`cargo test -- --nocapture`, needs `forge build` first and compiles the polkadot-sdk runtimes, so its
-first run is slow. See the [e2e README](e2e/README.md).
+**E2E** (inside `e2e/`): CI checks formatting only, with `cargo fmt --all --check`. The suite itself,
+`cargo test -- --nocapture`, compiles the polkadot-sdk runtimes, which takes too long for CI, so run it
+locally in a pull request that changes `contracts/src/` or `e2e/`. It needs `forge build` in
+`contracts/` first, and its first build is slow (over an hour); later runs take minutes. See the
+[e2e README](e2e/README.md).
 
-**Docs:** CI checks the links in Markdown files and in `contracts/src/` with
-[Lychee](https://github.com/lycheeverse/lychee).
+**Docs:** CI checks the links in the root Markdown files, `contracts/docs/` and the Solidity sources
+under `contracts/` with [Lychee](https://github.com/lycheeverse/lychee).
 
 ## Standards
 

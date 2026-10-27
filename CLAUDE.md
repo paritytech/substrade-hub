@@ -48,7 +48,7 @@ The invariant suite under the default profile takes ~30 minutes (256 runs × dep
 The e2e crate reads compiled contract artifacts from `contracts/out/`, so the build step runs in `contracts/` and the tests run in `e2e/`:
 
 ```bash
-# 1. inside contracts/  (CI's e2e job uses working-directory: contracts here too)
+# 1. inside contracts/
 forge build
 
 # 2. inside e2e/
@@ -96,8 +96,8 @@ Source: `src/DLOB.sol`, `src/DLOBFactory.sol`, `src/libraries/` (`RedBlackTree`,
 | DOT units | 10 decimals (1 DOT = 1e10 Planck): fee reserves and factory params are in planck. `msg.value` and native transfers are in 18-decimal units, `NATIVE_TO_ETH_RATIO` (a factory constructor argument, 10^8 on Polkadot and Paseo, 10^6 on Westend) per planck; markets convert on the way in and out. |
 | Local vs cross-chain | Decided by `destParaId`. `0` = local (direct ERC20 transfers, no `msg.value`). Non-zero = cross-chain (XCM settlement, requires a DOT fee reserve of at least `factory.minCrossChainFee()` planck; a fee of 0 disables cross-chain orders). |
 | Allowance | Every order needs a prior `approve(market, amount)` — the DLOB escrows via `transferFrom`. Buys approve quote, sells approve base. |
-| Tradeable tokens | **Only pallet-assets-backed precompile tokens**, never user-deployed ERC20s (XCM can only move assets the runtime knows). DOT itself isn't in pallet-assets, so trading DOT needs a WDOT wrapper. |
-| Settlement failure | Failed inline XCM creates a **`PendingClaim`** (retry via `claimSettlement`, reroute via `redirectClaim`) instead of reverting — funds are never lost. An order with pending claims can't be cancelled (`HasPendingClaims`). |
+| Tradeable tokens | **Cross-chain orders need pallet-assets-backed precompile tokens** (XCM can only move assets the runtime knows). The factory also accepts a user-deployed ERC20, with an empty XCM location, for a market used for local orders only, as the tests do. DOT itself isn't in pallet-assets, so trading DOT needs a WDOT wrapper. |
+| Settlement failure | Failed inline XCM creates a **`PendingClaim`** (retry via `claimSettlement`, reroute via `redirectClaim`) instead of reverting, so funds are never lost. Pending claims do not block cancelling an order; they block `withdrawExcessFeeReserve` (`HasPendingClaims`). |
 
 ### pallet-revive specifics
 
@@ -124,8 +124,8 @@ Precompiles live at fixed addresses:
 
 ## Conventions & CI notes
 
-- **CI scope.** Workflows run Foundry build/test/fmt, e2e `cargo fmt`, and a Lychee link check over `*.md` and `contracts/src/**/*.sol` (`.github/workflows/{lint,test,e2e,check-links}.yml`). `lint.yml`, `test.yml` and `frontend.yml` start on every pull request, because the `master` ruleset requires their checks, but a first `changes` job skips the checks when the PR touches nothing they cover (a skipped job counts as passing); keep each workflow's `PATTERN` and its push `paths` in sync. `bench.yml` benchmarks the contracts on a Chopsticks fork of paseo-v2 when `contracts/src/` changes, and weekly; it is not a required check. When it warns that `contracts/docs/benchmarks.md` is out of date, refresh the tables in the same PR with `pnpm bench --write-docs` (see that page); never edit them by hand. The full e2e `cargo test` job is commented out — too slow on standard runners.
-- **forge version.** CI installs foundry-polkadot **v1.5.1**: `lint.yml`, `test.yml` and `bench.yml` with a `foundryup` pinned to a commit, and `bootstrap.yml` (which hands forge the deployer key) from the release archive pinned by SHA-256. `forge fmt` output differs between forge versions, so format with v1.5.1 locally; if `forge fmt --check` fails on files you didn't touch, check your local forge version first. Bump the version in all four workflows together, with the archive's SHA-256 in `bootstrap.yml`.
+- **CI scope.** Workflows run Foundry build/test/fmt, e2e `cargo fmt`, and a Lychee link check over the root `*.md`, `contracts/docs/**/*.md` and the Solidity sources in `contracts/{src,test,script}` (`.github/workflows/{lint,test,e2e,check-links}.yml`). `lint.yml`, `test.yml` and `frontend.yml` start on every pull request, because the `master` ruleset requires their checks, but a first `changes` job skips the checks when the PR touches nothing they cover (a skipped job counts as passing); keep each workflow's `PATTERN` and its push `paths` in sync. `bench.yml` benchmarks the contracts on a Chopsticks fork of paseo-v2 in pull requests that change `contracts/src/` or the benchmark, and by hand after a runtime upgrade; it is not a required check. When it warns that `contracts/docs/benchmarks.md` is out of date, refresh the tables in the same PR with `pnpm bench --write-docs` (see that page); never edit them by hand. CI runs no e2e tests, only `cargo fmt`: building the polkadot-sdk runtimes takes too long for it. Run `cargo test` in `e2e/` locally in a pull request that changes `contracts/src/` or `e2e/`, and before tagging a release that changes the contracts.
+- **forge version.** CI installs foundry-polkadot **v1.5.1**: `lint.yml`, `test.yml` and `bench.yml` with a `foundryup` pinned to a commit, and `bootstrap.yml` (which hands forge the deployer key) and `release.yml` from the release archive pinned by SHA-256. `forge fmt` output differs between forge versions, so format with v1.5.1 locally; if `forge fmt --check` fails on files you didn't touch, check your local forge version first. Bump the version in all five workflows together, with the archive's SHA-256 in `bootstrap.yml` and `release.yml`.
 - **Signed commits.** `commit.gpgsign = true` — commits require the configured signing key.
 - **Dependabot** is enabled; broad dependency bumps may supersede its open PRs.
 

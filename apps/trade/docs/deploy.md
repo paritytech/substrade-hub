@@ -80,8 +80,17 @@ key: it administers the factory and owns the tUSD faucet.
 
 ## Releases
 
-A release publishes the same version to every network in `networks.json`. To make one, push a
-`dot-vX.Y.Z` tag on a commit of `master`:
+A release publishes the same version to every network in `networks.json`. Before tagging:
+
+- add `release-notes/<version>.md` when the release needs an intro, such as its highlights or breaking
+  changes (see below);
+- when the release changes the contracts, run the e2e suite locally (`forge build` in `contracts/`,
+  then `cargo test -- --nocapture` in `e2e/`), and redeploy both networks first, so that the release
+  header reports every network running this build;
+- when the release changes dependencies, check that the publish tool still loads, with
+  `pnpm exec bulletin-deploy --help` in `apps/trade/`.
+
+To make the release, push a `dot-vX.Y.Z` tag on a commit of `master`:
 
 ```bash
 git fetch origin && git tag dot-v1.3.0 origin/master && git push origin dot-v1.3.0
@@ -146,7 +155,8 @@ every network.
   (`previewnet-deploy`, `paseo-v2-deploy`), restrict its deployment branches and tags to `master` and
   `dot-v*` (a release runs on the tag), store the owner's mnemonic there as the environment secret
   **`DOTNS_MNEMONIC`**, and its SS58 address as the environment variable **`DOTNS_OWNER`**. The publish
-  refuses to run unless the mnemonic derives that address.
+  refuses to run unless the mnemonic derives that address. On `paseo-v2-deploy`, also add a required
+  reviewer: every publish and Bootstrap run there then waits for that approval.
 - **After a testnet reset**: the chain has a new genesis. The app and the bootstrap refuse a live genesis
   that differs from `networks.json`, and the build refuses a `networks.json` genesis that differs from
   its `.papi` entry. So:
@@ -176,8 +186,8 @@ On paseo-v2 every key lives in the `paseo-v2-deploy` secret `DOTNS_MNEMONIC`, an
 elsewhere. Its root account owns the dotNS name, funds the bootstrap and administers the test assets; the
 bootstrap's EVM keys (the deployer, which administers the factory and owns the tUSD faucet, and four
 trade-history keys) are its BIP-44 accounts. Both workflows sign with it, share one concurrency group,
-and run only from `master`. Anything else that needs these keys, such as refilling the faucet, goes
-through a workflow too.
+and run from `master` (a release publishes from its `dot-v*` tag, on a commit of `master`). Anything
+else that needs these keys, such as refilling the faucet, goes through a workflow too.
 
 First setup:
 
@@ -186,10 +196,10 @@ First setup:
    then delete any local copy.
 2. Fund `DOTNS_OWNER` from the faucet: about 425 PAS for the bootstrap, plus 5 PAS for the name deposit
    and fees.
-3. Run the **Bootstrap network** workflow for `paseo-v2`. It takes about 20 minutes. Every run keeps its
-   progress (`contracts/deployments/paseo-v2.json`) as a workflow artifact, even when it fails, and a
-   rerun resumes from the newest progress kept by a bootstrap run on `master` since the deployment
-   record last changed. It also pushes the progress and the addresses in `networks.json` to the branch
+3. Run the **Bootstrap network** workflow for `paseo-v2`. Once a reviewer approves the run, it takes
+   about 20 minutes. Every run keeps its progress (`contracts/deployments/paseo-v2.json`) as a workflow
+   artifact, even when it fails, and a rerun resumes from the newest progress kept by a bootstrap run on
+   `master` since the deployment record last changed. It also pushes the progress and the addresses in `networks.json` to the branch
    `bootstrap/paseo-v2`, which the bootstrap itself never reads. When it succeeds, open a PR from that
    branch, add the new addresses to "Deployed contracts" in it, merge it, and delete the branch.
 4. Run the **Deploy .dot app** workflow for `paseo-v2`.
