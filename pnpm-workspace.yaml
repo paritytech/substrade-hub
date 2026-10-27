@@ -22,6 +22,10 @@ overrides:
   # ^7 and only calls deepmerge() on package.json objects, which 8's breaking changes (Map merging, type
   # renames) do not touch.
   write-package>deepmerge-ts: ^8.0.2
+  # host-papp 0.10 (via bulletin-deploy's product-sdk-terminal) asks for polkadot-api ">=2" but imports
+  # the v2-only `polkadot-api/signer`; the app's v3 satisfies the range and breaks the publish. No
+  # bulletin-deploy release uses a host-papp that supports v3 yet.
+  '@novasamatech/host-papp@0.10.0>polkadot-api': ^2.1.8
 
 patchedDependencies:
   '@polkadot-api/pjs-signer@0.9.0': patches/@polkadot-api__pjs-signer@0.9.0.patch

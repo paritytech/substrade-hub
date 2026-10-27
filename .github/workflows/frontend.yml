@@ -3,6 +3,14 @@ name: Frontend
 on:
   push:
     branches: [main, master]
+    paths:
+      - "apps/**"
+      - "patches/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/frontend.yml"
   pull_request:
 
 concurrency:
@@ -13,8 +21,35 @@ permissions:
   contents: read
 
 jobs:
+  # Starts on every pull request so the checks below, which the master ruleset requires, always
+  # report: when a pull request touches nothing they cover, they are skipped, which counts as passing.
+  changes:
+    name: App changes
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PATTERN: '^(apps/|patches/|package\.json$|pnpm-(lock|workspace)\.yaml$|turbo\.json$|\.github/workflows/frontend\.yml$)'
+        # Pushes to master are filtered by `paths` above, so they always run.
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || git diff --name-only "$BASE...$HEAD" | grep -qE "$PATTERN"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
     name: Lint, typecheck, test & build
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
