@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { create } from "zustand";
-import type { PolkadotSigner } from "polkadot-api";
+import type { TxCreator } from "polkadot-api";
 import { h160ToOriginAccount } from "../lib/account";
 import { stopWatchingAccounts } from "../lib/substrate-wallet";
 import { saveWalletHint, clearWalletHint } from "../lib/wallet-hint";
@@ -16,7 +16,7 @@ interface WalletState {
   // Connection metadata + the Substrate signing capability.
   accountType: AccountType | null;
   ss58: string | null;
-  signer: PolkadotSigner | null;
+  signer: TxCreator | null;
   mapped: boolean;
   isConnecting: boolean;
 
@@ -26,7 +26,7 @@ interface WalletState {
     ss58: string;
     h160: `0x${string}`;
     originAccount: `0x${string}`;
-    signer: PolkadotSigner;
+    signer: TxCreator;
   }) => void;
   // Host (Polkadot Triangle) product account: same Substrate signing shape, but the signer comes from
   // the host (`@parity/product-sdk-signer`) and mapping is handled host-side.
@@ -34,14 +34,14 @@ interface WalletState {
     ss58: string;
     h160: `0x${string}`;
     originAccount: `0x${string}`;
-    signer: PolkadotSigner;
+    signer: TxCreator;
   }) => void;
   setMapped: () => void;
   disconnect: () => void;
   setConnecting: (v: boolean) => void;
 }
 
-// SECURITY: do NOT wrap this store in zustand `persist`. It holds a PolkadotSigner (a signing
+// SECURITY: do NOT wrap this store in zustand `persist`. It holds a TxCreator (a signing
 // capability). If persistence is ever added, persist only `{ accountType, ss58, h160 }` and re-request
 // the signer on load — never serialize `signer`.
 export const useWalletStore = create<WalletState>((set) => ({

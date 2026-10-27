@@ -9,6 +9,13 @@ allowBuilds:
   bulletin-deploy: false
   esbuild: true
 
+minimumReleaseAgeExclude:
+  - '@parity/product-sdk-host@0.30.0'
+  - '@parity/product-sdk-keys@0.5.5'
+  - '@parity/product-sdk-local-storage@0.3.21'
+  - '@parity/product-sdk-signer@0.17.5'
+  - '@parity/product-sdk-tx@0.5.5'
+
 # Security fixes for transitive dependencies whose parents' ranges exclude the patched release.
 overrides:
   # GHSA-ggr8-5vv4-36mx: fixed only in deepmerge-ts 8. write-package (via @polkadot-api/cli) still asks for
@@ -17,4 +24,4 @@ overrides:
   write-package>deepmerge-ts: ^8.0.2
 
 patchedDependencies:
-  '@polkadot-api/pjs-signer@0.7.3': patches/@polkadot-api__pjs-signer@0.7.3.patch
+  '@polkadot-api/pjs-signer@0.9.0': patches/@polkadot-api__pjs-signer@0.9.0.patch

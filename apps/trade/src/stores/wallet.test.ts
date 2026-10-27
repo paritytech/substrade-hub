@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect, beforeEach } from "vitest";
-import type { PolkadotSigner } from "polkadot-api";
+import type { TxCreator } from "polkadot-api";
 import { useWalletStore } from "./wallet";
 
 const EVM_ADDR = "0x1234567890abcdef1234567890abcdef12345678" as const;
@@ -10,7 +10,7 @@ const SUB = {
   ss58: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
   h160: "0x9621dde636de098b43efb0fa9b61facfe328f99d" as const,
   originAccount: "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d" as const,
-  signer: { sentinel: true } as unknown as PolkadotSigner,
+  signer: { sentinel: true } as unknown as TxCreator,
 };
 
 beforeEach(() => useWalletStore.getState().disconnect());

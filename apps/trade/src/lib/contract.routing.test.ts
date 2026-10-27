@@ -3,7 +3,7 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { AccountId } from "polkadot-api";
 import { fromHex } from "polkadot-api/utils";
-import type { PolkadotSigner } from "polkadot-api";
+import type { TxCreator } from "polkadot-api";
 
 // Mock the two submission backends and the EVM wallet so we can assert which path writeContract takes.
 vi.mock("./revive", () => ({
@@ -35,7 +35,7 @@ const SUB = {
   ss58: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
   h160: "0x9621dde636de098b43efb0fa9b61facfe328f99d" as const,
   originAccount: "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d" as const,
-  signer: {} as PolkadotSigner,
+  signer: {} as TxCreator,
 };
 const TOKEN = "0x000007c000000000000000000000000001200000" as const;
 const args = [EVM, 1000n] as const; // approve(spender, amount)

@@ -1,0 +1,23 @@
+diff --git a/dist/from-pjs-account.js b/dist/from-pjs-account.js
+index b9899124ee65749c24c3ef3793ec9f3524513473..f208c0f861d1f475062c2f1cbcbb699888aa09bb 100644
+--- a/dist/from-pjs-account.js
++++ b/dist/from-pjs-account.js
+@@ -39,11 +39,13 @@ function getTxCreatorFromPjs(address, signPayload, signRaw, type) {
+         extra.push(fromHex(signedExtension.extra));
+         pjs.signedExtensions.push(identifier);
+         if (!pjsSignedExtensionsMappers[identifier]) {
+-          if (fromHex(signedExtension.extra).length === 0 && fromHex(signedExtension.additionalSigned).length === 0)
+-            return;
+-          throw new Error(
+-            `PJS does not support this signed-extension: ${identifier}`
+-          );
++          // PATCH (substrade-hub): instead of throwing on an extension pjs-signer can't map to the
++          // legacy payload (e.g. `AuthorizeValueTransfer` on current Asset Hub runtimes), skip the
++          // legacy mapping and defer to the extension's full-transaction signing (`withSignedTransaction`
++          // is set below, and `pjs.signedExtensions` already lists this identifier). Only the
++          // `signPayload` path needs it: an extension with `createTransaction` never reaches it.
++          // Requires a recent extension that returns `signedTransaction`.
++          return;
+         }
+         Object.assign(
+           pjs,
