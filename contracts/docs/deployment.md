@@ -4,7 +4,7 @@
 
 Deployment is a two-step process:
 
-1. **Deploy infrastructure.** Run the `DeployFactory` forge script, which deploys the DLOB implementation contract and the DLOBFactory in a single broadcast. Forge automatically deploys the RedBlackTree external library (referenced via `delegatecall` by DLOB) and links it into the bytecode; no need to deploy the library separately or pass `--libraries` flags manually.
+1. **Deploy infrastructure.** Run the `DeployFactory` forge script, which deploys the DLOB implementation contract and the DLOBFactory in a single broadcast. Forge automatically deploys the RedBlackTree and XcmBuilder external libraries (referenced via `delegatecall` by DLOB) and links them into the bytecode; no need to deploy them separately or pass `--libraries` flags manually.
 2. **Create markets.** Call `createMarket()` on the factory with `cast send` for each trading pair. Each market is an EIP-1167 minimal proxy clone of the DLOB implementation.
 
 ## Environment Setup

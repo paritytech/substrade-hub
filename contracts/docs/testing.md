@@ -40,7 +40,7 @@ forge test --polkadot --match-path test/Matching.t.sol -vv
 Run a specific test function:
 
 ```bash
-forge test --polkadot --match-test "test_LimitBuy_ExactFill" -vv
+forge test --polkadot --match-test "testMultiLevelFill" -vv
 ```
 
 Run invariant tests only (takes ~30 min):
@@ -61,11 +61,13 @@ forge test --match-test "testFuzz" -vv
 | File                | Tests | Coverage                                                                 |
 | ------------------- | ----- | ------------------------------------------------------------------------ |
 | `DLOB.t.sol`        | 53    | Order placement, post-only, cancellation, reduction, matching, self-trade, expiry, depth integrity, views, admin |
-| `DLOBFactory.t.sol` | 17    | Market creation, duplicate prevention, parameter validation, admin config |
-| `Matching.t.sol`    | 19    | Multi-level fills, market orders and their limit price, max fills cap, self-trade, slippage, buyer refunds, pull validation |
-| `CrossChain.t.sol`  | 25    | Inline XCM, claim fallback, fee reserve lifecycle, claim redirect, XCM failure recovery (see [how it works](how-it-works.md)) |
+| `DLOBFactory.t.sol` | 29    | Market creation, duplicate prevention, parameter validation, admin config |
+| `Matching.t.sol`    | 22    | Multi-level fills, market orders and their limit price, max fills cap, self-trade, slippage, buyer refunds, pull validation |
+| `CrossChain.t.sol`  | 33    | Inline XCM, claim fallback, fee reserve lifecycle, claim redirect, XCM failure recovery (see [how it works](how-it-works.md)) |
 | `GasReport.t.sol`   | 12    | Gas benchmarks for all core operations                                   |
 | `DLOB.fuzz.t.sol`   | 15    | 7 fuzz tests (257 runs) + 8 stateful invariants (128k calls each)        |
+| `NativeValue.t.sol` | 14    | `msg.value` against planck at a 10^8 ratio: the ratio check, fee and deposit caps, the fee reserve, settlement, fill and refund claims, sweeps |
+| `Faucet.t.sol`      | 8     | tUSD faucet: drip, per-address cooldown, owner-only withdraw and drip changes |
 
 ### Test Infrastructure
 
@@ -76,7 +78,7 @@ All tests follow the same setup pattern:
 3. Mint test tokens (MockERC20) to test accounts
 4. Approve the DLOB market to spend tokens
 
-Test accounts use Foundry's `makeAddr()`:
+Test accounts are fixed addresses (`alice = address(0xA11CE)`, and so on):
 
 | Account   | Role                                    |
 | --------- | --------------------------------------- |
@@ -129,10 +131,9 @@ The handler tracks **ghost variables** (off-chain accounting) to compare against
 
 | Ghost variable                  | Tracks                                        |
 | ------------------------------- | --------------------------------------------- |
-| `ghost_totalActiveBuyEscrow`    | Sum of quote tokens escrowed by active buys   |
-| `ghost_totalActiveSellEscrow`   | Sum of base tokens escrowed by active sells   |
-| `ghost_totalOrders`             | Total orders placed                           |
-| `ghost_totalReduces`            | Total reduce operations                       |
+| `ghostTotalActiveBuyEscrow`     | Sum of quote tokens escrowed by active buys   |
+| `ghostTotalActiveSellEscrow`    | Sum of base tokens escrowed by active sells   |
+| `ghostTotalOrders`              | Total orders placed                           |
 
 ### Invariants Verified
 

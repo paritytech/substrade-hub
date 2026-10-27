@@ -8,7 +8,7 @@ SubsTrade Hub runs an entire limit order book on-chain: order placement, matchin
 
 - **Price-time priority matching.** Orders fill at the best available price first; within the same price level, earlier orders fill before later ones (FIFO). A single transaction can execute up to 6 fills (fewer when settlement is cross-chain), sweeping multiple price levels if needed.
 - **Cross-chain settlement via XCM.** Matched tokens are delivered to any Polkadot parachain using XCM reserve transfers. Traders on remote parachains place and settle orders without leaving their home chain. A single extrinsic handles token transfer, approval, and order placement atomically.
-- **Pending claim fallback.** If inline XCM delivery fails (e.g., destination chain congested, HRMP channel full), a `PendingClaim` is created instead of reverting. Funds remain safe on Asset Hub; anyone can call `claimSettlement()` later to retry, or `redirectClaim()` to reroute to a different destination. No funds are ever lost.
+- **Pending claim fallback.** If inline XCM delivery fails (e.g., destination chain congested, HRMP channel full), a `PendingClaim` is created instead of reverting. Funds remain safe on Asset Hub; anyone can call `claimSettlement()` later to retry, and the order's owner can call `redirectClaim()` to reroute it to a different destination. No funds are ever lost.
 - **Limit and market orders.** `placeLimitOrder()` rests on the book at a specific price with an optional expiry timestamp, and can be post-only; `placeMarketOrder()` fills immediately against resting orders, up to a `limitPrice` and with a `minAmountOut` minimum fill. Market orders never rest on the book.
 - **Order management.** Cancel individual orders or batch cancel multiple orders in one transaction, up to 20 per transaction ([benchmarks](benchmarks.md)). `reduceOrder()` shrinks a resting order's amount without losing its place in the FIFO queue. `redirectClaim()` lets owners move a pending claim to another destination parachain.
 - **Lazy expiry.** Orders with an expiry timestamp are not removed by a keeper or cron job. Instead, expired orders are skipped and cleaned up during matching when the engine encounters them, and anyone can clear expired orders at a price level with `purgeExpired()`, examining up to 25 orders per transaction ([benchmarks](benchmarks.md)). Zero off-chain infrastructure required.
@@ -34,7 +34,7 @@ The DLOB supports two order types:
 The matching engine runs inline during order placement. When a new order crosses the spread, the engine walks the opposite side of the book starting from the best price:
 
 1. For each price level, it dequeues orders in FIFO order (earliest first)
-2. Each fill transfers tokens between the maker and taker. Buy orders always execute at the **ask price** (the maker's price), so buyers may get a better price than their limit
+2. Each fill transfers tokens between the maker and taker. Each fill executes at the **maker's price**: a buy taker pays the resting ask, and a sell taker receives the resting bid, so takers may get a better price than their limit
 3. If a buy order fills at a price lower than its limit, the excess quote tokens are refunded to the buyer immediately
 4. The engine stops when the next fill would exceed the **per-transaction budget** (`MATCH_BUDGET` = 12): a fill costs 2, plus 1 for each of its legs settled over XCM, so a transaction does 6 local fills, 4 with one cross-chain leg, or 3 with two. Each fill needs about 1 MB of proof, a cross-chain leg adds about 0.5 MB, and one transaction may use 8 MiB on Asset Hub. If the incoming order still has remaining amount, it goes back to the sender, for limit and market orders alike: a limit order resting at its price would cross the book. A limit order that stops because the price no longer crosses rests the remainder at its limit price
 5. Expired orders encountered during the walk are skipped and lazily removed, and the taker's own resting orders are cancelled (see below); each one costs 2, like a local fill, so a backlog of them cannot make one transaction's work unbounded. `purgeExpired(side, price, maxOrders)` removes expired orders at one price level in bounded batches
@@ -79,7 +79,7 @@ Asset Hub manages two categories of assets, each with its own pallet and ERC20 p
 
 2. **Foreign assets** are tokens that originate from other consensus systems (Ethereum, Kusama, other parachains) and are bridged onto Asset Hub. They are registered via the `ForeignAssets` pallet, typically through governance, and identified by their XCM Location (e.g., `GlobalConsensus(Ethereum) / AccountKey20(0xC02a...)` for WETH). Examples include bridged WETH, WBTC, and KSM. These use ERC20 precompile prefix `0x0220`, with sequential indices assigned automatically by `pallet-assets-precompiles` at registration time. When creating a market with a foreign asset, provide the SCALE-encoded XCM Location in the `xcmLocation` field of `TokenConfig`. The contract cannot derive this on-chain because the precompile address only contains the u32 index, and the index-to-location mapping lives in substrate storage (inaccessible from Solidity). See [Configuring XCM Locations](#configuring-xcm-locations) below.
 
-**User-deployed ERC20 contracts** are not supported, even though they implement the same IERC20 interface. An ERC20 precompile is not a deployed contract. It is a synthetic address provided by the runtime that reads and writes `pallet-assets` storage directly. Calling `transfer()` on a precompile updates the same balances that XCM reads and writes. A user-deployed ERC20, in contrast, stores balances in its own contract storage, invisible to the runtime and the XCM executor. Because cross-chain settlement relies on XCM, which can only move assets the runtime knows about, only precompile-backed tokens can participate. Even for local-only orders, the DLOB uses the same precompile interface for consistency.
+**User-deployed ERC20 contracts** are not supported, even though they implement the same IERC20 interface. An ERC20 precompile is not a deployed contract. It is a synthetic address provided by the runtime that reads and writes `pallet-assets` storage directly. Calling `transfer()` on a precompile updates the same balances that XCM reads and writes. A user-deployed ERC20, in contrast, stores balances in its own contract storage, invisible to the runtime and the XCM executor. Because cross-chain settlement relies on XCM, which can only move assets the runtime knows about, only precompile-backed tokens can settle cross-chain. The factory accepts a user-deployed ERC20 for a market used for local orders only, as the tests do; cross-chain orders on such a market cannot settle.
 
 ### Configuring XCM Locations
 
@@ -98,7 +98,7 @@ struct TokenConfig {
 Location { parents: 0, interior: X2(PalletInstance(50), GeneralIndex(assetId)) }
 ```
 
-where `assetId` is extracted from the upper 4 bytes of the precompile address. For example, USDT on Asset Hub has asset ID 1984 and precompile address `0x000007C0000000000000000000000000001200000` (truncated); the contract reads `0x000007C0` = 1984 and builds the location on-chain.
+where `assetId` is extracted from the upper 4 bytes of the precompile address. For example, USDT on Asset Hub has asset ID 1984 and precompile address `0x000007C000000000000000000000000001200000`; the contract reads `0x000007C0` = 1984 and builds the location on-chain.
 
 **Foreign assets** (prefix `0x0220`): provide the SCALE-encoded `xcmLocation`. This is the XCM `Location` that the Asset Hub runtime uses to identify the asset. The contract stores it as-is and uses it verbatim for cross-chain settlement XCM messages.
 
@@ -144,7 +144,7 @@ XCM Program (Parachain A → Asset Hub)
 1. Transfer tokens + DOT to Asset Hub
    ────────────────────────────────────
    The XCM program carries the traded tokens (e.g., USDT) and DOT
-   from the user's home chain to their derived account on Asset Hub.
+   from the user's home chain to the parachain's sovereign account on Asset Hub.
    DOT covers both XCM execution fees and the order's fee reserve.
 
 2. WithdrawAsset + BuyExecution
@@ -168,7 +168,7 @@ XCM Program (Parachain A → Asset Hub)
    • destParaId        : home parachain ID (e.g., 2034 for Hydration)
 ```
 
-The user never manages an Asset Hub account directly. Tokens flow through a derived account during XCM execution and end up escrowed in the DLOB, all in one atomic operation.
+The user never manages an Asset Hub account directly. Tokens flow through the parachain's sovereign account during XCM execution and end up escrowed in the DLOB, all in one atomic operation.
 
 ## Settlement Delivery
 
@@ -180,7 +180,7 @@ Each settlement delivery takes `factory.minCrossChainFee()` from the order's fee
 
 ## Fee Reserve
 
-Each cross-chain order must include a DOT fee reserve of at least `factory.minCrossChainFee()`. This reserve pays for XCM settlement delivery when the order is filled. If an order is cancelled before being filled, the fee reserve is returned via XCM to the user's home chain as a `PendingClaim` of type `Refund`.
+Each cross-chain order must include a DOT fee reserve of at least `factory.minCrossChainFee()`. This reserve pays for XCM settlement delivery when the order is filled. When a cross-chain order is cancelled, reduced or expires, or a taker's own order cancels it, the escrow it returns becomes a `PendingClaim` of type `Refund`; settling that claim also sends the order's remaining fee reserve to the home chain.
 
 The fee and the reserve count in planck, the unit XCM moves DOT in. `msg.value`, and every native transfer from a market, count in 18-decimal units instead: one planck is `factory.NATIVE_TO_ETH_RATIO()` of them, 10^(18 - the native token's decimals), so 10^8 on Polkadot and Paseo. A market converts `msg.value` to planck as it arrives, rounding down; the remainder below one planck stays with the market, which the admin can sweep.
 
@@ -197,13 +197,13 @@ Each pending claim stores:
 | Field         | Description                                          |
 | ------------- | ---------------------------------------------------- |
 | `token`       | ERC20 address of the token to deliver                |
-| `claimType`   | `Fill` (matched tokens) or `Refund` (cancelled order fee reserve) |
+| `claimType`   | `Fill` (matched tokens) or `Refund` (escrow returned from a cancelled, reduced or expired cross-chain order) |
 | `destParaId`  | Target parachain for delivery                        |
 | `orderId`     | The order that generated this claim                  |
 | `amount`      | Token amount to deliver                              |
 | `beneficiary` | AccountId32 on the destination chain                 |
 
-An order with pending claims cannot be cancelled; the `HasPendingClaims` error prevents it. The `orderPendingClaimCount` must reach zero before cancellation is allowed.
+Pending claims do not block cancelling or reducing an order. They block `withdrawExcessFeeReserve`, which reverts with `HasPendingClaims` until the order's `orderPendingClaimCount` reaches zero.
 
 ### Claim Redirect
 
@@ -216,7 +216,7 @@ For a parachain to place and receive orders on the DLOB:
 1. **HRMP channel.** Open channel between Asset Hub and the destination parachain.
 2. **Asset recognition.** The destination chain must accept the traded asset as a reserve-backed foreign asset from Asset Hub (via a foreign assets pallet or XCM `AssetTransactor`).
 3. **XCM barriers.** The chain's XCM configuration must permit reserve transfers from Asset Hub.
-4. **Sovereign account mapping.** The parachain's sovereign account on Asset Hub must be registered in `pallet_revive` via `map_account()` before it can interact with contracts. This can be done once via an XCM Transact that calls `pallet_revive::map_account()`, or by any account on Asset Hub calling it on behalf of the sovereign.
+4. **Sovereign account mapping.** `pallet_revive` must map the parachain's sovereign account on Asset Hub to an H160 before it can call contracts. Runtimes with `AutoMap` enabled, such as Paseo's Asset Hubs, map an account when it is created, so funding the sovereign account is enough; on a runtime without it, call `pallet_revive::map_account()` once, for example through an XCM Transact.
 
 Most Polkadot parachains already accept common Asset Hub tokens. Parachains with active HRMP channels to Asset Hub that can receive settled tokens include:
 

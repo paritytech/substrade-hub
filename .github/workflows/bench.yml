@@ -9,9 +9,7 @@ on:
       - "contracts/src/**"
       - "contracts/scripts/bench/**"
       - ".github/workflows/bench.yml"
-  schedule:
-    # Weekly, to catch a runtime upgrade on paseo-v2 that changes what the contracts cost.
-    - cron: "0 6 * * 1"
+  # Dispatch by hand after a runtime upgrade on paseo-v2, which can change what the contracts cost.
   workflow_dispatch:
 
 concurrency:

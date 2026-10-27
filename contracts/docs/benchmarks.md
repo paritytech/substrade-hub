@@ -22,7 +22,8 @@ local operation, and under 35% with cross-chain legs.
 of the network, which runs the live runtime on a copy of the live state. On the fork it:
 
 1. deploys the contracts in `contracts/out/` (the two libraries, the `DLOB` implementation and the
-   factory), then creates two test assets, a market for them and 15 funded accounts;
+   factory), or with `--contracts live` uses the network's factory, then creates two test assets, a
+   market for them and 15 funded accounts;
 2. builds each book state with real transactions;
 3. dry-runs the measured call against that state with `ReviveApi.call`, and reads the weight it
    requires, its storage deposit and the fee for that weight.
@@ -57,7 +58,8 @@ with 30 orders and with 40 both stop there, which is no measure of what either w
 ## In CI
 
 The Benchmark workflow (`.github/workflows/bench.yml`) runs on pull requests that touch
-`contracts/src/` or the benchmark, and weekly to catch a runtime upgrade. It measures the PR's build
+`contracts/src/` or the benchmark, and can be run by hand after a runtime upgrade on paseo-v2. It
+measures the PR's build
 with every section, the `tree` one at 64 levels, and fails when a call uses more than 95% of the proof
 or ref_time limit. The rows sized past the documented ceilings (`purgeExpired` above 25 orders,
 `batchCancelOrders` above 20) are left out of that check. It also warns about each row that moved
@@ -81,8 +83,9 @@ npx prettier@3.3.3 --write docs/benchmarks.md
 ```
 
 Then check that "What the numbers say", the batch sizes in [how it works](how-it-works.md) and
-[KNOWN_ISSUES.md](../../KNOWN_ISSUES.md) still hold. The weekly run warns the same way after a runtime
-upgrade on paseo-v2; refresh the tables in a pull request of their own. `pnpm bench --from results.json
+[KNOWN_ISSUES.md](../../KNOWN_ISSUES.md) still hold. After a runtime upgrade on paseo-v2, run the
+Benchmark workflow by hand: it warns the same way, and the refreshed tables go in a pull request of
+their own. `pnpm bench --from results.json
 --write-docs` writes them from a run saved with `--out`, without a fork.
 
 ## Results
