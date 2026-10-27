@@ -22,7 +22,7 @@ cargo test -- --nocapture
 
 ### Pallet asset tests (`pallet_asset_tests.rs`)
 
-`full_dlob_lifecycle` runs scenarios **t0 → t4** sequentially in one test
+`full_dlob_lifecycle` runs scenarios **t0 → t5** sequentially in one test
 (each scenario's on-chain state feeds into the next).
 These use **trust-backed assets** (locally issued via `pallet-assets`, prefix `0x0120`).
 
@@ -33,6 +33,7 @@ These use **trust-backed assets** (locally issued via `pallet-assets`, prefix `0
 | **t2 — Cross-chain order**      | PenpalA sends XCM Transact over HRMP (approve + placeLimitOrder) → order rests on the book                                         |
 | **t3 — Cross-chain settlement** | Another XCM Transact BUY + Dave's local SELL → match → base tokens delivered to Charlie on PenpalA via XCM reserve transfer        |
 | **t4 — Cross-chain cancel**     | XCM Transact places then cancels a resting order → refund `PendingClaim` created                                                   |
+| **t5 — Refund settlement**      | `claimSettlement` on t4's refund claim sends the escrowed tUSD back to Charlie on PenpalA via XCM, to the unit                     |
 
 Two additional **standalone smoke tests** run independently:
 
