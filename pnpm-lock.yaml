@@ -6,6 +6,7 @@ settings:
 
 overrides:
   write-package>deepmerge-ts: ^8.0.2
+  '@novasamatech/host-papp@0.10.0>polkadot-api': ^2.1.8
 
 patchedDependencies:
   '@polkadot-api/pjs-signer@0.9.0': e05b70668b10a341fbb564d11809b59b0a52abf95853fe6c37ba7539376af493
@@ -3816,7 +3817,7 @@ snapshots:
       nanoevents: 10.0.0
       nanoid: 6.0.0
       neverthrow: 8.2.0
-      polkadot-api: 3.3.0(esbuild@0.28.2)(rxjs@7.8.2)(supports-color@10.2.2)
+      polkadot-api: 2.2.2(esbuild@0.28.2)(rxjs@7.8.2)(supports-color@10.2.2)
       rxjs: 7.8.2
       scale-ts: 1.6.1
     transitivePeerDependencies:
