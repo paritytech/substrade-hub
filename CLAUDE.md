@@ -96,7 +96,7 @@ Source: `src/DLOB.sol`, `src/DLOBFactory.sol`, `src/libraries/` (`RedBlackTree`,
 | DOT units | 10 decimals (1 DOT = 1e10 Planck): fee reserves and factory params are in planck. `msg.value` and native transfers are in 18-decimal units, `NATIVE_TO_ETH_RATIO` (a factory constructor argument, 10^8 on Polkadot and Paseo, 10^6 on Westend) per planck; markets convert on the way in and out. |
 | Local vs cross-chain | Decided by `destParaId`. `0` = local (direct ERC20 transfers, no `msg.value`). Non-zero = cross-chain (XCM settlement, requires a DOT fee reserve of at least `factory.minCrossChainFee()` planck; a fee of 0 disables cross-chain orders). |
 | Allowance | Every order needs a prior `approve(market, amount)` — the DLOB escrows via `transferFrom`. Buys approve quote, sells approve base. |
-| Tradeable tokens | **Only pallet-assets-backed precompile tokens**, never user-deployed ERC20s (XCM can only move assets the runtime knows). DOT itself isn't in pallet-assets, so trading DOT needs a WDOT wrapper. |
+| Tradeable tokens | **Cross-chain orders need pallet-assets-backed precompile tokens** (XCM can only move assets the runtime knows). The factory also accepts a user-deployed ERC20, with an empty XCM location, for a market used for local orders only, as the tests do. DOT itself isn't in pallet-assets, so trading DOT needs a WDOT wrapper. |
 | Settlement failure | Failed inline XCM creates a **`PendingClaim`** (retry via `claimSettlement`, reroute via `redirectClaim`) instead of reverting, so funds are never lost. Pending claims do not block cancelling an order; they block `withdrawExcessFeeReserve` (`HasPendingClaims`). |
 
 ### pallet-revive specifics
