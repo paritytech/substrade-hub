@@ -482,12 +482,6 @@ fn query_get_market(factory: H160, base: H160, quote: H160) -> H160 {
     H160::from(addr.0 .0)
 }
 
-// =========================================================================
-// Helper: map AccountId32 → H160 (pallet-revive's AccountId32Mapper)
-// =========================================================================
-
-/// Derive the H160 address that pallet-revive assigns to a Substrate AccountId32.
-/// Formula: keccak_256(account_id)[12..]
 /// The location PenpalA knows an Asset Hub trust-backed asset by.
 fn asset_on_penpal(asset_id: u32) -> Location {
     Location::new(
@@ -500,6 +494,12 @@ fn asset_on_penpal(asset_id: u32) -> Location {
     )
 }
 
+// =========================================================================
+// Helper: map AccountId32 → H160 (pallet-revive's AccountId32Mapper)
+// =========================================================================
+
+/// Derive the H160 address that pallet-revive assigns to a Substrate AccountId32.
+/// Formula: keccak_256(account_id)[12..]
 fn account_to_h160(account: &AccountId) -> H160 {
     let hash = sp_crypto_hashing::keccak_256(account.as_ref());
     H160::from_slice(&hash[12..])
