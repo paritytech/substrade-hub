@@ -54,7 +54,7 @@ forge build
 # 2. inside e2e/
 cargo test -- --nocapture                        # all current e2e tests
 cargo test full_dlob_lifecycle -- --nocapture    # single test
-cargo fmt --all --check                          # the only e2e check currently enabled in CI
+cargo fmt --all --check                          # the e2e check CI runs on every PR (the tests run on dispatch)
 ```
 
 The first `cargo` build compiles the full polkadot-sdk runtime tree and is slow.
@@ -124,7 +124,7 @@ Precompiles live at fixed addresses:
 
 ## Conventions & CI notes
 
-- **CI scope.** Workflows run Foundry build/test/fmt, e2e `cargo fmt`, and a Lychee link check over `*.md` and `contracts/src/**/*.sol` (`.github/workflows/{lint,test,e2e,check-links}.yml`). `lint.yml`, `test.yml` and `frontend.yml` start on every pull request, because the `master` ruleset requires their checks, but a first `changes` job skips the checks when the PR touches nothing they cover (a skipped job counts as passing); keep each workflow's `PATTERN` and its push `paths` in sync. `bench.yml` benchmarks the contracts on a Chopsticks fork of paseo-v2 when `contracts/src/` changes, and weekly; it is not a required check. When it warns that `contracts/docs/benchmarks.md` is out of date, refresh the tables in the same PR with `pnpm bench --write-docs` (see that page); never edit them by hand. The full e2e `cargo test` job is commented out — too slow on standard runners.
+- **CI scope.** Workflows run Foundry build/test/fmt, e2e `cargo fmt`, and a Lychee link check over `*.md` and `contracts/src/**/*.sol` (`.github/workflows/{lint,test,e2e,check-links}.yml`). `lint.yml`, `test.yml` and `frontend.yml` start on every pull request, because the `master` ruleset requires their checks, but a first `changes` job skips the checks when the PR touches nothing they cover (a skipped job counts as passing); keep each workflow's `PATTERN` and its push `paths` in sync. `bench.yml` benchmarks the contracts on a Chopsticks fork of paseo-v2 when `contracts/src/` changes, and weekly; it is not a required check. When it warns that `contracts/docs/benchmarks.md` is out of date, refresh the tables in the same PR with `pnpm bench --write-docs` (see that page); never edit them by hand. The e2e `cargo test` job (`e2e.yml`'s `test`) runs only when dispatched by hand, with the runner as an input, while we measure how long it takes; its job summary reports the build time, the test time and the size of `target/`.
 - **forge version.** CI installs foundry-polkadot **v1.5.1**: `lint.yml`, `test.yml` and `bench.yml` with a `foundryup` pinned to a commit, and `bootstrap.yml` (which hands forge the deployer key) from the release archive pinned by SHA-256. `forge fmt` output differs between forge versions, so format with v1.5.1 locally; if `forge fmt --check` fails on files you didn't touch, check your local forge version first. Bump the version in all four workflows together, with the archive's SHA-256 in `bootstrap.yml`.
 - **Signed commits.** `commit.gpgsign = true` — commits require the configured signing key.
 - **Dependabot** is enabled; broad dependency bumps may supersede its open PRs.

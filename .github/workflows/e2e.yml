@@ -4,6 +4,13 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  # Runs the e2e tests themselves, on demand while we measure how long they take on a runner.
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner label (ubuntu-latest, or a larger runner such as parity-large-new)"
+        required: true
+        default: ubuntu-latest
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -32,52 +39,103 @@ jobs:
       - run: cargo fmt --all --check
         working-directory: e2e
 
-  # TODO: Enable when parity-large-new runners are available.
-  # Compiling polkadot-sdk runtimes (westend, asset-hub, penpal WASM builds)
-  # takes >1h on ubuntu-latest (4 cores). Needs a larger runner.
-  # test:
-  #   name: Test
-  #   runs-on: parity-large-new
-  #   timeout-minutes: 60
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         submodules: recursive
-  #
-  #     - uses: dtolnay/rust-toolchain@stable
-  #       with:
-  #         targets: wasm32-unknown-unknown
-  #         components: rust-src
-  #
-  #     - uses: Swatinem/rust-cache@v2
-  #       with:
-  #         workspaces: e2e
-  #         cache-on-failure: true
-  #
-  #     - name: Install build dependencies
-  #       run: |
-  #         sudo apt-get update
-  #         sudo apt-get install -y clang libclang-dev build-essential
-  #
-  #     - uses: arduino/setup-protoc@v3
-  #       with:
-  #         repo-token: ${{ secrets.GITHUB_TOKEN }}
-  #
-  #     - name: Install foundry-polkadot
-  #       env:
-  #         FOUNDRY_DIR: ${{ github.workspace }}/.foundry
-  #       run: |
-  #         curl -sSf -L -o /usr/local/bin/foundryup \
-  #           https://raw.githubusercontent.com/paritytech/foundry-polkadot/master/foundryup/foundryup
-  #         chmod +x /usr/local/bin/foundryup
-  #         mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
-  #         export PATH="$FOUNDRY_DIR/bin:$PATH"
-  #         foundryup
-  #         echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
-  #
-  #     - name: Build Solidity contracts
-  #       run: forge build
-  #       working-directory: contracts
-  #
-  #     - run: cargo test -- --nocapture
-  #       working-directory: e2e
+  # Compiles the polkadot-sdk runtimes the emulator runs (their WASM builds included), so a cold build
+  # takes a long time; the cache below keeps the next one short until Cargo.lock changes. Debug info
+  # and incremental builds are off: neither helps a test run, and both swell target/ past what the
+  # cache holds.
+  test:
+    name: Test
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 300
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Install the Rust toolchain and build dependencies
+        run: |
+          rustup toolchain install stable --profile minimal --component rust-src --target wasm32-unknown-unknown
+          rustup default stable
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev protobuf-compiler
+          rustc --version
+          protoc --version
+
+      - name: Install foundry-polkadot
+        env:
+          FOUNDRY_DIR: ${{ github.workspace }}/.foundry
+        # Pinned installer and release, so every run installs the same forge.
+        run: |
+          curl -sSf -L -o /usr/local/bin/foundryup \
+            https://raw.githubusercontent.com/paritytech/foundry-polkadot/2375d9bef7479b5496e45959c95bdc38aab6f845/foundryup/foundryup
+          chmod +x /usr/local/bin/foundryup
+          mkdir -p "$FOUNDRY_DIR/bin" "$FOUNDRY_DIR/versions" "$FOUNDRY_DIR/share/man/man1"
+          export PATH="$FOUNDRY_DIR/bin:$PATH"
+          foundryup --install v1.5.1
+          echo "$FOUNDRY_DIR/bin" >> $GITHUB_PATH
+
+      # The e2e tests deploy the contracts from contracts/out/.
+      - name: Build the contracts
+        run: forge build
+        working-directory: contracts
+
+      - name: Restore the build cache
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            e2e/target
+          key: e2e-${{ runner.os }}-${{ inputs.runner }}-${{ hashFiles('e2e/Cargo.lock') }}
+          restore-keys: e2e-${{ runner.os }}-${{ inputs.runner }}-
+
+      - name: Build the tests
+        working-directory: e2e
+        run: |
+          start=$(date +%s)
+          cargo test --no-run
+          echo "BUILD_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+
+      - name: Run the tests
+        working-directory: e2e
+        run: |
+          start=$(date +%s)
+          cargo test -- --nocapture
+          echo "TEST_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+
+      - name: Report the timings
+        if: always()
+        run: |
+          {
+            echo "## e2e on ${{ inputs.runner }}"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Cache | ${{ steps.cache.outputs.cache-hit == 'true' && 'exact hit' || steps.cache.outputs.cache-matched-key != '' && 'partial hit' || 'miss' }} |"
+            echo "| Build | ${BUILD_SECONDS:-?} s |"
+            echo "| Tests | ${TEST_SECONDS:-?} s |"
+            echo "| target/ | $(du -sh e2e/target 2>/dev/null | cut -f1) |"
+            echo "| ~/.cargo registry + git | $(du -shc ~/.cargo/registry ~/.cargo/git 2>/dev/null | tail -1 | cut -f1) |"
+            echo "| Disk free | $(df -h / | tail -1 | awk '{print $4}') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the build cache
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            e2e/target
+          key: e2e-${{ runner.os }}-${{ inputs.runner }}-${{ hashFiles('e2e/Cargo.lock') }}
