@@ -14,6 +14,8 @@ name: Bootstrap network
 # changed the deployment record count, so a new deployment, whose PR deletes or replaces the record,
 # starts fresh. The progress and the addresses in networks.json are also pushed to the branch
 # `bootstrap/<network>`, for the PR that brings them to master; the bootstrap never reads that branch.
+# The push runs in its own job, the only one with a write token, which runs no third-party code: the
+# bootstrap job installs and runs dependencies, so it only gets a read-only token.
 
 on:
   workflow_dispatch:
@@ -38,7 +40,7 @@ concurrency:
 
 permissions:
   actions: read # find and download the progress kept by earlier runs
-  contents: write
+  contents: read
 
 jobs:
   bootstrap:
@@ -48,12 +50,12 @@ jobs:
     environment: ${{ github.event.inputs.network }}-deploy
     env:
       NETWORK: ${{ github.event.inputs.network }}
-      BRANCH: bootstrap/${{ github.event.inputs.network }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           fetch-depth: 0 # the history of the deployment record decides which runs can be resumed
+          persist-credentials: false
 
       - name: Resume from an earlier run on master
         env:
@@ -145,15 +147,62 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-      - name: Push the progress to the bootstrap branch
+      # What the push job commits: the progress and the addresses, at their paths in the repository.
+      - name: Hand the changed files to the push job
         if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bootstrap-push-${{ github.event.inputs.network }}
+          path: |
+            contracts/deployments/${{ github.event.inputs.network }}.json
+            apps/trade/src/config/networks.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+  push:
+    name: Push the progress to the bootstrap branch
+    needs: bootstrap
+    if: always() && needs.bootstrap.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      NETWORK: ${{ github.event.inputs.network }}
+      BRANCH: bootstrap/${{ github.event.inputs.network }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the changed files
+        id: files
+        continue-on-error: true # a run that failed before writing anything has nothing to push
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bootstrap-push-${{ github.event.inputs.network }}
+          path: ${{ runner.temp }}/progress
+
+      # Only the two expected paths are taken from the artifact, so the bootstrap job cannot add others.
+      - name: Push the progress to the bootstrap branch
+        if: steps.files.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git add -- "contracts/deployments/$NETWORK.json" apps/trade/src/config/networks.json 2>/dev/null || true
+          for f in "contracts/deployments/$NETWORK.json" apps/trade/src/config/networks.json; do
+            src="$RUNNER_TEMP/progress/$f"
+            [ -f "$src" ] && [ ! -L "$src" ] || continue
+            mkdir -p "$(dirname "$f")"
+            cat "$src" > "$f"
+            git add -- "$f"
+          done
           if git diff --cached --quiet; then echo "Nothing to push"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -q -m "Bootstrap $NETWORK (run $GITHUB_RUN_ID)"
-          git push -f origin "HEAD:refs/heads/$BRANCH"
+          AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$AUTH"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $AUTH" push -f origin "HEAD:refs/heads/$BRANCH"
           {
             echo "Progress pushed to \`$BRANCH\`."
             echo "Once the run succeeds, open a PR: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/master...$BRANCH?expand=1"

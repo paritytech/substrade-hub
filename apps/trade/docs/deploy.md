@@ -162,8 +162,8 @@ every network.
   (`previewnet-deploy`, `paseo-v2-deploy`), restrict its deployment branches and tags to `master` and
   `dot-v*` (a release runs on the tag), store the owner's mnemonic there as the environment secret
   **`DOTNS_MNEMONIC`**, and its SS58 address as the environment variable **`DOTNS_OWNER`**. The publish
-  refuses to run unless the mnemonic derives that address. On `paseo-v2-deploy`, also add a required
-  reviewer: every publish and Bootstrap run there then waits for that approval.
+  refuses to run unless the mnemonic derives that address. Add a required reviewer to each environment:
+  every publish, and every Bootstrap run, then waits for that approval.
 - **After a testnet reset**: the chain has a new genesis. The app and the bootstrap refuse a live genesis
   that differs from `networks.json`, and the build refuses a `networks.json` genesis that differs from
   its `.papi` entry. So:
@@ -206,8 +206,9 @@ First setup:
 3. Run the **Bootstrap network** workflow for `paseo-v2`. Once a reviewer approves the run, it takes
    about 20 minutes. Every run keeps its progress (`contracts/deployments/paseo-v2.json`) as a workflow
    artifact, even when it fails, and a rerun resumes from the newest progress kept by a bootstrap run on
-   `master` since the deployment record last changed. It also pushes the progress and the addresses in `networks.json` to the branch
-   `bootstrap/paseo-v2`, which the bootstrap itself never reads. When it succeeds, open a PR from that
+   `master` since the deployment record last changed. A second job, the only one with write access,
+   then pushes the progress and the addresses in `networks.json` to the branch `bootstrap/paseo-v2`,
+   which the bootstrap itself never reads. When it succeeds, open a PR from that
    branch, add the new addresses to "Deployed contracts" in it, merge it, and delete the branch.
 4. Run the **Deploy .dot app** workflow for `paseo-v2`.
 
