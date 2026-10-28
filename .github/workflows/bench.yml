@@ -59,6 +59,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Chopsticks has its own package and lockfile, installed only here, so its dependency tree stays out
+      # of the workspace install that other jobs (one with the deploy key) run.
+      - name: Install Chopsticks
+        run: pnpm --dir contracts/scripts/bench/fork install --frozen-lockfile
+
       # The fork's cache of live state, so a run fetches less from the public RPC node.
       - name: Cache fork state
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -69,14 +74,14 @@ jobs:
 
       # The fork reads live state from the public RPC node, which drops connections at times: a run that
       # fails or hangs is retried once on a new fork. A call over the threshold (exit 2) is not retried.
-      # The fork runs in its own process group (npx and the Chopsticks process under it), killed whole
+      # The fork runs in its own process group (Chopsticks and any process it starts), killed whole
       # after each attempt, so the retry starts on a free port and the cache is saved from a closed
       # database. Two attempts of 25 minutes fit the job's limit; a run takes about 11.
       - name: Benchmark
         working-directory: contracts
         run: |
           for attempt in 1 2; do
-            setsid npx -y @acala-network/chopsticks@1.5.2 --config scripts/bench/paseo-v2.yml > "$RUNNER_TEMP/fork-$attempt.log" 2>&1 &
+            setsid scripts/bench/fork/node_modules/.bin/chopsticks --config scripts/bench/paseo-v2.yml > "$RUNNER_TEMP/fork-$attempt.log" 2>&1 &
             fork=$!
             for _ in $(seq 1 100); do grep -q listening "$RUNNER_TEMP/fork-$attempt.log" && break; sleep 3; done
             status=0

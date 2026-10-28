@@ -1,0 +1,5 @@
+# Its own workspace root, so Chopsticks and its dependencies get their own lockfile and stay out of the
+# repository's workspace install. Only the benchmark installs it (`pnpm bench:fork`, bench.yml).
+allowBuilds:
+  # The fork caches live state in sqlite (`db:` in ../paseo-v2.yml), which needs the native binding.
+  sqlite3: true

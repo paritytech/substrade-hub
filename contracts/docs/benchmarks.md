@@ -41,6 +41,11 @@ pnpm bench --network previewnet --contracts live
 pnpm bench --check 95 --summary summary.md     # fail over 95% of a limit; write a Markdown table
 ```
 
+`pnpm bench:fork` installs Chopsticks from `scripts/bench/fork/`, a package with its own lockfile and
+`allowBuilds` (sqlite3 builds the fork's cache), kept out of the workspace so other installs never pull
+in its dependencies. To bump it, change the version in its `package.json` and run `pnpm install` in that
+folder.
+
 Run `forge build` first: by default (`--contracts build`), the benchmark measures the build in
 `contracts/out/`. `--contracts live` uses the network's factory, acting as its admin with the fork's
 mock signatures, to measure what is deployed. The sections are `empty`, `ladder`, `level`, `self`,

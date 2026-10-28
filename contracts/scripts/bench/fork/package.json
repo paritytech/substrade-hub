@@ -1,0 +1,8 @@
+{
+  "name": "@substrade/bench-fork",
+  "private": true,
+  "license": "MIT",
+  "devDependencies": {
+    "@acala-network/chopsticks": "1.5.2"
+  }
+}
