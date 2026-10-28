@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { compareDeployments, contenthashToCid, deploymentsFromNetworks, gatewayUrl } from "./lib.mjs";
 import { renderHeader } from "./notes.mjs";
-import { diffDeployment, networkToVerify } from "./verify.mjs";
+import { diffDeployment, coverage, networkToVerify } from "./verify.mjs";
 import { checkLiveCode, eip1167Runtime, linkedLibraries, maskedCodehash } from "./codehash.mjs";
 import { abiFromModule, diffAbi, renderAbiChanges } from "./abi.mjs";
 
@@ -188,28 +188,67 @@ describe("diffDeployment", () => {
 
 describe("networkToVerify", () => {
   const location = { dotnsName: "app.paseo", rpcUrl: "https://rpc.example", dotnsContentResolver: A };
-  const source = { net: { name: "Net", ...location } };
-  const recorded = { chainId: 1, genesis: "0x01", factory: A, faucet: B, quote: A };
+  const trusted = {
+    name: "Net",
+    ...location,
+    chainId: 1,
+    genesis: "0xaa",
+    factoryAddress: A,
+    faucetAddress: B,
+    knownQuote: { addr: A.toLowerCase() },
+  };
+  const recorded = { chainId: 1, genesis: "0xAA", factory: A, faucet: B, quote: A };
 
-  it("reads the chain where networks.json says", () => {
-    const { net, problems } = networkToVerify("net", { ...location, cid: "bafy" }, recorded, source);
+  it("reads the chain and the contracts where networks.json says", () => {
+    const { net, problems } = networkToVerify(trusted, { ...location, cid: "bafy" }, recorded);
     expect(problems).toEqual([]);
-    expect(net).toMatchObject({ ...location, name: "Net", factoryAddress: A, faucetAddress: B });
+    expect(net).toMatchObject({ ...location, name: "Net", factoryAddress: A, faucetAddress: B, knownQuote: { addr: A.toLowerCase() } });
   });
 
   it("keeps networks.json's location and reports the manifest's", () => {
-    const entry = { ...location, rpcUrl: "https://attacker.example", dotnsContentResolver: B };
-    const { net, problems } = networkToVerify("net", entry, recorded, source);
-    expect(net.rpcUrl).toBe("https://rpc.example");
-    expect(net.dotnsContentResolver).toBe(A);
+    const entry = { dotnsName: "other.paseo", rpcUrl: "https://attacker.example", dotnsContentResolver: B };
+    const { net, problems } = networkToVerify(trusted, entry, recorded);
+    expect(net).toMatchObject(location);
     expect(problems).toEqual([
+      "the release manifest gives dotnsName other.paseo, networks.json gives app.paseo",
       "the release manifest gives rpcUrl https://attacker.example, networks.json gives https://rpc.example",
       `the release manifest gives dotnsContentResolver ${B}, networks.json gives ${A}`,
     ]);
   });
 
-  it("fails for a network networks.json does not have", () => {
-    expect(() => networkToVerify("other", location, recorded, source)).toThrow(/networks.json has no network other/);
+  it("keeps networks.json's contracts and reports the release's", () => {
+    const forged = { chainId: 2, genesis: "0xbb", factory: B, faucet: "not an address", quote: B };
+    const { net, problems } = networkToVerify(trusted, location, forged);
+    expect(net).toMatchObject({ chainId: 1, genesis: "0xaa", factoryAddress: A, faucetAddress: B });
+    expect(problems).toEqual([
+      "the release records chainId 2, networks.json gives 1",
+      "the release records genesis 0xbb, networks.json gives 0xaa",
+      `the release records factory ${B}, networks.json gives ${A}`,
+      `the release records faucet not an address, networks.json gives ${B}`,
+      `the release records quote ${B}, networks.json gives ${A.toLowerCase()}`,
+    ]);
+  });
+});
+
+describe("coverage", () => {
+  const source = { a: { name: "A net" }, b: { name: "B net" } };
+
+  it("covers every network networks.json has", () => {
+    expect(coverage(source, { networks: { a: {}, b: {} } }, { a: {}, b: {} })).toEqual({ problems: [], covered: ["a", "b"] });
+  });
+
+  it("reports a network the release leaves out, and checks the rest", () => {
+    expect(coverage(source, { networks: { a: {} } }, { a: {} })).toEqual({
+      problems: ["release-manifest.json and deployments.json leave out B net"],
+      covered: ["a"],
+    });
+    expect(coverage(source, { networks: {} }, { a: {}, b: {} }).covered).toEqual([]);
+  });
+
+  it("reports a network networks.json does not have", () => {
+    expect(coverage(source, { networks: { a: {}, b: {}, c: {} } }, { a: {}, b: {} }).problems).toEqual([
+      "the release's files name c, which networks.json does not have",
+    ]);
   });
 });
 
