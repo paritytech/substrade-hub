@@ -19,6 +19,7 @@ import {
   parseTokenAmount,
   quoteAmountCeil,
   formatTokenAmount,
+  formatTokenAmountExact,
   tickToDisplayDecimals,
   hasMarketLiquidity,
 } from "../../lib/format";
@@ -74,7 +75,7 @@ export function TradeForm() {
     try {
       const p = parseTokenAmount(price);
       const a = parseTokenAmount(amount, baseDecimals);
-      estimatedTotal = formatTokenAmount(quoteAmountCeil(a, p), quoteDecimals, priceDecimals);
+      estimatedTotal = formatTokenAmountExact(quoteAmountCeil(a, p), quoteDecimals, priceDecimals);
     } catch {
       // Invalid input
     }
@@ -203,7 +204,7 @@ export function TradeForm() {
           <div className="flex items-center justify-between">
             <span className="text-text-primary">{isBuy ? "You pay about" : "You receive about"}</span>
             <span className="text-sm font-medium text-text-primary">
-              {formatTokenAmount(marketEstimate.quote, quoteDecimals, priceDecimals)} {market?.quote.symbol}
+              {formatTokenAmountExact(marketEstimate.quote, quoteDecimals, priceDecimals)} {market?.quote.symbol}
             </span>
           </div>
           <div className="mt-1 flex items-center justify-between text-text-secondary">

@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { WAD } from "../config/constants";
 import { Side } from "../types/market";
+import { UserFacingError } from "./user-errors";
 
 /**
  * Approve amount for a MARKET order. A sell escrows exactly `amount` base tokens. A buy pays each fill
@@ -102,6 +103,19 @@ export function formatTokenAmount(
   return `${whole}.${fracStr}`;
 }
 
+/**
+ * `value` in full: every decimal it has, without trailing zeros past `minDisplayDecimals`. For amounts
+ * that must not read lower than they are, such as what an order escrows.
+ */
+export function formatTokenAmountExact(value: bigint, decimals: number, minDisplayDecimals: number = 0): string {
+  const divisor = 10n ** BigInt(decimals);
+  const whole = value / divisor;
+  let frac = (value % divisor).toString().padStart(decimals, "0");
+  const keep = Math.min(minDisplayDecimals, decimals);
+  while (frac.length > keep && frac.endsWith("0")) frac = frac.slice(0, -1);
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
+
 /** Insert apostrophe thousands separators into a formatted number string ("10981.00" -> "10'981.00"). */
 export function groupThousands(value: string): string {
   const neg = value.startsWith("-");
@@ -126,11 +140,18 @@ export function erc20ToAssetId(addr: `0x${string}`): number | null {
   return isNaN(id) ? null : id;
 }
 
+/** A non-negative decimal: digits, optionally a dot and more digits ("12", "12.5", "12.", ".5"). */
+const DECIMAL = /^(\d+\.?\d*|\.\d+)$/;
+
 /**
- * Parse a decimal string into a bigint with the given number of decimals.
+ * Parse a decimal string into a bigint with the given number of decimals. Throws on anything but a
+ * non-negative decimal, and on more fraction digits than `decimals`, so the order carries exactly the
+ * number typed.
  */
 export function parseTokenAmount(value: string, decimals: number = 18): bigint {
-  const [whole = "0", frac = ""] = value.split(".");
-  const paddedFrac = frac.padEnd(decimals, "0").slice(0, decimals);
-  return BigInt(whole) * 10n ** BigInt(decimals) + BigInt(paddedFrac);
+  const text = value.trim();
+  if (!DECIMAL.test(text)) throw new UserFacingError("Enter a number such as 12.5.");
+  const [whole = "", frac = ""] = text.split(".");
+  if (frac.length > decimals) throw new UserFacingError(`Enter at most ${decimals} decimals.`);
+  return BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt(frac.padEnd(decimals, "0") || "0");
 }

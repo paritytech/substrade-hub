@@ -161,6 +161,12 @@ export async function writeContract<
   const callData = encodeFunctionData({ abi, functionName, args } as never);
 
   const { accountType, ss58, signer, mapped, h160, setMapped } = useWalletStore.getState();
+  // `from` is the account the caller built the call for (an order's `originAccount` names it too); the
+  // connected account signs. They differ once the wallet switches accounts during a multi-step action,
+  // so stop there instead of signing for one account what was built for another.
+  if (!h160 || h160.toLowerCase() !== from.toLowerCase()) {
+    throw new UserFacingError("The connected account changed. Check your orders, then try again.");
+  }
 
   // Substrate and host accounts drive the same contract via a signed `pallet_revive.call` extrinsic.
   // Host accounts are marked mapped (handled host-side), so they skip the ensureMapped probe.
