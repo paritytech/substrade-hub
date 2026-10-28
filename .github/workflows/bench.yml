@@ -61,7 +61,11 @@ jobs:
 
       # Chopsticks has its own package and lockfile, installed only here, so its dependency tree stays out
       # of the workspace install that other jobs (one with the deploy key) run.
+      # sqlite3 compiles from its locked source: its install script would otherwise download a prebuilt
+      # binary from GitHub releases, which no lockfile hash covers.
       - name: Install Chopsticks
+        env:
+          npm_config_build_from_source: "true"
         run: pnpm --dir contracts/scripts/bench/fork install --frozen-lockfile
 
       # The fork's cache of live state, so a run fetches less from the public RPC node.

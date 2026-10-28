@@ -3,3 +3,8 @@
 allowBuilds:
   # The fork caches live state in sqlite (`db:` in ../paseo-v2.yml), which needs the native binding.
   sqlite3: true
+
+# sqlite3 compiles from its locked source (`npm_config_build_from_source`, set by `pnpm bench:fork` and
+# bench.yml), never from a prebuilt binary its install script downloads. With the side-effects cache off,
+# pnpm cannot reuse a binary from an earlier install, which may have been such a download.
+sideEffectsCache: false
