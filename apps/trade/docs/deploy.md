@@ -145,6 +145,13 @@ faucet run the release's code (by masked codehash); and every market is the 45-b
 the implementation, returned by the factory for its pair. A later release moves the
 names to a newer build, so an older release then fails the CID check.
 
+The release's files only state what the chain should hold. Which networks to check, where to read them
+(eth-rpc URL, content resolver, dotNS name) and which contracts they run (chain, factory, faucet, quote
+token) come from `networks.json` at the release's tag, so replaced release files cannot point the check
+at another endpoint or other contracts. A release whose files leave out a network, or disagree with
+`networks.json`, fails. With `--manifest` and local files, it uses the checked-out `networks.json`, or
+`--networks <file>`; `--tag` does not take `--networks`.
+
 ## CI publish
 
 `.github/workflows/deploy-dot.yml` publishes one network. Run it by hand (choose the network and a
