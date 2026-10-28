@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { compareDeployments, contenthashToCid, deploymentsFromNetworks, gatewayUrl } from "./lib.mjs";
 import { renderHeader } from "./notes.mjs";
-import { diffDeployment } from "./verify.mjs";
+import { diffDeployment, networkToVerify } from "./verify.mjs";
 import { checkLiveCode, eip1167Runtime, linkedLibraries, maskedCodehash } from "./codehash.mjs";
 import { abiFromModule, diffAbi, renderAbiChanges } from "./abi.mjs";
 
@@ -183,6 +183,33 @@ describe("diffDeployment", () => {
       `factory is ${B}, the release records ${A}`,
       `markets are none, the release records ${M.address}`,
     ]);
+  });
+});
+
+describe("networkToVerify", () => {
+  const location = { dotnsName: "app.paseo", rpcUrl: "https://rpc.example", dotnsContentResolver: A };
+  const source = { net: { name: "Net", ...location } };
+  const recorded = { chainId: 1, genesis: "0x01", factory: A, faucet: B, quote: A };
+
+  it("reads the chain where networks.json says", () => {
+    const { net, problems } = networkToVerify("net", { ...location, cid: "bafy" }, recorded, source);
+    expect(problems).toEqual([]);
+    expect(net).toMatchObject({ ...location, name: "Net", factoryAddress: A, faucetAddress: B });
+  });
+
+  it("keeps networks.json's location and reports the manifest's", () => {
+    const entry = { ...location, rpcUrl: "https://attacker.example", dotnsContentResolver: B };
+    const { net, problems } = networkToVerify("net", entry, recorded, source);
+    expect(net.rpcUrl).toBe("https://rpc.example");
+    expect(net.dotnsContentResolver).toBe(A);
+    expect(problems).toEqual([
+      "the release manifest gives rpcUrl https://attacker.example, networks.json gives https://rpc.example",
+      `the release manifest gives dotnsContentResolver ${B}, networks.json gives ${A}`,
+    ]);
+  });
+
+  it("fails for a network networks.json does not have", () => {
+    expect(() => networkToVerify("other", location, recorded, source)).toThrow(/networks.json has no network other/);
   });
 });
 
