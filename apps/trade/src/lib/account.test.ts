@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect } from "vitest";
 import { fromHex } from "polkadot-api/utils";
-import { h160ToOriginAccount, ss58ToOriginAccount, pubkeyToH160 } from "./account";
+import { AccountId, type SS58String } from "polkadot-api";
+import { h160ToOriginAccount, ss58ToOriginAccount, pubkeyToH160, ss58ToH160 } from "./account";
 
 // Well-known dev account "Alice". The public key and derived revive H160 are fixed vectors
 // (computed independently), so these assertions are not circular against the implementation.
@@ -41,5 +42,17 @@ describe("pubkeyToH160 (native account -> revive H160 fallback)", () => {
 
   it("returns a 20-byte lowercase hex string", () => {
     expect(pubkeyToH160(fromHex(ALICE_PUBKEY))).toMatch(/^0x[0-9a-f]{40}$/);
+  });
+});
+
+describe("ss58ToH160 (offline revive H160 of an SS58 account)", () => {
+  it("hashes a native account", () => {
+    expect(ss58ToH160(ALICE_SS58)).toBe(ALICE_H160);
+  });
+
+  it("returns the Ethereum address of a mapped account (0xEE-suffixed)", () => {
+    const h160 = "0x1234567890abcdef1234567890abcdef12345678" as const;
+    const mapped = AccountId().dec(fromHex(h160ToOriginAccount(h160))) as SS58String;
+    expect(ss58ToH160(mapped)).toBe(h160);
   });
 });

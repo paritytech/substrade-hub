@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: © 2026 Parity Technologies
 import { describe, it, expect } from "vitest";
-import { marketApproveAmount, feeWarningThreshold, hasMarketLiquidity, groupThousands, maxOrderAmount, quoteAmountCeil } from "./format";
+import { marketApproveAmount, feeWarningThreshold, hasMarketLiquidity, groupThousands, maxOrderAmount, quoteAmountCeil, parseTokenAmount, formatTokenAmountExact } from "./format";
 import { Side } from "../types/market";
 
 describe("feeWarningThreshold (chain-derived, not hardcoded)", () => {
@@ -82,5 +82,33 @@ describe("maxOrderAmount", () => {
     expect(maxOrderAmount(Side.Buy, "market", 1_000_000n, undefined, bounds)).toBeUndefined();
     expect(maxOrderAmount(Side.Buy, "limit", 1_000_000n, undefined, bounds)).toBeUndefined();
     expect(maxOrderAmount(Side.Buy, "limit", 1_000_000n, 0n, bounds)).toBeUndefined();
+  });
+});
+
+describe("parseTokenAmount (exactly the decimal typed, or an error)", () => {
+  it("parses a non-negative decimal", () => {
+    expect(parseTokenAmount("12.5", 6)).toBe(12_500_000n);
+    expect(parseTokenAmount("12", 6)).toBe(12_000_000n);
+    expect(parseTokenAmount("12.", 6)).toBe(12_000_000n);
+    expect(parseTokenAmount(".5", 6)).toBe(500_000n);
+    expect(parseTokenAmount(" 2 ", 6)).toBe(2_000_000n);
+    expect(parseTokenAmount("1.123456", 6)).toBe(1_123_456n);
+  });
+
+  it.each(["-0.5", "-1.5", "0x10", "1.5.9", "1.-5", "1e3", "", ".", "1,5"])("rejects %j", (text) => {
+    expect(() => parseTokenAmount(text, 6)).toThrow("Enter a number such as 12.5.");
+  });
+
+  it("rejects more decimals than the token has", () => {
+    expect(() => parseTokenAmount("1.1234567", 6)).toThrow("Enter at most 6 decimals.");
+  });
+});
+
+describe("formatTokenAmountExact (never reads lower than the amount)", () => {
+  it("shows every decimal the amount has, and at least the minimum", () => {
+    expect(formatTokenAmountExact(5_000n, 6, 2)).toBe("0.005");
+    expect(formatTokenAmountExact(12_500_000n, 6, 2)).toBe("12.50");
+    expect(formatTokenAmountExact(12_000_000n, 6, 0)).toBe("12");
+    expect(formatTokenAmountExact(1_234_567n, 6, 2)).toBe("1.234567");
   });
 });

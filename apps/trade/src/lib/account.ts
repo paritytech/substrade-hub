@@ -35,6 +35,17 @@ export async function accountToH160(address: string): Promise<`0x${string}`> {
 }
 
 /**
+ * The revive H160 of an SS58 account, derived offline the way pallet-revive does: an account ending in
+ * twelve 0xEE bytes is a mapped Ethereum address (its first 20 bytes), any other is
+ * keccak_256(account id)[12..32].
+ */
+export function ss58ToH160(address: string): `0x${string}` {
+  const id = ss58Codec.enc(address as SS58String);
+  if (id.subarray(20).every((b) => b === 0xee)) return toHex(id.subarray(0, 20)) as `0x${string}`;
+  return pubkeyToH160(id);
+}
+
+/**
  * Offline fallback for native sr25519 accounts only: revive H160 = keccak_256(pubkey)[12..32].
  * Prefer `accountToH160` where a runtime call is acceptable.
  */

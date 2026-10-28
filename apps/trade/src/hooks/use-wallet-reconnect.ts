@@ -6,11 +6,12 @@ import { ensureExtensionMetadata } from "../lib/extension-metadata";
 import { loadWalletHint, clearWalletHint } from "../lib/wallet-hint";
 import { isInHost } from "../lib/host/detect";
 import { useWalletStore } from "../stores/wallet";
+import { ss58ToH160, ss58ToOriginAccount } from "../lib/account";
 
 /**
  * On mount, re-establish a previously connected Substrate wallet from the persisted hint. The signer
- * is re-obtained from the extension (never persisted); the derived addresses come from the hint, so
- * no runtime call is needed. Best-effort: clears the hint if the extension/account is unavailable.
+ * is re-obtained from the extension (never persisted); the addresses are derived from the account
+ * offline, so no runtime call is needed, and a hint whose addresses differ is dropped. Best-effort: clears the hint if the extension/account is unavailable.
  */
 export function useWalletReconnect(): void {
   useEffect(() => {
@@ -33,6 +34,11 @@ export function useWalletReconnect(): void {
           clearWalletHint();
           return;
         }
+        // The hint is local storage: use its addresses only when they are the ones the account derives.
+        if (hint.h160.toLowerCase() !== ss58ToH160(hint.ss58) || hint.originAccount.toLowerCase() !== ss58ToOriginAccount(hint.ss58)) {
+          clearWalletHint();
+          return;
+        }
         // Re-register the chain's signed extensions so signing works this session too. Idempotent:
         // no prompt if the wallet already has them (e.g. approved on the original connect).
         await ensureExtensionMetadata(hint.extensionName);
@@ -40,8 +46,8 @@ export function useWalletReconnect(): void {
         useWalletStore.getState().connectSubstrate({
           extensionName: hint.extensionName,
           ss58: hint.ss58,
-          h160: hint.h160,
-          originAccount: hint.originAccount,
+          h160: ss58ToH160(hint.ss58),
+          originAccount: ss58ToOriginAccount(hint.ss58),
           signer: acc.txCreator,
         });
         watchAccounts(ext, hint.ss58, () => useWalletStore.getState().disconnect());
